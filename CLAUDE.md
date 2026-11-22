@@ -124,6 +124,20 @@ The global `lead`, `dev`, `reviewer`, `qa` agents run on every ticket. Add these
 
 Both are read-only and report PASS / FIX FIRST. A FIX FIRST blocks the merge like a failing check.
 
+## Loop automation
+
+Project skills in `.claude/skills/`, all talking to Jira through `node scripts/jira.mjs` (never the
+Atlassian MCP connector — it points at another site):
+
+- `/spec-to-jira` — sync `docs/backlog.json` → Jira (dry run first; idempotent via `spec-epic-*` /
+  `spec-task-*` labels; never deletes) and refresh `docs/backlog-keys.json`.
+- `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors per the table
+  above) → PR → `ci` gate (`docs/ci.md`) → squash merge → Done. Stop conditions label `needs-human`.
+- `/loop-epic <MFW-n|Ln>` — `loop-ticket` repeatedly over one epic, then an epic report.
+
+Requires `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`;
+without it the CLI exits 2 and explains how to create it. Never commit or print it.
+
 ## Language
 
 Code, comments, identifiers, commit messages, PR titles/bodies: **English**.
