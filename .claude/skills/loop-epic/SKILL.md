@@ -22,6 +22,15 @@ skipping review or CI for "small" tickets, no merging while a ticket is parked.
    Exit 2 → show the credentials message and stop. Keep `epic.key`, `epic.summary`, and the starting
    `counts`. If `allDone` is already true, skip to step 4.
 
+   **Start the epic's sprint** (one epic = one sprint; Jira Free allows one active sprint):
+   ```bash
+   node scripts/jira.mjs sprint-start <EPIC_KEY>          # default length 14 days; --days <n> to change
+   ```
+   It creates (or reuses) `Sprint <n> (Loop <n>)`, adds the epic and all its children, and starts it.
+   `action: "already-active"` means a previous run already started it — continue. If it fails because
+   **another epic's sprint is still active**, stop and tell the user which sprint is open (that epic must
+   be finished and its sprint completed first). Do not complete or move another epic's sprint yourself.
+
 2. **Loop** — repeat:
    1. `node scripts/jira.mjs next --epic <EPIC_KEY>`.
       - `inFlight` non-empty → stop the loop (a ticket is mid-flight somewhere; loop-ticket would refuse).
@@ -45,7 +54,10 @@ skipping review or CI for "small" tickets, no merging while a ticket is parked.
    lines recorded on each child, including tickets done in earlier sessions).
 
 4. **Close the epic** only if `allDone` is true (it has children and every child is Done):
-   `node scripts/jira.mjs transition <EPIC_KEY> done`. Otherwise leave its status alone.
+   `node scripts/jira.mjs transition <EPIC_KEY> done`, then **complete the sprint**:
+   `node scripts/jira.mjs sprint-complete <EPIC_KEY>` (it refuses if any issue in the sprint is not Done —
+   report that instead of forcing it). Otherwise leave the epic and its sprint open; the sprint stays
+   active until a later `/loop-epic` run finishes the epic.
 
 5. **Epic report** — post to Jira on the epic, then tell the user (Thai). Jira comment (English):
    ```bash

@@ -64,6 +64,51 @@ export function specIdFromLabels(labels) {
 }
 
 // ---------------------------------------------------------------------------
+// Sprints: one sprint per epic (Jira Free allows one active sprint at a time)
+// ---------------------------------------------------------------------------
+
+/** Jira rejects sprint names longer than 30 characters. */
+export const SPRINT_NAME_MAX = 30;
+
+/**
+ * Deterministic sprint name for an epic's spec id: L1 → "Sprint 1 (Loop 1)", LS → "Sprint LS".
+ * @param {string} epicSpecId
+ */
+export function sprintNameForEpic(epicSpecId) {
+  const loop = /^L(\d+)$/.exec(epicSpecId ?? "");
+  const name = loop ? `Sprint ${loop[1]} (Loop ${loop[1]})` : `Sprint ${epicSpecId}`;
+  if (!epicSpecId || name.length > SPRINT_NAME_MAX) throw new Error(`cannot derive a sprint name from ${JSON.stringify(epicSpecId)}`);
+  return name;
+}
+
+/**
+ * Decide what sprint-start must do, given the board's active/future sprints.
+ * @param {{ id: number, name: string, state: string }[]} sprints
+ * @param {string} name
+ * @returns {{ action: "create" | "reuse-future" | "already-active", sprintId: number | null }}
+ */
+export function planSprintStart(sprints, name) {
+  const active = sprints.filter((s) => s.state === "active");
+  const mine = active.find((s) => s.name === name);
+  if (mine) return { action: "already-active", sprintId: mine.id };
+  if (active.length) {
+    throw new Error(`sprint ${JSON.stringify(active[0].name)} is still active — complete it before starting ${JSON.stringify(name)}`);
+  }
+  const future = sprints.find((s) => s.state === "future" && s.name === name);
+  return future ? { action: "reuse-future", sprintId: future.id } : { action: "create", sprintId: null };
+}
+
+/**
+ * Issues in a sprint whose status category is not "done" (they block completing the sprint).
+ * @param {{ key: string, fields?: { status?: { name?: string, statusCategory?: { key?: string } } } }[]} issues
+ */
+export function sprintIssuesNotDone(issues) {
+  return (issues ?? [])
+    .filter((i) => i?.fields?.status?.statusCategory?.key !== "done")
+    .map((i) => ({ key: i.key, status: String(i?.fields?.status?.name ?? "") }));
+}
+
+// ---------------------------------------------------------------------------
 // Credentials
 // ---------------------------------------------------------------------------
 
@@ -813,7 +858,8 @@ export function desiredIssues(backlog) {
         specLabel: label,
         typeName,
         typeId: ISSUE_TYPE_IDS[typeName],
-        summary: s.summary.trim(),
+        // Story summaries carry their spec id ("[1.2] …") so the board reads in spec order.
+        summary: `[${s.id}] ${s.summary.trim()}`,
         description: storyDescriptionAdf(s),
         labels: uniq([...(s.labels ?? []), label]),
         parentSpecId: epic.id,
