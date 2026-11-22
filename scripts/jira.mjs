@@ -28,7 +28,11 @@ import {
   parseEnvFile,
   parseOutcome,
   pickNext,
+  planSprintStart,
   planSync,
+  specIdFromLabels,
+  sprintIssuesNotDone,
+  sprintNameForEpic,
   resolveCredentials,
   suggestSize,
   summarizeEpic,
@@ -56,6 +60,8 @@ const USAGE = `Usage: node scripts/jira.mjs <command>
   comment <MFW-n> <text | ->                 "-" reads the text from stdin; prefixed with ${BOT_PREFIX}
   label <MFW-n> <add|remove> <label>
   sync-backlog [--dry-run]                   docs/backlog.json → Jira (create/update, never delete)
+  sprint-start <MFW-n | L1> [--days <n>]     create/reuse the epic's sprint, add the epic + its children, start it
+  sprint-complete <MFW-n | L1>               complete the epic's active sprint (refuses if any issue is not Done)
 
 Credentials: JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN from the environment, else ${ENV_FILE_DISPLAY}.`;
 
@@ -431,6 +437,75 @@ async function cmdSyncBacklog(args) {
 }
 
 // ---------------------------------------------------------------------------
+// Sprints (one per epic)
+// ---------------------------------------------------------------------------
+
+async function sprintContext(client, epicArg) {
+  const epicKey = await resolveEpicKey(client, epicArg);
+  const epicRaw = await client.request("GET", `/rest/api/3/issue/${epicKey}`, { query: { fields: "summary,labels" } });
+  const spec = specIdFromLabels(epicRaw?.fields?.labels);
+  if (spec?.kind !== "epic") throw new Error(`${epicKey} has no spec-epic-<id> label; cannot name its sprint`);
+  const boards = await client.request("GET", "/rest/agile/1.0/board", { query: { projectKeyOrId: PROJECT_KEY } });
+  const board = boards?.values ?? [];
+  if (board.length !== 1) throw new Error(`expected exactly one ${PROJECT_KEY} board, found ${board.length}`);
+  const sprintsRes = await client.request("GET", `/rest/agile/1.0/board/${board[0].id}/sprint`, {
+    query: { state: "active,future", maxResults: 50 },
+  });
+  return {
+    epicKey,
+    epicSummary: String(epicRaw?.fields?.summary ?? ""),
+    boardId: board[0].id,
+    name: sprintNameForEpic(spec.id),
+    sprints: (sprintsRes?.values ?? []).map((s) => ({ id: s.id, name: String(s.name), state: String(s.state) })),
+  };
+}
+
+async function cmdSprintStart(args) {
+  const { values, positionals } = parseArgs({ args, options: { days: { type: "string" } }, allowPositionals: true });
+  if (positionals.length !== 1) throw new UsageError("sprint-start <MFW-n | L1> [--days <n>]");
+  const days = values.days === undefined ? 14 : Number(values.days);
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw new UsageError("--days must be an integer 1..90");
+  const client = await jira();
+  const ctx = await sprintContext(client, positionals[0]);
+  const plan = planSprintStart(ctx.sprints, ctx.name);
+  let sprintId = plan.sprintId;
+  if (plan.action === "create") {
+    const created = await client.request("POST", "/rest/agile/1.0/sprint", {
+      body: { name: ctx.name, originBoardId: ctx.boardId, goal: ctx.epicSummary.slice(0, 250) },
+    });
+    sprintId = created.id;
+  }
+  const children = await client.search(`parent = ${ctx.epicKey} ORDER BY Rank ASC, key ASC`, ["status"]);
+  const keys = [ctx.epicKey, ...children.map((c) => String(c.key))].filter(isValidKey);
+  for (let i = 0; i < keys.length; i += 50) {
+    await client.request("POST", `/rest/agile/1.0/sprint/${sprintId}/issue`, { body: { issues: keys.slice(i, i + 50) } });
+  }
+  if (plan.action !== "already-active") {
+    const start = new Date();
+    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+    await client.request("POST", `/rest/agile/1.0/sprint/${sprintId}`, {
+      body: { state: "active", startDate: start.toISOString(), endDate: end.toISOString() },
+    });
+  }
+  return { sprint: { id: sprintId, name: ctx.name, boardId: ctx.boardId }, action: plan.action, issues: keys };
+}
+
+async function cmdSprintComplete(args) {
+  if (args.length !== 1) throw new UsageError("sprint-complete <MFW-n | L1>");
+  const client = await jira();
+  const ctx = await sprintContext(client, args[0]);
+  const active = ctx.sprints.find((s) => s.state === "active" && s.name === ctx.name);
+  if (!active) throw new Error(`no active sprint named ${JSON.stringify(ctx.name)} on board ${ctx.boardId}`);
+  const res = await client.request("GET", `/rest/agile/1.0/sprint/${active.id}/issue`, { query: { fields: "status", maxResults: 100 } });
+  const notDone = sprintIssuesNotDone(res?.issues ?? []);
+  if (notDone.length) {
+    throw new Error(`refusing to complete ${JSON.stringify(ctx.name)}: not Done → ${notDone.map((i) => `${i.key} (${i.status})`).join(", ")}`);
+  }
+  await client.request("POST", `/rest/agile/1.0/sprint/${active.id}`, { body: { state: "closed" } });
+  return { sprint: { id: active.id, name: ctx.name }, completed: true, issues: (res?.issues ?? []).map((i) => i.key) };
+}
+
+// ---------------------------------------------------------------------------
 
 const COMMANDS = {
   next: cmdNext,
@@ -440,6 +515,8 @@ const COMMANDS = {
   comment: cmdComment,
   label: cmdLabel,
   "sync-backlog": cmdSyncBacklog,
+  "sprint-start": cmdSprintStart,
+  "sprint-complete": cmdSprintComplete,
 };
 
 async function main(argv) {

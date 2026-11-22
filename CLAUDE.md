@@ -133,7 +133,7 @@ Atlassian MCP connector — it points at another site):
   `spec-task-*` labels; never deletes) and refresh `docs/backlog-keys.json`.
 - `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors per the table
   above) → PR → `ci` gate (`docs/ci.md`) → squash merge → Done. Stop conditions label `needs-human`.
-- `/loop-epic <MFW-n|Ln>` — `loop-ticket` repeatedly over one epic, then an epic report.
+- `/loop-epic <MFW-n|Ln>` — one epic = one Jira sprint: `sprint-start`, `loop-ticket` repeatedly, then close the epic, `sprint-complete` and post an epic report.
 
 Requires `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`;
 without it the CLI exits 2 and explains how to create it. Never commit or print it.

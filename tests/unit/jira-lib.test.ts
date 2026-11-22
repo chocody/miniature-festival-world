@@ -374,6 +374,8 @@ describe("backlog validation", () => {
     const s11 = d.find((x) => x.specId === "1.1")!;
     expect(s11).toMatchObject({ typeName: "Story", typeId: "10009", parentSpecId: "L1" });
     expect(s11.labels).toEqual(["core", "spec-task-1.1"]);
+    expect(s11.summary.startsWith("[1.1] ")).toBe(true);
+    expect(d.find((x) => x.specId === "L0")!.summary.startsWith("[")).toBe(false);
     expect(d.find((x) => x.specId === "0.3")).toMatchObject({ typeName: "Task", typeId: "10008" });
     expect(d.find((x) => x.specId === "L0")).toMatchObject({ typeName: "Epic", typeId: "10006", labels: ["infra", "loop-0", "spec-epic-L0"] });
   });
@@ -418,7 +420,7 @@ describe("planSync", () => {
     expect(u).toMatchObject({
       specId: "1.2",
       key: keys["1.2"],
-      summary: { from: "old summary", to: backlog.epics[1].stories[1].summary },
+      summary: { from: "old summary", to: `[1.2] ${backlog.epics[1].stories[1].summary}` },
       labelsAdd: ["core", "coordinates"],
       parent: { from: null, toSpecId: "L1" },
     });
