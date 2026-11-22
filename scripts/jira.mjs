@@ -497,12 +497,22 @@ async function cmdSprintComplete(args) {
   const active = ctx.sprints.find((s) => s.state === "active" && s.name === ctx.name);
   if (!active) throw new Error(`no active sprint named ${JSON.stringify(ctx.name)} on board ${ctx.boardId}`);
   const res = await client.request("GET", `/rest/agile/1.0/sprint/${active.id}/issue`, { query: { fields: "status", maxResults: 100 } });
-  const notDone = sprintIssuesNotDone(res?.issues ?? []);
+  const sprintIssues = res?.issues ?? [];
+  // The sprint-issue index lags writes: right after sprint-start it can return nothing, which would
+  // make the "all Done" check vacuous. Require the epic to be visible, and also check its children
+  // through search so both views must agree.
+  if (!sprintIssues.some((i) => i.key === ctx.epicKey)) {
+    throw new Error(`sprint ${JSON.stringify(ctx.name)} does not list ${ctx.epicKey} yet (index lag?) — retry in a few seconds`);
+  }
+  const children = await client.search(`parent = ${ctx.epicKey} ORDER BY key ASC`, ["status"]);
+  const notDone = sprintIssuesNotDone([...sprintIssues, ...children]).filter(
+    (v, i, all) => all.findIndex((w) => w.key === v.key) === i,
+  );
   if (notDone.length) {
     throw new Error(`refusing to complete ${JSON.stringify(ctx.name)}: not Done → ${notDone.map((i) => `${i.key} (${i.status})`).join(", ")}`);
   }
   await client.request("POST", `/rest/agile/1.0/sprint/${active.id}`, { body: { state: "closed" } });
-  return { sprint: { id: active.id, name: ctx.name }, completed: true, issues: (res?.issues ?? []).map((i) => i.key) };
+  return { sprint: { id: active.id, name: ctx.name }, completed: true, issues: sprintIssues.map((i) => i.key) };
 }
 
 // ---------------------------------------------------------------------------
