@@ -1,0 +1,375 @@
+{
+  "source": "Shared Miniature Festival World — Technical Spec v3.0, §6 (8 Loops) + §1 roadmap",
+  "epics": [
+    {
+      "id": "L0",
+      "summary": "Loop 0 — Dev Workflow & Loop Engineering Setup",
+      "description": "Tooling that lets Claude run Spec → Prompt → Code → Test → Refine per ticket: spec as markdown, project CLAUDE.md, agents, loop skills, CI and a merge gate.",
+      "labels": ["infra", "loop-0"],
+      "stories": [
+        {
+          "id": "0.1", "type": "Task",
+          "summary": "Convert spec v3.0 PDF to docs/spec markdown",
+          "goal": "Agents read the spec as diff-able markdown instead of a PDF.",
+          "ac": [
+            "docs/spec/00-scope.md … 05-privacy-db.md and docs/spec/06-loops/loop-1.md … loop-8.md exist",
+            "Every section, formula and table of the PDF is present (coordinate formulas, DB columns, task lists)",
+            "Thai text is preserved verbatim; no content invented"
+          ],
+          "labels": ["infra", "docs"]
+        },
+        {
+          "id": "0.2", "type": "Task",
+          "summary": "Project CLAUDE.md + project agents (privacy-auditor, r3f-perf-reviewer)",
+          "goal": "Every agent knows the invariants it must not break.",
+          "ac": [
+            "CLAUDE.md lists invariants: parametric coords only, 3D/2D share one coord set, public payload never contains owner_token/owner_token_hash/private_wish_text, zone ≤ 80–100 items, object pools, dispose on zone switch",
+            "CLAUDE.md lists standard commands (typecheck, lint, test, build, e2e) and branch/commit conventions with MFW keys",
+            ".claude/agents/privacy-auditor.md and r3f-perf-reviewer.md exist, read-only tools"
+          ],
+          "labels": ["infra"],
+          "blockedBy": ["0.1"]
+        },
+        {
+          "id": "0.3", "type": "Task",
+          "summary": "Loop skills: spec-to-jira, loop-ticket, loop-epic",
+          "goal": "One command runs a ticket (or a whole epic) end-to-end: Jira → branch → lead/dev/reviewer∥qa → PR → merge → Jira Done.",
+          "ac": [
+            "loop-ticket picks the next unblocked To Do ticket, transitions it, branches feat/MFW-<n>-<slug>, runs the full agent loop, opens a PR",
+            "Merges only after CI is green and reviewer/qa pass; otherwise labels needs-human, comments the reason and stops",
+            "spec-to-jira is idempotent (matches on spec:task-x.y label)",
+            "loop-epic runs loop-ticket over one epic in dependency order and writes an epic report"
+          ],
+          "labels": ["infra"],
+          "blockedBy": ["0.2"]
+        },
+        {
+          "id": "0.4", "type": "Task",
+          "summary": "CI pipeline + skill-enforced merge gate",
+          "goal": "Nothing reaches main without typecheck, lint, unit tests, build and a smoke e2e passing.",
+          "ac": [
+            ".github/workflows/ci.yml runs pnpm install → typecheck → lint → vitest → build → playwright smoke (WebGL via SwiftShader + FALLBACK_2D mode)",
+            "Because GitHub Free has no branch protection on private repos, loop-ticket waits for `gh pr checks` green before merging",
+            "Vercel preview URL is posted on the PR; previews do not need Supabase env"
+          ],
+          "labels": ["infra", "ci"]
+        }
+      ]
+    },
+    {
+      "id": "L1",
+      "summary": "Loop 1 — Project Foundation, Config Schema & Adaptive Performance Engine",
+      "description": "Spec §6.1. Core project, flow state machine, unified coordinate converters, device profiler & quality tiers.",
+      "labels": ["loop-1", "core", "phase1"],
+      "stories": [
+        {
+          "id": "1.1", "summary": "Setup core project & flow state machine",
+          "goal": "Next.js + TypeScript + Tailwind + Zustand app with the user-flow state machine and event selector.",
+          "ac": [
+            "Flow state machine: LANDING_EVENT_SELECT → CUSTOMIZE_OBJECT → WRITE_WISH → RITUAL_RELEASE → SHARED_WORLD_EXPLORE with unit tests for every transition",
+            "Event selector enables Loy Krathong; other roadmap festivals show Coming Soon via feature flag",
+            "Folder structure follows spec §3 (config/events, core/*, components/*, services/*, store/*)",
+            "Zustand stores split: UI, Customization (useBuilderStore), World (useWorldStore), Device (useDeviceStore)"
+          ],
+          "labels": ["core"],
+          "blockedBy": ["0.4"]
+        },
+        {
+          "id": "1.2", "summary": "Unified coordinate converter module",
+          "goal": "Parametric coords convert losslessly between DB ↔ 3D world ↔ 2D canvas.",
+          "ac": [
+            "SplinePathCoord implemented: CurrentProgress(t) = (spawnProgress + (now − createdAt) × speedFactor) % 1.0; 3D via CatmullRomCurve3 + lateralOffset perpendicular to flow",
+            "Interfaces (typed) for NormalizedCylindricalCoord and PlanarZoneCoord",
+            "Round-trip unit tests: Parametric ↔ 3D world position ↔ 2D canvas position within tolerance",
+            "No raw (x,y,z) is ever persisted"
+          ],
+          "labels": ["core", "coordinates"],
+          "blockedBy": ["1.1"]
+        },
+        {
+          "id": "1.3", "summary": "Mobile hardware profiler & quality tier switcher",
+          "goal": "The app picks HIGH/MEDIUM/LOW automatically and falls back to 2D when needed.",
+          "ac": [
+            "FPS meter + device capability detection + prefers-reduced-motion",
+            "Auto tier HIGH / MEDIUM / LOW, switches to FALLBACK_2D when WebGL is unavailable or FPS stays below threshold",
+            "State lives in useDeviceStore (fps, qualityTier, reducedMotion, isFallback2D); thresholds in performance.config.ts"
+          ],
+          "labels": ["core", "perf"],
+          "blockedBy": ["1.1"]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "summary": "Loop 2 — Privacy, Security & Anonymous Ownership Vault",
+      "description": "Spec §5 + §6.2. Anonymous ownership token, public/private table split, PII guard, profanity filter, report endpoint.",
+      "labels": ["loop-2", "privacy", "phase1"],
+      "stories": [
+        {
+          "id": "2.1", "summary": "Client-side anonymous ownership token (DeviceOwnerToken)",
+          "goal": "Users own their creations without accounts.",
+          "ac": [
+            "Cryptographically secure random token stored in LocalStorage; only its SHA-256 hash is ever sent/stored server-side",
+            "UI warns that clearing browser data or changing device loses access to own creations",
+            "Unit tests for generation, persistence, hashing"
+          ],
+          "labels": ["privacy", "auth"],
+          "blockedBy": ["1.1"]
+        },
+        {
+          "id": "2.2", "summary": "Public/private separated API & database",
+          "goal": "Public data and ownership data never mix in any public payload.",
+          "ac": [
+            "Supabase tables creations_public (id, event_id, zone_id, appearance JSONB, coord JSONB, public_wish_text, created_at, expires_at) and creations_private_ownership (creation_id FK, owner_token_hash, private_wish_text encrypted, report_count, moderation_status enum)",
+            "RLS on both; creations_private_ownership is not exposed to the anon Data API",
+            "GET /api/creations?event=loy_krathong&zone=1 returns only public fields; test asserts owner_token / owner_token_hash / private_wish_text never appear",
+            "Zone pagination: ≤ 80–100 items per zone"
+          ],
+          "labels": ["privacy", "api", "db"],
+          "blockedBy": ["2.1"]
+        },
+        {
+          "id": "2.3", "summary": "PII guard, profanity filter & report endpoint",
+          "goal": "Public wishes cannot leak personal data or abuse.",
+          "ac": [
+            "Detects phone numbers, emails, LINE IDs, social handles and banned words before save (rules in moderation.config.ts); Thai + English test cases",
+            "User is warned and blocked from publishing PII publicly",
+            "Report button endpoint increments report_count and flags/hides per threshold"
+          ],
+          "labels": ["privacy", "moderation"],
+          "blockedBy": ["2.2"]
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "summary": "Loop 3 — Minimal Toy-like 3D Viewport & Mobile Input Separation",
+      "description": "Spec §6.3. Toy-like night river look, input modes that separate camera vs placement, camera fly-to & highlight.",
+      "labels": ["loop-3", "3d", "phase1"],
+      "stories": [
+        {
+          "id": "3.1", "summary": "Toy-like 3D LookDev (night river ambience)",
+          "goal": "The miniature-world look the rest of the scene builds on.",
+          "ac": [
+            "Orthographic camera, soft night lighting, warm candle light",
+            "Matte, slightly rounded, non-glossy materials",
+            "Respects quality tier from useDeviceStore"
+          ],
+          "labels": ["3d", "perf"],
+          "blockedBy": ["1.1", "1.3"]
+        },
+        {
+          "id": "3.2", "summary": "Input separator — camera vs placement on mobile",
+          "goal": "No accidental drags or taps on mobile.",
+          "ac": [
+            "CUSTOMIZE: drag rotates the krathong, pinch zooms",
+            "RITUAL_RELEASE: camera locked at the pier; drag krathong into water, or a Release button for users who can't gesture",
+            "WORLD_EXPLORE: drag pans/rotates the river; short tap interacts with water, lamps, krathongs",
+            "Tests cover mode switching"
+          ],
+          "labels": ["3d", "interaction"],
+          "blockedBy": ["3.1"]
+        },
+        {
+          "id": "3.3", "summary": "Camera fly-to & highlight controller",
+          "goal": "Smoothly bring any object into clear view.",
+          "ac": [
+            "flyTo(target) eases camera to a target position and a clear viewing angle",
+            "Highlight ring effect around the target, follows a moving target",
+            "Reduced-motion users get an instant cut instead of an animated flight"
+          ],
+          "labels": ["3d", "camera"],
+          "blockedBy": ["3.1"]
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "summary": "Loop 4 — Loy Krathong Modular Customization & Wish Composer",
+      "description": "Spec §6.4. Modular krathong assembler with socket rules, mobile-first customizer UI, wish composer modal.",
+      "labels": ["loop-4", "loy-krathong", "phase1"],
+      "stories": [
+        {
+          "id": "4.1", "summary": "Krathong modular assembler & socket rules",
+          "goal": "Build a krathong from shared parts with enforced placement rules.",
+          "ac": [
+            "Parts: base (banana trunk / lotus petal / toy bread), bananaLeaves fold styles & colors, flowers (marigold, orchid, lotus) on rim sockets, candleAndIncense",
+            "candleAndIncense constrained to center_socket and always upright on the Y axis",
+            "Parts share geometry/material; appearance serializes to the appearance JSONB shape in spec §5",
+            "Unit tests for socket validator"
+          ],
+          "labels": ["loy-krathong", "customization"],
+          "blockedBy": ["3.1"]
+        },
+        {
+          "id": "4.2", "summary": "Mobile-first customizer UI (CustomizerPanel)",
+          "goal": "Pick parts and colors comfortably with one thumb.",
+          "ac": [
+            "Bottom bar for parts and colors; rotate-around and zoom-detail controls",
+            "Gentle bounce animation on part change (off under reduced motion)",
+            "Works at 360px width"
+          ],
+          "labels": ["loy-krathong", "ui"],
+          "blockedBy": ["4.1"]
+        },
+        {
+          "id": "4.3", "summary": "Wish / let-go composer modal (WishModal)",
+          "goal": "Write a wish and choose clearly between private and anonymous public.",
+          "ac": [
+            "Explicit choice: keep private vs publish anonymously",
+            "PII warning and blocking via the 2.3 guard before publishing",
+            "Private text goes only to private_wish_text; public text only to public_wish_text"
+          ],
+          "labels": ["loy-krathong", "ui", "privacy"],
+          "blockedBy": ["2.3", "4.2"]
+        }
+      ]
+    },
+    {
+      "id": "L5",
+      "summary": "Loop 5 — Loy Krathong Ritual, River Spline Movement & Growing River Zones",
+      "description": "Spec §6.5. Make & Release ritual, deterministic spline flow, growing river zones with pagination.",
+      "labels": ["loop-5", "loy-krathong", "phase1"],
+      "stories": [
+        {
+          "id": "5.1", "summary": "\"Make & Release\" ritual interaction",
+          "goal": "The emotional core: releasing your krathong onto the river.",
+          "ac": [
+            "Pier scene previews the user's own krathong before release",
+            "Drag into water or press \"ปล่อยกระทง\" → ripple, candle brightens, krathong drifts out into the shared river",
+            "Creation is saved with a SplinePathCoord"
+          ],
+          "labels": ["loy-krathong", "ritual"],
+          "blockedBy": ["3.2", "4.3", "2.2"]
+        },
+        {
+          "id": "5.2", "summary": "Deterministic spline river flow",
+          "goal": "Every client sees every krathong at the same place at the same time.",
+          "ac": [
+            "River lanes as spline curves; krathongs move slowly with procedural bobbing",
+            "Position computed only from SplinePathCoord + current time (deterministic across clients and 2D/3D)",
+            "Current position queryable for Find My Krathong"
+          ],
+          "labels": ["loy-krathong", "coordinates"],
+          "blockedBy": ["1.2", "5.1"]
+        },
+        {
+          "id": "5.3", "summary": "Growing river world & zone pagination",
+          "goal": "The world grows instead of overcrowding one scene.",
+          "ac": [
+            "Max ~80 krathongs rendered per river-bend zone",
+            "New zones (Zone 2, 3, …) open along the river as participation grows (ZoneManager / GrowingWorldScaler)",
+            "Only the visible zone is loaded"
+          ],
+          "labels": ["loy-krathong", "world", "perf"],
+          "blockedBy": ["2.2", "5.2"]
+        }
+      ]
+    },
+    {
+      "id": "L6",
+      "summary": "Loop 6 — Loy Krathong Scene Environment & Interactive Gimmicks",
+      "description": "Spec §6.6. Low-poly night river environment and tap gimmicks with object pooling.",
+      "labels": ["loop-6", "loy-krathong", "phase1"],
+      "stories": [
+        {
+          "id": "6.1", "summary": "Low-poly night river environment",
+          "goal": "Charming but cheap scenery that keeps krathongs the focal point.",
+          "ac": [
+            "Riverside wooden houses, trees, riverside lamps, pier",
+            "Low detail; interactive krathongs remain the most visually prominent objects",
+            "Fits the quality-tier budgets"
+          ],
+          "labels": ["loy-krathong", "3d", "perf"],
+          "blockedBy": ["3.1"]
+        },
+        {
+          "id": "6.2", "summary": "Interactive scene gimmicks & object pool",
+          "goal": "Small delights on tap without frame drops.",
+          "ac": [
+            "Tap water → stylized ripple, concurrent ripples capped by ObjectPoolManager",
+            "Tap lamp → warm light up/flicker with small bounce",
+            "Tap a krathong → gentle bounce + InspectPopup with appearance and anonymous public wish + Report button"
+          ],
+          "labels": ["loy-krathong", "interaction", "perf"],
+          "blockedBy": ["3.2", "6.1", "2.3"]
+        }
+      ]
+    },
+    {
+      "id": "L7",
+      "summary": "Loop 7 — Find My Krathong & Cross-Zone Tracking",
+      "description": "Spec §6.7. My Creations drawer, real-time tracking across zones, owner private view.",
+      "labels": ["loop-7", "loy-krathong", "phase1"],
+      "stories": [
+        {
+          "id": "7.1", "summary": "My Creations drawer & real-time position tracker",
+          "goal": "\"ค้นหาของฉัน\" finds your moving krathong anywhere on the river.",
+          "ac": [
+            "Drawer lists krathongs created on this device (via DeviceOwnerToken)",
+            "Selecting one: await loadZone(zoneId) if in another zone → compute current position from SplinePathCoord → flyTo + highlight that follows it",
+            "Works when the krathong is in a different zone from the current view"
+          ],
+          "labels": ["loy-krathong", "tracking"],
+          "blockedBy": ["2.1", "3.3", "5.3"]
+        },
+        {
+          "id": "7.2", "summary": "Anonymous wish reader & owner private view",
+          "goal": "Others see only public text; owners can read their own private text.",
+          "ac": [
+            "Other users' krathongs show only public text, no name or profile",
+            "Own krathong (verified by DeviceOwnerToken hash) can reveal its private wish",
+            "Test: private text is never returned without a matching owner token"
+          ],
+          "labels": ["loy-krathong", "privacy"],
+          "blockedBy": ["2.2", "6.2"]
+        }
+      ]
+    },
+    {
+      "id": "L8",
+      "summary": "Loop 8 — Flat Vector 2D Fallback & Mobile Performance Polish",
+      "description": "Spec §6.8. Full 2D fallback on the same coordinates, instancing and memory cleanup.",
+      "labels": ["loop-8", "fallback2d", "perf", "phase1"],
+      "stories": [
+        {
+          "id": "8.1", "summary": "Flat vector 2D fallback renderer",
+          "goal": "Devices without good 3D still get the full experience.",
+          "ac": [
+            "Layered 2D flat-vector krathong customizer",
+            "Semi top-down 2D river reading the same SplinePathCoord; 2D ripples on tap; Find My Krathong scrolls to it",
+            "core/fallback2d includes NormalizedCylindricalCoord → 4-quadrant 2D view converter (prepared for Christmas / CNY)"
+          ],
+          "labels": ["fallback2d"],
+          "blockedBy": ["1.2", "1.3", "5.2"]
+        },
+        {
+          "id": "8.2", "summary": "Instanced rendering & memory cleanup audit",
+          "goal": "No crashes or leaks on real phones.",
+          "ac": [
+            "InstancedMesh for repeated flowers, leaves and riverside trees",
+            "Zone switching on a real mobile device disposes geometry/material; memory stays flat across repeated switches",
+            "Findings documented with before/after numbers"
+          ],
+          "labels": ["perf"],
+          "blockedBy": ["4.1", "5.3", "6.1"]
+        }
+      ]
+    },
+    {
+      "id": "LS",
+      "summary": "Festival Config Stubs (Roadmap 2026–2027)",
+      "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",
+      "labels": ["stub", "roadmap"],
+      "stories": [
+        { "id": "S.1", "summary": "Config stub: Christmas — Decorate a Growing Tree (20–26 Dec)", "goal": "christmas.config.ts on NormalizedCylindricalCoord; tree grows new tiers while ornament scale stays locked.", "ac": ["Config stub only; selector shows Coming Soon", "Coord mode CYLINDRICAL_SURFACE (tierId, angleDeg, heightRatio)"], "labels": ["stub", "christmas"] },
+        { "id": "S.2", "summary": "Config stub: New Year 2027 — Wish & Celebrate (28 Dec – 5 Jan)", "goal": "newYear.config.ts on PlanarZoneCoord; sky constellation zones, firework launchpads via object pool.", "ac": ["Config stub only", "Coord mode PlanarZoneCoord (zone_id, u, v)"], "labels": ["stub", "new-year"] },
+        { "id": "S.3", "summary": "Config stub: Chinese New Year — Lucky Lantern & Mandarin Tree (4–6 Feb) [Expansion]", "goal": "Reuse Christmas cylindrical system 100% with a mandarin tree model.", "ac": ["Config stub only", "Reuses NormalizedCylindricalCoord unchanged"], "labels": ["stub", "cny", "expansion"] },
+        { "id": "S.4", "summary": "Config stub: Valentine's — Bridge of Kindness (12–15 Feb) [Expansion]", "goal": "PlanarZoneCoord on a bridge railing; anonymous kindness messages.", "ac": ["Config stub only"], "labels": ["stub", "valentine", "expansion"] },
+        { "id": "S.5", "summary": "Config stub: Songkran — Refresh & Bloom (10–16 Apr)", "goal": "songkran.config.ts on PlanarZoneCoord; swipe-to-splash ritual, growing garden.", "ac": ["Config stub only", "Ritual type Swipe-to-splash declared"], "labels": ["stub", "songkran"] },
+        { "id": "S.6", "summary": "Config stub: Mid-Autumn — Moonlit Rabbit Pavilion (15 Sep) [Expansion]", "goal": "PlanarZoneCoord pavilion with rabbit lanterns and mooncakes.", "ac": ["Config stub only"], "labels": ["stub", "mid-autumn", "expansion"] },
+        { "id": "S.7", "summary": "Config stub: Halloween — Cozy Toy Pumpkin Village (31 Oct) [Expansion]", "goal": "PlanarZoneCoord village with cute toy jack-o'-lanterns.", "ac": ["Config stub only"], "labels": ["stub", "halloween", "expansion"] }
+      ]
+    }
+  ]
+}
