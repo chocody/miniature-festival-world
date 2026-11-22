@@ -50,8 +50,13 @@ loop-ticket automation:
 4. Only then run `gh pr merge <pr> --squash --delete-branch --match-head-commit <sha>` (the pinned sha
    makes the merge fail if anything was pushed after the checks ran).
 
-Steps 2–3 are scripted in `scripts/wait-ci.sh <pr> <sha>` (prints `GATE: PASS sha=…` or `GATE: FAIL …`;
-it never merges). loop-ticket runs it as one background command with
+Steps 2–3 are scripted in `scripts/wait-ci.sh <pr> <sha> [ignore-check-run-id]`; it never merges.
+Instead of `--watch` (which waits for *every* check with no timeout, so a stuck preview check would hang
+it) it polls only the `ci` check-run of exactly `<sha>` until it completes or `WAIT_CI_TIMEOUT_S`
+(default 1800 s) expires, fails if the PR head moves or more than one `ci` check-run exists, then
+cross-checks step 3. The last line is `GATE: PASS sha=<sha> check-run=<id>` or `GATE: FAIL <reason>`;
+anything else counts as a failure. After `gh run rerun`, pass the failed check-run id as the third
+argument so the old result is ignored. loop-ticket runs it as one background command with
 `GH_TOKEN=$(gh auth token -u chocody)`, because the machine's default `gh` account is a different user.
 
 Never merge on pending or failed checks. If `ci` fails, fix the cause and push; do not skip or loosen a check.

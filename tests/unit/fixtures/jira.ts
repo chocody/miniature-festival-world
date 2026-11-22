@@ -146,7 +146,9 @@ export const OPEN_QUESTIONS_MD = `# Open questions
 |---|---|---|---|
 | 1 | How does an owner prove ownership? | §5, backlog 2.1 | MFW-12 (2.2), MFW-31 (7.2) |
 | 6 | Units of \`speedFactor\` | §4.1 | MFW-8 (1.2) |
-| 7 | PlanarZoneCoord has no mode — **Decided** in MFW-8: add \`mode: "PLANAR_ZONE"\` | §4.3 | MFW-8 (1.2) |
+| 7 | PlanarZoneCoord has no mode | §4.3 | MFW-8 (1.2) — Decided in MFW-8: add \`mode: "PLANAR_ZONE"\` |
+| 8 | File names differ — decided by whom? | §3, §4 | MFW-8 (1.2) |
+| 4 | Zone cap: Who decided the cap? still open | §5 | MFW-25 (5.3) |
 | 9 | ~~No 2D formula~~ | §4.1 | MFW-8 (1.2), MFW-33 (8.1) |
 | 10 | Retention period | §5 | MFW-1 |
 `;

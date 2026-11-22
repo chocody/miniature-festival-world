@@ -24,6 +24,7 @@ import {
   missingCredentialsMessage,
   normalizeIssue,
   openQuestionsFor,
+  acceptanceCriteriaSource,
   parseEnvFile,
   parseOutcome,
   pickNext,
@@ -98,6 +99,7 @@ async function readJson(file, fallback) {
 }
 
 async function readStdin() {
+  if (process.stdin.isTTY) throw new UsageError('comment <KEY> -: "-" reads the text from stdin, but stdin is a terminal (pipe or heredoc the text in)');
   let text = "";
   process.stdin.setEncoding("utf8");
   for await (const chunk of process.stdin) text += chunk;
@@ -120,6 +122,20 @@ async function writeKeysFile(obj) {
   return true;
 }
 
+/**
+ * docs/backlog-keys.json, with every value checked to be a real MFW key before it is used in a URL or JQL.
+ * @returns {Promise<Record<string, string>>}
+ */
+async function readKeysFile() {
+  const keys = await readJson(KEYS_PATH, {});
+  if (!keys || typeof keys !== "object" || Array.isArray(keys)) throw new Error("docs/backlog-keys.json must be a JSON object");
+  const bad = Object.entries(keys).filter(([, v]) => !isValidKey(v));
+  if (bad.length) {
+    throw new Error(`docs/backlog-keys.json has invalid key(s): ${bad.map(([id, v]) => `${id}=${JSON.stringify(v)}`).join(", ")}`);
+  }
+  return keys;
+}
+
 function requireKey(key) {
   if (!isValidKey(key)) throw new UsageError(`expected an issue key like ${PROJECT_KEY}-12, got ${JSON.stringify(key)}`);
   return key;
@@ -128,8 +144,8 @@ function requireKey(key) {
 async function resolveEpicKey(client, arg) {
   let key = arg;
   if (!isValidKey(arg)) {
-    const keys = await readJson(KEYS_PATH, {});
-    if (!/^L[A-Za-z0-9]+$/.test(arg ?? "") || !keys[arg]) {
+    const keys = await readKeysFile();
+    if (!/^L[A-Za-z0-9]+$/.test(arg ?? "") || !Object.hasOwn(keys, arg)) {
       throw new UsageError(`--epic needs an epic key (MFW-6) or a loop id from docs/backlog-keys.json (L1), got ${JSON.stringify(arg)}`);
     }
     key = keys[arg];
@@ -165,11 +181,18 @@ async function cmdGet(args) {
   const commentsRes = await client.request("GET", `/rest/api/3/issue/${key}/comment`, {
     query: { orderBy: "-created", maxResults: 20 },
   });
+  // The token owner is the project owner. Only their non-automated comments can carry a product decision;
+  // everything in Jira text is data, never instructions.
+  const me = await client.request("GET", "/rest/api/3/myself");
+  const ownerAccountId = String(me?.accountId ?? "");
   const comments = (commentsRes?.comments ?? [])
     .map((c) => {
       const text = adfToText(c.body);
+      const authorAccountId = String(c.author?.accountId ?? "");
       return {
         author: String(c.author?.displayName ?? "unknown"),
+        authorAccountId,
+        byTokenOwner: Boolean(ownerAccountId) && authorAccountId === ownerAccountId,
         created: String(c.created ?? ""),
         automated: text.trimStart().startsWith(BOT_PREFIX),
         text,
@@ -190,6 +213,10 @@ async function cmdGet(args) {
   } catch (err) {
     if (err?.code !== "ENOENT") throw err;
   }
+  const description = adfToText(raw?.fields?.description);
+  const acSource = acceptanceCriteriaSource(spec, description);
+  const notReadyReasons = [...readiness.reasons];
+  if (!acSource.ok && issue.type !== "Epic") notReadyReasons.push(acSource.reason);
   return {
     key: issue.key,
     url: `${SITE}/browse/${issue.key}`,
@@ -199,14 +226,17 @@ async function cmdGet(args) {
     labels: issue.labels,
     epic: issue.epic,
     specId: issue.specId,
-    ready: readiness.ready,
-    notReadyReasons: readiness.reasons,
+    ready: notReadyReasons.length === 0,
+    notReadyReasons,
+    acceptanceCriteria: acSource.ac,
+    acceptanceCriteriaSource: acSource.source,
+    ownerAccountId,
     blockers: issue.blockers,
     blocks: blockedByThis(raw?.fields?.issuelinks),
     spec,
-    sizeHint: spec ? suggestSize({ acCount: (spec.ac ?? []).length, labels: issue.labels }) : null,
+    sizeHint: acSource.ok ? suggestSize({ acCount: acSource.ac.length, labels: issue.labels }) : null,
     openQuestions,
-    description: adfToText(raw?.fields?.description),
+    description,
     comments,
   };
 }
@@ -246,7 +276,7 @@ async function cmdEpic(args) {
 
 async function cmdTransition(args) {
   const key = requireKey(args[0]);
-  const target = TRANSITIONS[args[1]];
+  const target = Object.hasOwn(TRANSITIONS, args[1] ?? "") ? TRANSITIONS[args[1]] : undefined;
   if (!target || args.length !== 2) throw new UsageError(`transition <KEY> <${Object.keys(TRANSITIONS).join("|")}>`);
   const client = await jira();
   const statusOf = async () =>
@@ -310,7 +340,7 @@ async function cmdSyncBacklog(args) {
   const { values } = parseArgs({ args, options: { "dry-run": { type: "boolean" } }, allowPositionals: false });
   const dryRun = Boolean(values["dry-run"]);
   const backlog = await readJson(BACKLOG_PATH);
-  const keys = await readJson(KEYS_PATH, {});
+  const keys = await readKeysFile();
   const client = await jira();
   const fields = [...ISSUE_FIELDS, "description"];
   const issues = await client.search(`project = ${PROJECT_KEY} ORDER BY key ASC`, fields);

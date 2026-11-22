@@ -26,13 +26,18 @@ skipping review or CI for "small" tickets, no merging while a ticket is parked.
    1. `node scripts/jira.mjs next --epic <EPIC_KEY>`.
       - `inFlight` non-empty → stop the loop (a ticket is mid-flight somewhere; loop-ticket would refuse).
       - `key` null → stop the loop with `reason` (nothing ready: done, blocked by another epic, or parked).
+      - `key` equals the previous iteration's key → stop the loop ("MFW-<n> was offered twice — its merge
+        or Done transition did not stick"); never run the same ticket twice in one epic run.
    2. Run the **loop-ticket** skill procedure (`.claude/skills/loop-ticket/SKILL.md`) for that key, from
       Step 1 to its final report — exactly as if `/loop-ticket <KEY>` had been invoked.
    3. Record for the epic report: key, summary, result (merged / parked), PR URL, merge sha, estimated
       size and dev model, fix rounds, CI runs, files and lines changed.
-   4. **The ticket parked (any loop-ticket stop condition) → stop the loop.** Do not continue with other
-      tickets: a parked ticket usually means the next ones build on a decision a human has to make.
-   5. The ticket merged → continue with the next iteration (main is already pulled by loop-ticket).
+   4. **Continue only on `merged`.** Any other outcome stops the epic loop: parked (`needs-human`),
+      any loop-ticket preflight stop (dirty tree, pull/gh/credential failure, `ready: false`, `inFlight`
+      non-empty, claim returned `"changed": false`), an error or crash, or a merge whose post-merge steps
+      could not be completed. A parked ticket usually means the next ones build on a decision a human has
+      to make; an environment stop will not fix itself by retrying.
+   5. Merged → continue with the next iteration (main is already pulled by loop-ticket).
    6. Context hygiene: if this session is getting long (many tickets, large diffs), stop after the current
       ticket merges and say so — re-running `/loop-epic <ARG>` resumes from Jira state.
 
@@ -47,7 +52,7 @@ skipping review or CI for "small" tickets, no merging while a ticket is parked.
    node scripts/jira.mjs comment <EPIC_KEY> - <<'EOF'
    ## Epic report — <EPIC_KEY> <summary>
    Result: <closed (all children Done) | open: <n> of <total> Done>
-   Stopped because: <nothing ready / ticket parked / in-flight ticket / context limit>
+   Stopped because: <nothing ready / ticket parked / preflight stop / same key offered twice / in-flight ticket / error / context limit>
 
    ## Tickets done this run
    - MFW-<n> <summary> — <PR URL> — merged <sha> — est <S|M|L> (dev <model>) · fixRounds <n> · ciRuns <n> · <files> files +<a>/-<d>

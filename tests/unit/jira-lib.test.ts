@@ -4,6 +4,8 @@ import backlogJson from "../../docs/backlog.json";
 import keysJson from "../../docs/backlog-keys.json";
 import {
   BOT_PREFIX,
+  acFromDescription,
+  acceptanceCriteriaSource,
   SITE,
   adfToText,
   blockersFromIssueLinks,
@@ -304,15 +306,46 @@ describe("open questions", () => {
     const qs = openQuestionsFor(OPEN_QUESTIONS_MD, "MFW-8");
     expect(qs.map((q) => [q.number, q.resolved])).toEqual([
       ["6", false],
-      ["7", true],
-      ["9", true],
+      ["7", true], // "Decided in MFW-8" in the Decide-in cell
+      ["8", false], // the word "decided" in the question does not close it
+      ["9", true], // struck through
     ]);
+  });
+
+  it("treats only the 'Decided in MFW-<n>' marker (or strikethrough) as resolved", () => {
+    expect(openQuestionsFor(OPEN_QUESTIONS_MD, "MFW-25")).toEqual([
+      { number: "4", question: "Zone cap: Who decided the cap? still open", specRef: "§5", decideIn: "MFW-25 (5.3)", resolved: false },
+    ]);
+    const withStatus = [
+      "| # | Question | Decide in | Status |",
+      "|---|---|---|---|",
+      "| 1 | Units? | MFW-8 | Decided in MFW-8: per second |",
+      "| 2 | Names? | MFW-8 | we decided nothing yet |",
+    ].join("\n");
+    expect(openQuestionsFor(withStatus, "MFW-8").map((q) => q.resolved)).toEqual([true, false]);
   });
 
   it("does not confuse MFW-1 with MFW-12 / MFW-31", () => {
     expect(openQuestionsFor(OPEN_QUESTIONS_MD, "MFW-1").map((q) => q.number)).toEqual(["10"]);
     expect(openQuestionsFor(OPEN_QUESTIONS_MD, "MFW-31").map((q) => q.number)).toEqual(["1"]);
     expect(openQuestionsFor("no table here", "MFW-1")).toEqual([]);
+  });
+});
+
+describe("acceptance criteria source", () => {
+  it("prefers docs/backlog.json, then an explicit section in the Jira description", () => {
+    expect(acceptanceCriteriaSource({ ac: ["a"] }, "")).toMatchObject({ ok: true, source: "backlog", ac: ["a"] });
+    const desc = "Goal\nship it\nAcceptance criteria\n- first\n2. second\nSpec id: x";
+    expect(acFromDescription(desc)).toEqual(["first", "second"]);
+    expect(acceptanceCriteriaSource(null, desc)).toMatchObject({ ok: true, source: "description", ac: ["first", "second"] });
+  });
+
+  it("is not ready without a spec entry or an AC section", () => {
+    const r = acceptanceCriteriaSource(null, "just some text\n- a bullet without a heading");
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/no spec entry in docs\/backlog.json/);
+    expect(acceptanceCriteriaSource({ ac: [] }, "").reason).toMatch(/has no acceptance criteria/);
+    expect(acFromDescription("Acceptance criteria\nnot a list")).toEqual([]);
   });
 });
 
@@ -327,7 +360,9 @@ describe("backlog validation", () => {
     bad.epics[1].stories[2].blockedBy = ["9.9"];
     bad.epics[2].stories[0].id = "1.2";
     bad.epics[3].stories[0].blockedBy = [bad.epics[3].stories[0].id];
+    bad.epics[4].stories[0].blockedBy = ["1.1", "1.1"];
     const errors = validateBacklog(bad);
+    expect(errors.some((e) => e.includes("more than once: 1.1"))).toBe(true);
     expect(errors.some((e) => e.startsWith("duplicate id 1.2"))).toBe(true);
     expect(errors.some((e) => e.includes("unknown story 9.9"))).toBe(true);
     expect(errors.some((e) => e.includes("blocks itself"))).toBe(true);

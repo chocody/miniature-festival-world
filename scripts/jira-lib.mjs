@@ -562,6 +562,49 @@ export function summarizeEpic(children, outcomes = {}) {
   };
 }
 
+/**
+ * Acceptance criteria listed in a (flattened) Jira description under a heading/line named
+ * "Acceptance criteria": the list items ("- x", "* x", "1. x") directly following it.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function acFromDescription(text) {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => /^\s*#*\s*acceptance criteria\s*:?\s*$/i.test(l));
+  if (start < 0) return [];
+  /** @type {string[]} */
+  const out = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.trim()) continue;
+    const m = /^\s*(?:[-*]|\d+[.)])\s+(.*\S)\s*$/.exec(line);
+    if (!m) break;
+    out.push(m[1]);
+  }
+  return out;
+}
+
+/**
+ * A ticket is only workable when its acceptance criteria are known: from its docs/backlog.json entry
+ * (found through the spec-task label), or — failing that — from an explicit "Acceptance criteria"
+ * section in the Jira description.
+ * @param {{ ac?: string[] } | null} spec
+ * @param {string} descriptionText
+ * @returns {{ ok: boolean, source: "backlog" | "description" | null, ac: string[], reason: string | null }}
+ */
+export function acceptanceCriteriaSource(spec, descriptionText) {
+  if (spec && (spec.ac ?? []).length) return { ok: true, source: "backlog", ac: spec.ac ?? [], reason: null };
+  const fromDescription = acFromDescription(descriptionText);
+  if (fromDescription.length) return { ok: true, source: "description", ac: fromDescription, reason: null };
+  return {
+    ok: false,
+    source: null,
+    ac: [],
+    reason: spec
+      ? "spec entry in docs/backlog.json has no acceptance criteria"
+      : "no spec entry in docs/backlog.json (no spec-task-<id> label) and no \"Acceptance criteria\" section in the Jira description",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Size estimate and open questions
 // ---------------------------------------------------------------------------
@@ -586,9 +629,26 @@ export function suggestSize({ acCount, labels }) {
   return { size, floor, reasons, devModel: size === "L" ? "opus" : "sonnet" };
 }
 
+/** The only marker that closes an open question: `Decided in MFW-<n>` (optionally followed by `: <decision>`). */
+export const DECIDED_MARKER_RE = /\bDecided in MFW-\d+\b/i;
+
+/**
+ * @param {string[]} cells
+ * @param {number} iQ question column
+ * @param {number} iDecide "Decide in" column
+ * @param {number} iStatus optional status/decision column (-1 when absent)
+ */
+function isResolvedRow(cells, iQ, iDecide, iStatus) {
+  if (DECIDED_MARKER_RE.test(cells[iDecide] ?? "")) return true;
+  if (iStatus >= 0 && DECIDED_MARKER_RE.test(cells[iStatus] ?? "")) return true;
+  return /^~~[\s\S]*~~$/.test((cells[iQ] ?? "").trim());
+}
+
 /**
  * Rows of docs/spec/open-questions.md whose "Decide in" column names this ticket key.
- * A row counts as resolved when it contains the word "decided" or is struck through (~~ … ~~).
+ * A row is resolved ONLY when its "Decide in" cell (or a "Status"/"Decision" column, if the table has one)
+ * contains `Decided in MFW-<n>`, or its question cell is struck through (`~~ … ~~`). The word "decided"
+ * anywhere else in the row means nothing (e.g. "Who decided the cap?" is still open).
  * @param {string} markdown
  * @param {string} key e.g. "MFW-8"
  */
@@ -612,6 +672,7 @@ export function openQuestionsFor(markdown, key) {
   const iQ = col("question", 1);
   const iRef = col("spec", 2);
   const iDecide = col("decide", header.length - 1);
+  const iStatus = header.findIndex((h) => h.includes("status") || h.includes("decision"));
   const keyRe = new RegExp(`(^|[^A-Za-z0-9-])${key.replace(/[-]/g, "\\-")}(?![0-9])`);
   return lines
     .slice(1)
@@ -623,7 +684,7 @@ export function openQuestionsFor(markdown, key) {
       question: c[iQ] ?? "",
       specRef: c[iRef] ?? "",
       decideIn: c[iDecide] ?? "",
-      resolved: /\bdecided\b/i.test(c.join(" ")) || /^~~.*~~$/.test(c[iQ] ?? ""),
+      resolved: isResolvedRow(c, iQ, iDecide, iStatus),
     }));
 }
 
@@ -662,7 +723,13 @@ export function validateBacklog(backlog) {
       if (s.type && !ISSUE_TYPE_IDS[s.type]) errors.push(`story ${s.id} has unknown type ${s.type}`);
       if (s.type === "Epic") errors.push(`story ${s.id} cannot be of type Epic`);
       for (const l of s.labels ?? []) if (!isValidLabel(l)) errors.push(`story ${s.id} has invalid label ${JSON.stringify(l)}`);
-      deps.set(s.id, s.blockedBy ?? []);
+      const blockedBy = s.blockedBy ?? [];
+      if (!Array.isArray(blockedBy)) errors.push(`story ${s.id}: blockedBy must be an array`);
+      else {
+        const dup = blockedBy.filter((b, i) => blockedBy.indexOf(b) !== i);
+        if (dup.length) errors.push(`story ${s.id} lists blocker(s) more than once: ${[...new Set(dup)].join(", ")}`);
+      }
+      deps.set(s.id, Array.isArray(blockedBy) ? blockedBy : []);
     }
     for (const l of epic.labels ?? []) if (!isValidLabel(l)) errors.push(`epic ${epic.id} has invalid label ${JSON.stringify(l)}`);
   }
