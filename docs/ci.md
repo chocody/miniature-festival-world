@@ -46,7 +46,13 @@ loop-ticket automation:
    Do **not** use `--required`: with no branch protection there are no required checks, so it would
    wait on nothing.
 3. Confirm explicitly: `gh pr checks <pr> --json name,state --jq '.[] | select(.name=="ci") | .state'`
-   must print `SUCCESS`.
-4. Only then run `gh pr merge <pr> --squash --delete-branch`.
+   must print `SUCCESS`, and the PR head must still be the commit you waited on.
+4. Only then run `gh pr merge <pr> --squash --delete-branch --match-head-commit <sha>` (the pinned sha
+   makes the merge fail if anything was pushed after the checks ran).
+
+Steps 2–3 are scripted in `scripts/wait-ci.sh <pr> <sha>` (prints `GATE: PASS sha=…` or `GATE: FAIL …`;
+it never merges). loop-ticket runs it as one background command with
+`GH_TOKEN=$(gh auth token -u chocody)`, because the machine's default `gh` account is a different user.
 
 Never merge on pending or failed checks. If `ci` fails, fix the cause and push; do not skip or loosen a check.
+loop-ticket allows one CI fix per ticket; a second failure parks the ticket with `needs-human`.
