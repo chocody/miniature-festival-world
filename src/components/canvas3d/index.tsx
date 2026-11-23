@@ -34,6 +34,14 @@ export const TOY_SCENE_CAMERA = {
   far: 40,
 };
 
+/** Stable `<Canvas camera>` options: one module-level object, so a re-render never re-applies the base zoom over a pinch zoom (MFW-44). */
+export const TOY_SCENE_CANVAS_CAMERA = {
+  position: TOY_SCENE_CAMERA.position,
+  zoom: TOY_SCENE_CAMERA.zoom,
+  near: TOY_SCENE_CAMERA.near,
+  far: TOY_SCENE_CAMERA.far,
+};
+
 export const TOY_SCENE_LIGHTING = {
   background: "#101a32",
   ambient: { color: "#8499c5", intensity: 0.75 },
@@ -260,10 +268,17 @@ export function SceneViewport({
   const lampTargetRef = useRef<Mesh | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<CameraTargetKind | null>(null);
   const [flyRequestId, setFlyRequestId] = useState(0);
+  const [selectionMode, setSelectionMode] = useState(mode);
+  if (selectionMode !== mode) {
+    setSelectionMode(mode);
+    setSelectedTarget(null);
+  }
   const onTargetSelected = useCallback((target: CameraTargetKind) => {
+    // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
+    if (mode !== "WORLD_EXPLORE") return;
     setSelectedTarget(target);
     setFlyRequestId((requestId) => requestId + 1);
-  }, []);
+  }, [mode]);
 
   const activeTargetRef = selectedTarget === "water"
     ? waterTargetRef
@@ -374,7 +389,7 @@ export function SceneViewport({
       <Canvas
         aria-label="Orthographic toy-like night river scene"
         orthographic={TOY_SCENE_CAMERA.orthographic}
-        camera={{ position: TOY_SCENE_CAMERA.position, zoom: TOY_SCENE_CAMERA.zoom, near: TOY_SCENE_CAMERA.near, far: TOY_SCENE_CAMERA.far }}
+        camera={TOY_SCENE_CANVAS_CAMERA}
         dpr={settings.dpr}
         gl={{ antialias: true }}
         shadows={settings.shadows}
