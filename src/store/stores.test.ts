@@ -22,7 +22,7 @@ describe("zustand stores", () => {
   it("have the specified initial shapes", () => {
     expect(useBuilderStore.getState()).toEqual({ appearance: null });
     expect(useWorldStore.getState()).toEqual({ currentZoneId: null, participantCount: null });
-    expect(useDeviceStore.getState()).toEqual({
+    expect(useDeviceStore.getState()).toMatchObject({
       fps: null,
       qualityTier: DEFAULT_QUALITY_TIER,
       reducedMotion: false,

@@ -1,0 +1,67 @@
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeCanvas, fakeMql, type FakeMql } from "@/core/performance/testFakes";
+import { useDeviceStore } from "@/store/useDeviceStore";
+import { DeviceProfiler } from "./DeviceProfiler";
+
+let mql: FakeMql;
+let raf: ReturnType<typeof vi.fn>;
+let caf: ReturnType<typeof vi.fn>;
+
+function stubWebGL(available: boolean) {
+  const f = fakeCanvas({ webgl2: available });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((id: string) =>
+    f.canvas.getContext(id)) as never);
+}
+
+beforeEach(() => {
+  useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  mql = fakeMql(true);
+  raf = vi.fn(() => 1);
+  caf = vi.fn();
+  vi.stubGlobal("requestAnimationFrame", raf);
+  vi.stubGlobal("cancelAnimationFrame", caf);
+  vi.stubGlobal("matchMedia", () => mql);
+  Object.defineProperty(navigator, "deviceMemory", { configurable: true, get: () => 8 });
+  Object.defineProperty(navigator, "hardwareConcurrency", { configurable: true, get: () => 8 });
+  stubWebGL(true);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "deviceMemory");
+  Reflect.deleteProperty(navigator, "hardwareConcurrency");
+  useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+});
+
+describe("DeviceProfiler", () => {
+  it("renders nothing and writes the detected state to the store", () => {
+    const { container } = render(<DeviceProfiler />);
+    expect(container).toBeEmptyDOMElement();
+    const s = useDeviceStore.getState();
+    expect(s.qualityTier).toBe("HIGH");
+    expect(s.reducedMotion).toBe(true);
+    expect(s.isFallback2D).toBe(false);
+  });
+  it("no WebGL -> FALLBACK_2D", () => {
+    vi.restoreAllMocks();
+    stubWebGL(false);
+    render(<DeviceProfiler />);
+    expect(useDeviceStore.getState().qualityTier).toBe("FALLBACK_2D");
+    expect(useDeviceStore.getState().isFallback2D).toBe(true);
+  });
+  it("follows reduced-motion changes", () => {
+    render(<DeviceProfiler />);
+    act(() => mql.emit(false));
+    expect(useDeviceStore.getState().reducedMotion).toBe(false);
+  });
+  it("cleans up on unmount", () => {
+    const { unmount } = render(<DeviceProfiler />);
+    expect(mql.listeners.size).toBe(1);
+    unmount();
+    expect(caf).toHaveBeenCalled();
+    expect(mql.listeners.size).toBe(0);
+  });
+});
