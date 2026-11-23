@@ -125,7 +125,7 @@
           "id": "2.1", "summary": "Client-side anonymous ownership token (DeviceOwnerToken)",
           "goal": "Users own their creations without accounts.",
           "ac": [
-            "Cryptographically secure random token stored in LocalStorage; only its SHA-256 hash is ever sent/stored server-side",
+            "Cryptographically secure random token stored in LocalStorage; the server stores only its SHA-256 hash (the raw token goes only over HTTPS to the ownership endpoints and is never stored or logged — open question 1)",
             "UI warns that clearing browser data or changing device loses access to own creations",
             "Unit tests for generation, persistence, hashing"
           ],
@@ -334,7 +334,7 @@
           "goal": "Others see only public text; owners can read their own private text.",
           "ac": [
             "Other users' krathongs show only public text, no name or profile",
-            "Own krathong (verified by DeviceOwnerToken hash) can reveal its private wish",
+            "Own krathong (verified by presenting the DeviceOwnerToken, compared server-side with its stored SHA-256 hash) can reveal its private wish",
             "Test: private text is never returned without a matching owner token"
           ],
           "labels": ["loy-krathong", "privacy"],
