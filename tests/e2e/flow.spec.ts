@@ -27,11 +27,14 @@ test("flow walks from landing to SHARED_WORLD_EXPLORE", async ({ page }) => {
   await expect(root).toHaveAttribute("data-flow-state", "LANDING_EVENT_SELECT");
   await page.getByRole("button", { name: /Loy Krathong/ }).click();
   await expect(root).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
+  await expect(root).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "WRITE_WISH");
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await expect(root).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");
+  await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
   await expect(page.getByRole("button")).toHaveCount(0);
 });
