@@ -12,7 +12,8 @@ allowed-tools: Bash, Read
 and never pulls Jira edits back into the repo. Edits made by hand in Jira to a summary or description
 are overwritten by the next sync; labels added by hand (e.g. `needs-human`) are kept.
 
-All Jira access goes through `node scripts/jira.mjs` (REST API, credentials from `~/.config/mfw/jira.env`).
+All Jira access goes through `node scripts/jira.mjs` (REST API; credentials from `~/.config/mfw/jira.env`
+locally, injected by the network proxy in a cloud session — see docs/cloud.md).
 **Never use the Atlassian MCP connector for MFW** — it points at a different Jira site.
 
 ## Steps
@@ -21,10 +22,12 @@ All Jira access goes through `node scripts/jira.mjs` (REST API, credentials from
    ```bash
    node scripts/jira.mjs sync-backlog --dry-run
    ```
-   - Exit 2 → credentials missing or wrong site. Show the human the stderr message verbatim (it says how
+   - Exit 2 → credentials missing, rejected or answered as anonymous (the CLI checks
+     `/rest/api/3/myself` first), or wrong site. Show the human the stderr message verbatim (it says how
      to create `~/.config/mfw/jira.env` and the API token at
      https://id.atlassian.com/manage-profile/security/api-tokens) and stop. Never ask for the token in chat,
-     never read or print the env file.
+     never read or print the env file. Never proceed with a plan computed by an unauthenticated run — the
+     auth check exists because an anonymous search once planned to re-create all 43 issues.
    - Exit 1 with `errors` (duplicate spec labels, invalid backlog, an epic id matching a non-Epic issue,
      dependency cycle) → nothing was written. Show the errors and stop; they need a human fix.
 

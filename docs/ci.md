@@ -34,6 +34,8 @@ pnpm e2e
 `pnpm e2e` builds and starts the production app on port 3100 (`pnpm build && pnpm start -p 3100`).
 Outside CI it reuses a server already running on that port. Chromium runs with software WebGL
 (SwiftShader) so WebGL works without a GPU. Preview deployments have no Supabase env, so e2e must not depend on it.
+`E2E_PORT=<port>` changes the port (parallel worktrees); `PW_CHROMIUM_PATH=<executable>` uses a pre-installed
+Chromium (cloud sessions — never `playwright install` there). CI sets neither.
 
 ## Merge gate
 
@@ -41,23 +43,28 @@ This repo is private on GitHub Free, so branch protection is unavailable. The ga
 loop-ticket automation:
 
 1. Open the PR.
-2. Wait until a check named `ci` is reported on the PR (it can take a few seconds to appear), then run
-   `gh pr checks <pr> --watch --fail-fast`.
-   Do **not** use `--required`: with no branch protection there are no required checks, so it would
-   wait on nothing.
-3. Confirm explicitly: `gh pr checks <pr> --json name,state --jq '.[] | select(.name=="ci") | .state'`
-   must print `SUCCESS`, and the PR head must still be the commit you waited on.
-4. Only then run `gh pr merge <pr> --squash --delete-branch --match-head-commit <sha>` (the pinned sha
-   makes the merge fail if anything was pushed after the checks ran).
+2. Poll the `ci` check-run of exactly `<sha>` (`GET repos/…/commits/<sha>/check-runs?check_name=ci&filter=latest`)
+   until it completes — not `--required`, not every check: with no branch protection there are no required
+   checks, so that would wait on nothing.
+3. Confirm: that check-run concluded `success`, and the PR head (`GET repos/…/pulls/<pr>` `.head.sha`) is
+   still `<sha>`.
+4. Only then squash-merge pinned to the sha: `node scripts/gh-rest.mjs pr-merge <pr> --sha <sha>`
+   (`PUT repos/…/pulls/<pr>/merge` with `merge_method=squash` and `sha=<sha>`, so GitHub refuses if anything
+   was pushed after the checks ran); the script re-reads the PR and its `merged` field decides.
 
-Steps 2–3 are scripted in `scripts/wait-ci.sh <pr> <sha> [ignore-check-run-id]`; it never merges.
-Instead of `--watch` (which waits for *every* check with no timeout, so a stuck preview check would hang
-it) it polls only the `ci` check-run of exactly `<sha>` until it completes or `WAIT_CI_TIMEOUT_S`
-(default 1800 s) expires, fails if the PR head moves or more than one `ci` check-run exists, then
-cross-checks step 3. The last line is `GATE: PASS sha=<sha> check-run=<id>` or `GATE: FAIL <reason>`;
-anything else counts as a failure. After `gh run rerun`, pass the failed check-run id as the third
-argument so the old result is ignored. loop-ticket runs it as one background command with
-`GH_TOKEN=$(gh auth token -u chocody)`, because the machine's default `gh` account is a different user.
+Steps 2–3 are scripted in `scripts/wait-ci.sh`, run as
+`node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <pr> <sha> [ignore-check-run-id]`; it never merges.
+It is REST only. It polls only the `ci` check-run of exactly `<sha>` until it completes or `WAIT_CI_TIMEOUT_S`
+(default 1800 s) expires (so a stuck preview check can never hang it), fails if the PR head moves or more than
+one `ci` check-run exists, then cross-checks step 3 by re-reading the same check-run by id. The last line is
+`GATE: PASS sha=<sha> check-run=<id>` or `GATE: FAIL <reason>`; anything else counts as a failure. After a re-run
+(`node scripts/gh-rest.mjs ci-rerun <sha>`) pass the failed check-run id as the third argument so the old result
+is ignored. GraphQL-backed `gh` subcommands are not used (they are blocked in cloud sessions).
+`scripts/gh-rest.mjs` sets `GH_TOKEN` from `gh auth token -u chocody` locally (the machine's default account is
+another user) and relies on the network proxy in a cloud session.
+
+PRs of tickets labelled `privacy`, `db` or `migration` (or touching `supabase/**`) pass the same gate but are
+merged by the owner, not the loop (label `owner-merge`).
 
 Never merge on pending or failed checks. If `ci` fails, fix the cause and push; do not skip or loosen a check.
 loop-ticket allows one CI fix per ticket; a second failure parks the ticket with `needs-human`.

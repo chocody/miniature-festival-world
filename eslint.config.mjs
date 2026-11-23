@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated, gitignored output (Playwright report/traces, coverage). Not source: ignoring them does not
+    // relax any rule on tracked files; a leftover report from an earlier e2e run used to fail `pnpm lint`.
+    "playwright-report/**",
+    "test-results/**",
+    "coverage/**",
   ]),
 ]);
 

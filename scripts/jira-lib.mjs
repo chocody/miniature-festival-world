@@ -28,6 +28,7 @@ export const TRANSITIONS = {
 export const LINK_TYPE = "Blocks";
 export const LABEL_NEEDS_HUMAN = "needs-human";
 export const LABEL_STUB = "stub";
+export const LABEL_OWNER_MERGE = "owner-merge";
 /** Every comment written by the automation starts with this marker, so human comments can be told apart. */
 export const BOT_PREFIX = "[mfw-loop]";
 export const RISK_LABELS = ["privacy", "db", "migration"];
@@ -178,6 +179,158 @@ export function missingCredentialsMessage(envFilePath, missing) {
     `then restrict the file: chmod 600 ${envFilePath}`,
     "Alternatively export the three variables in the environment.",
   ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Auth mode (local jira.env vs. credential injected by a network proxy) and the mandatory auth check
+// ---------------------------------------------------------------------------
+
+/** Placeholder sent in proxy mode; the network proxy overwrites the Authorization header. */
+export const JIRA_PROXY_PLACEHOLDER = "proxy-injected";
+
+/** Thrown when Jira auth is missing, rejected, anonymous or unreachable. jira.mjs maps it to exit 2. */
+export class JiraAuthError extends Error {
+  /** @param {string} message */
+  constructor(message) {
+    super(message);
+    this.name = "JiraAuthError";
+  }
+}
+
+/** @param {Record<string, string | undefined>} env */
+function proxyUrl(env) {
+  return (env.HTTPS_PROXY || env.https_proxy || "").trim();
+}
+
+/**
+ * "proxy" = the network proxy injects the Jira credential (Claude Code cloud sessions);
+ * "basic" = JIRA_EMAIL / JIRA_API_TOKEN from the environment or the env file.
+ * `JIRA_AUTH=proxy|basic` forces it; otherwise proxy iff HTTPS_PROXY is set and no email/token exists anywhere.
+ * @param {Record<string, string | undefined>} env
+ * @param {Record<string, string> | null} fileValues
+ * @returns {"proxy" | "basic"}
+ */
+export function jiraAuthMode(env, fileValues) {
+  const forced = (env.JIRA_AUTH ?? "").trim().toLowerCase();
+  if (forced === "proxy" || forced === "basic") return forced;
+  if (forced) throw new JiraAuthError('JIRA_AUTH must be "proxy" or "basic"');
+  const hasSecret = ["JIRA_EMAIL", "JIRA_API_TOKEN"].some(
+    (k) => (env[k] ?? "").trim() || (fileValues?.[k] ?? "").trim(),
+  );
+  return proxyUrl(env) && !hasSecret ? "proxy" : "basic";
+}
+
+/**
+ * @param {Record<string, string | undefined>} env
+ * @param {Record<string, string> | null} fileValues
+ * @returns {{ ok: true, mode: "proxy" | "basic", creds: { baseUrl: string, email: string, token: string } }
+ *   | { ok: false, mode: "proxy" | "basic", missing: string[], error?: string }}
+ */
+export function resolveJiraAuth(env, fileValues) {
+  /** @type {"proxy" | "basic"} */
+  let mode;
+  try {
+    mode = jiraAuthMode(env, fileValues);
+  } catch (err) {
+    return { ok: false, mode: "basic", missing: [], error: err instanceof Error ? err.message : String(err) };
+  }
+  if (mode === "basic") return { mode, ...resolveCredentials(env, fileValues) };
+  if (!proxyUrl(env)) {
+    return {
+      ok: false,
+      mode,
+      missing: [],
+      error: "JIRA_AUTH=proxy needs HTTPS_PROXY: the Jira credential is injected by the session's network proxy",
+    };
+  }
+  const baseUrl = (env.JIRA_BASE_URL || fileValues?.JIRA_BASE_URL || SITE).trim().replace(/\/+$/, "");
+  if (baseUrl !== SITE) {
+    return {
+      ok: false,
+      mode,
+      missing: [],
+      error: `JIRA_BASE_URL is "${baseUrl}" but MFW lives on ${SITE}. Refusing to talk to another Jira site.`,
+    };
+  }
+  return { ok: true, mode, creds: { baseUrl, email: JIRA_PROXY_PLACEHOLDER, token: JIRA_PROXY_PLACEHOLDER } };
+}
+
+/**
+ * Node's built-in fetch only honours HTTPS_PROXY when the process starts with NODE_USE_ENV_PROXY=1.
+ * @param {Record<string, string | undefined>} env
+ */
+export function needsProxyReexec(env) {
+  return Boolean(proxyUrl(env)) && env.NODE_USE_ENV_PROXY !== "1";
+}
+
+/**
+ * @param {any} body GET /rest/api/3/myself
+ * @returns {{ ok: true, accountId: string, displayName: string } | { ok: false, reason: string }}
+ */
+export function checkMyself(body) {
+  const accountId = typeof body?.accountId === "string" ? body.accountId.trim() : "";
+  if (!accountId) return { ok: false, reason: "no accountId in the /myself reply" };
+  if (body.accountType === "anonymous") return { ok: false, reason: "accountType is anonymous" };
+  return { ok: true, accountId, displayName: String(body.displayName ?? "") };
+}
+
+/**
+ * @param {"proxy" | "basic"} mode
+ * @param {number} status 0 = unreachable; 200 with `anonymous` = Jira answered without authenticating
+ * @param {string} detail
+ * @param {string} envFileDisplay
+ * @param {{ anonymous?: boolean }} [opts]
+ */
+export function authFailureMessage(mode, status, detail, envFileDisplay, opts = {}) {
+  const first = opts.anonymous
+    ? "Jira answered as an anonymous user (HTTP 200, no accountId)"
+    : status === 0
+      ? `Jira is unreachable: ${detail}`
+      : `Jira authentication failed (HTTP ${status}): ${detail}`;
+  /** @type {string[]} */
+  const lines = [first];
+  if (mode === "proxy") {
+    if (status === 0 && !opts.anonymous) {
+      lines.push("In proxy mode check that chocody.atlassian.net is an allowed host in the cloud environment's network settings.");
+    } else {
+      lines.push(
+        "This session's Jira credential is injected by the network proxy. Check the network secret for chocody.atlassian.net in the cloud environment's settings: it must be Basic (Atlassian account email + API token) and the token must not be revoked.",
+      );
+      if (/Connect Session/i.test(detail)) {
+        lines.push(
+          "HTTP 403 'Failed to parse Connect Session Auth Token' means the secret was sent with the wrong auth type (e.g. Bearer); it must be Basic.",
+        );
+      }
+    }
+  } else if (status !== 0 || opts.anonymous) {
+    lines.push(
+      `Check JIRA_EMAIL / JIRA_API_TOKEN in the environment or ${envFileDisplay}; create a new token at https://id.atlassian.com/manage-profile/security/api-tokens if it was revoked.`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Mandatory before any command: a revoked token makes Jira answer as an anonymous user (empty search
+ * results, no error), which would otherwise look like "nothing exists yet".
+ * @param {{ request: Function }} client
+ * @param {"proxy" | "basic"} mode
+ * @param {string} envFileDisplay
+ * @returns {Promise<{ accountId: string, displayName: string }>}
+ */
+export async function verifyJiraAuth(client, mode, envFileDisplay) {
+  let body;
+  try {
+    body = await client.request("GET", "/rest/api/3/myself");
+  } catch (err) {
+    if (err instanceof JiraError && (err.status === 401 || err.status === 403 || err.status === 0)) {
+      throw new JiraAuthError(authFailureMessage(mode, err.status, err.message, envFileDisplay));
+    }
+    throw err;
+  }
+  const me = checkMyself(body);
+  if (!me.ok) throw new JiraAuthError(authFailureMessage(mode, 200, me.reason, envFileDisplay, { anonymous: true }));
+  return { accountId: me.accountId, displayName: me.displayName };
 }
 
 // ---------------------------------------------------------------------------
@@ -494,8 +647,20 @@ export function evaluateReadiness(issue) {
 }
 
 /**
+ * AC6: privacy/db/migration tickets get a green PR but are never auto-merged; the owner merges.
+ * @param {string[]} labels
+ * @returns {{ required: boolean, reasons: string[] }}
+ */
+export function requiresOwnerMerge(labels) {
+  const reasons = RISK_LABELS.filter((l) => labels.includes(l)).map((l) => `label ${l}`);
+  return { required: reasons.length > 0, reasons };
+}
+
+/**
  * Tickets someone (probably a crashed run) is already working on: In Progress / In Review and not
- * parked with needs-human. loop-ticket refuses to start a new ticket while any exist.
+ * parked with needs-human. loop-ticket refuses to start a new ticket while any exist, except keys the
+ * current run claimed itself (parallel lanes). Tickets labelled owner-merge are In Review waiting for the
+ * owner to merge their green PR: no run owns them, so they are not in flight.
  * @param {Issue[]} issues
  */
 export function inFlight(issues) {
@@ -504,8 +669,19 @@ export function inFlight(issues) {
       (i) =>
         i.type !== "Epic" &&
         (i.status === TRANSITIONS["in-progress"].status || i.status === TRANSITIONS["in-review"].status) &&
-        !i.labels.includes(LABEL_NEEDS_HUMAN),
+        !i.labels.includes(LABEL_NEEDS_HUMAN) &&
+        !i.labels.includes(LABEL_OWNER_MERGE),
     )
+    .map((i) => ({ key: i.key, status: i.status, summary: i.summary }));
+}
+
+/**
+ * In Review tickets waiting for the owner to merge their green PR.
+ * @param {Issue[]} issues
+ */
+export function awaitingOwner(issues) {
+  return issues
+    .filter((i) => i.type !== "Epic" && i.status === TRANSITIONS["in-review"].status && i.labels.includes(LABEL_OWNER_MERGE))
     .map((i) => ({ key: i.key, status: i.status, summary: i.summary }));
 }
 
@@ -540,6 +716,35 @@ export function pickNext(issues, opts = {}) {
     ? `no ready ticket${scope}: ${skipped.length} To Do ticket(s) are blocked, stubs or need a human`
     : `no To Do ticket${scope}`;
   return { key: null, reason, skipped, inFlight: flying };
+}
+
+/**
+ * Every ready ticket in rank order (for parallel lanes). Same readiness rules and reason text as pickNext.
+ * @param {Issue[]} issues
+ * @param {{ epicKey?: string | null }} [opts]
+ */
+export function listReady(issues, opts = {}) {
+  const epicKey = opts.epicKey ?? null;
+  const pool = epicKey ? issues.filter((i) => i.epic?.key === epicKey) : issues;
+  /** @type {{ key: string, summary: string, labels: string[], epic: Issue["epic"], specId: Issue["specId"] }[]} */
+  const ready = [];
+  /** @type {{ key: string, reasons: string[] }[]} */
+  const skipped = [];
+  for (const issue of pool) {
+    const r = evaluateReadiness(issue);
+    if (r.ready) {
+      ready.push({ key: issue.key, summary: issue.summary, labels: issue.labels, epic: issue.epic, specId: issue.specId });
+    } else if (issue.status === TRANSITIONS.todo.status && issue.type !== "Epic") {
+      skipped.push({ key: issue.key, reasons: r.reasons });
+    }
+  }
+  const scope = epicKey ? ` in epic ${epicKey}` : "";
+  const reason = ready.length
+    ? null
+    : skipped.length
+      ? `no ready ticket${scope}: ${skipped.length} To Do ticket(s) are blocked, stubs or need a human`
+      : `no To Do ticket${scope}`;
+  return { ready, skipped, inFlight: inFlight(issues), awaitingOwner: awaitingOwner(issues), reason };
 }
 
 /**
@@ -603,6 +808,9 @@ export function summarizeEpic(children, outcomes = {}) {
       needsHuman: rows.filter((r) => r.labels.includes(LABEL_NEEDS_HUMAN)).length,
     },
     needsHuman: rows.filter((r) => r.labels.includes(LABEL_NEEDS_HUMAN)).map((r) => ({ key: r.key, status: r.status, summary: r.summary })),
+    awaitingOwner: rows
+      .filter((r) => r.labels.includes(LABEL_OWNER_MERGE) && !r.done)
+      .map((r) => ({ key: r.key, status: r.status, summary: r.summary })),
     allDone: rows.length > 0 && rows.every((r) => r.done),
   };
 }
@@ -658,7 +866,8 @@ const SIZES = ["S", "M", "L"];
 
 /**
  * Mechanical baseline for the S/M/L estimate. The skill may only raise it (cross-cutting work or a
- * new subsystem → L); it never goes below the risk floor.
+ * new subsystem → L); it never goes below the risk floor. `devModel` is `sonnet` for every size (owner rule
+ * 2026-11-23: dev runs on sonnet when the lead's spec is file-level; the skill switches to opus only if it is not).
  * @param {{ acCount: number, labels: string[] }} input
  */
 export function suggestSize({ acCount, labels }) {
@@ -671,7 +880,7 @@ export function suggestSize({ acCount, labels }) {
     reasons.push(`risk label(s) ${risky.join(", ")} → at least M`);
     if (SIZES.indexOf(size) < SIZES.indexOf(floor)) size = floor;
   }
-  return { size, floor, reasons, devModel: size === "L" ? "opus" : "sonnet" };
+  return { size, floor, reasons, devModel: "sonnet" };
 }
 
 /** The only marker that closes an open question: `Decided in MFW-<n>` (optionally followed by `: <decision>`). */

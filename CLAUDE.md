@@ -101,7 +101,7 @@ profanity are blocked from `public_wish_text` (rules in `src/config/moderation.c
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
 | `pnpm lint` | `eslint` |
 | `pnpm test` | `vitest run` (colocated `src/**/*.test.ts(x)` and `tests/unit/**`) |
-| `pnpm e2e` | `playwright test` (`tests/e2e/`, prod build on :3100, WebGL via SwiftShader; add a FALLBACK_2D e2e once tickets 1.3 / 8.1 land) |
+| `pnpm e2e` | `playwright test` (`tests/e2e/`, prod build on :3100, WebGL via SwiftShader; add a FALLBACK_2D e2e once tickets 1.3 / 8.1 land) · `E2E_PORT` / `PW_CHROMIUM_PATH` override port / browser |
 
 **Definition of done:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm e2e` all green
 locally, every testable AC of the ticket has a test, and the `ci` check on the PR is SUCCESS.
@@ -118,7 +118,7 @@ locally, every testable AC of the ticket has a test, and the `ci` check on the P
 
 ## Which project agent to add to review
 
-The global `lead`, `dev`, `reviewer`, `qa` agents run on every ticket. Add these on top when the diff touches:
+The project agents `lead`, `dev`, `reviewer`, `qa` (`.claude/agents/`) run on every ticket. Add these on top when the diff touches:
 
 | Agent | Add when the diff touches |
 |---|---|
@@ -134,12 +134,16 @@ Atlassian MCP connector — it points at another site):
 
 - `/spec-to-jira` — sync `docs/backlog.json` → Jira (dry run first; idempotent via `spec-epic-*` /
   `spec-task-*` labels; never deletes) and refresh `docs/backlog-keys.json`.
-- `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors per the table
-  above) → PR → `ci` gate (`docs/ci.md`) → squash merge → Done. Stop conditions label `needs-human`.
-- `/loop-epic <MFW-n|Ln>` — one epic = one Jira sprint: `sprint-start`, `loop-ticket` repeatedly, then close the epic, `sprint-complete` and post an epic report.
+- `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors) → PR → `ci` gate
+  (`docs/ci.md`) → squash merge → Done; privacy/db/migration tickets stop at a green PR labelled
+  `owner-merge`. Stop conditions label `needs-human`.
+- `/loop-epic <MFW-n|Ln> [--max <n>] [--parallel <n>]` — one epic = one Jira sprint: `sprint-start`, `loop-ticket` repeatedly (`--max <n>` per-run cap, `--parallel <n>` lanes in git worktrees with a serialized merge queue), then close the epic, `sprint-complete` and post an epic report.
 
-Requires `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`;
-without it the CLI exits 2 and explains how to create it. Never commit or print it.
+Jira auth: locally `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`,
+`JIRA_API_TOKEN`; in a Claude Code cloud session the network proxy injects the credential. Every command
+verifies auth first and exits 2 with an explanation otherwise. Never commit or print credentials.
+GitHub: only through `node scripts/gh-rest.mjs` (REST; GraphQL is blocked in cloud sessions). Cloud setup and
+the daily scheduled run: `docs/cloud.md`.
 
 ## Language
 
