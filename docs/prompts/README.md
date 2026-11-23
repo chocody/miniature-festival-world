@@ -11,7 +11,9 @@ disagree, the files win — regenerate the prompt. `index.json` lists every prom
    label the loop (`/loop-ticket`, `/loop-epic`) never offers the ticket and does not count it as in flight,
    so it keeps working on other tickets — and two agents never work on the same ticket.
 3. Give the agent the whole `MFW-<n>.md` file. It opens a ready PR on `feat/MFW-<n>-<slug>` and stops.
-   External agents never merge, never change Jira and never push to `main`.
+   External agents never merge, never change Jira and never push to `main`. If their PR touches loop or build
+   infrastructure (`.claude/**`, `scripts/**`, `.github/**`, `package.json`, the lockfile, config files),
+   Claude's review stops and asks you first — that code would run with the session's credentials.
 
 ## Review (Claude)
 

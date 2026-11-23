@@ -41,6 +41,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 - Never read, print or commit `.env*` files or secrets. CI and PR previews have **no** Supabase env: the app must build and render with empty/mock data, and unit tests and e2e must not need a live database (use mocks/fixtures or local Supabase).
 - Do not weaken, skip or delete tests, lint rules, tsconfig or CI config.
 - Do **not** change Jira, do **not** merge, do **not** push to `main`.
+- Do not edit loop or CI infrastructure: `.claude/**`, `scripts/**`, `.github/**`, `CLAUDE.md`, `AGENTS.md`. If you must change `package.json` (a needed dependency) or a config file, say exactly why in the PR — the review stops and asks the owner first.
 
 ## Definition of done
 - Every testable acceptance criterion has a test (vitest, colocated `*.test.ts(x)` or `tests/unit/`; Playwright e2e in `tests/e2e/` for user flows).
