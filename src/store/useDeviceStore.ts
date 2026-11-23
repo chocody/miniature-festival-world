@@ -15,6 +15,8 @@ export interface DeviceStoreActions {
 export interface DeviceState extends DeviceStoreActions {
   fps: number | null;
   qualityTier: QualityTier;
+  /** True only after the client profiler has selected the initial rendering tier. */
+  profiled: boolean;
   reducedMotion: boolean;
   isFallback2D: boolean;
 }
@@ -22,9 +24,11 @@ export interface DeviceState extends DeviceStoreActions {
 export const useDeviceStore = create<DeviceState>()((set) => ({
   fps: null,
   qualityTier: DEFAULT_QUALITY_TIER,
+  profiled: false,
   reducedMotion: false,
   isFallback2D: false,
   setFps: (fps) => set({ fps }),
-  setQualityTier: (tier) => set({ qualityTier: tier, isFallback2D: tier === "FALLBACK_2D" }),
+  setQualityTier: (tier) =>
+    set({ qualityTier: tier, profiled: true, isFallback2D: tier === "FALLBACK_2D" }),
   setReducedMotion: (reduced) => set({ reducedMotion: reduced }),
 }));

@@ -12,9 +12,14 @@ describe("useDeviceStore", () => {
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,
       qualityTier: DEFAULT_QUALITY_TIER,
+      profiled: false,
       reducedMotion: false,
       isFallback2D: false,
     });
+  });
+  it("marks the tier profiled when the client profiler chooses it", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    expect(useDeviceStore.getState().profiled).toBe(true);
   });
   it("FALLBACK_2D <=> isFallback2D", () => {
     useDeviceStore.getState().setQualityTier("FALLBACK_2D");
