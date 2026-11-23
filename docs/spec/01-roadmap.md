@@ -13,6 +13,11 @@
 | 7 | Mid-Autumn (ไหว้พระจันทร์) | 15 ก.ย. 2027 | PlanarZoneCoord (จัดโคมไฟกระต่ายชมจันทร์) | Expansion แนะนำ |
 | 8 | Halloween (ฮาโลวีน) | 31 ต.ค. 2027 | PlanarZoneCoord (แกะสลักฟักทองวางหน้าหมู่บ้าน) | Expansion แนะนำ |
 
+> **Launch plan — owner decision, 2026-11-23 (added after spec v3.0):**
+> - ลอยกระทง 24 พ.ย. 2026 = **ทดสอบส่วนตัว (private test) เท่านั้น** ไม่เปิดสาธารณะ
+> - เปิดสาธารณะครั้งแรก = **Christmas** (วันที่ / ขอบเขต / ที่ทดสอบ: รอคำตอบใน `open-questions.md` ข้อ 14–20, Jira MFW-36)
+> - Phase 1 ยังเป็น Loy Krathong (engine กลางสร้างผ่านลอยกระทง); Christmas ยังเป็น config stub จนกว่าจะมี story ใน `docs/backlog.json`
+
 ## 1.1 รายละเอียด Feature, Ritual และ Gimmick ของแต่ละเทศกาลใน Roadmap
 
 ### 1.1.1 Loy Krathong — Make & Release (24 พ.ย. 2026 / 13 พ.ย. 2027) [Phase 1 Focus]
