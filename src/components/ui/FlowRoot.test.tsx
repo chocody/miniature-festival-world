@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { FlowRoot } from "./FlowRoot";
 
@@ -7,6 +9,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   useUIStore.setState(useUIStore.getInitialState(), true);
+  useDeviceStore.setState(useDeviceStore.getInitialState(), true);
 });
 
 const stateOf = (container: HTMLElement) =>
@@ -31,5 +34,18 @@ describe("FlowRoot", () => {
     const { container } = render(<FlowRoot />);
     fireEvent.click(screen.getByRole("button", { name: /Christmas/ }));
     expect(stateOf(container)).toBe("LANDING_EVENT_SELECT");
+  });
+
+  it("exposes quality tier and reduced motion from the device store", () => {
+    const { container } = render(<FlowRoot />);
+    const root = container.querySelector("[data-flow-state]")!;
+    expect(root).toHaveAttribute("data-quality-tier", "MEDIUM");
+    expect(root).toHaveAttribute("data-reduced-motion", "false");
+    act(() => {
+      useDeviceStore.getState().setQualityTier("LOW");
+      useDeviceStore.getState().setReducedMotion(true);
+    });
+    expect(root).toHaveAttribute("data-quality-tier", "LOW");
+    expect(root).toHaveAttribute("data-reduced-motion", "true");
   });
 });
