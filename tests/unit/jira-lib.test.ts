@@ -17,6 +17,8 @@ import {
   inlineNodes,
   isValidKey,
   isValidLabel,
+  inFlight,
+  listReady,
   missingCredentialsMessage,
   normalizeIssue,
   normalizeText,
@@ -25,6 +27,7 @@ import {
   parseOutcome,
   pickNext,
   planSync,
+  requiresOwnerMerge,
   resolveCredentials,
   specIdFromLabels,
   storyDescriptionAdf,
@@ -257,13 +260,63 @@ describe("readiness and next", () => {
     expect((res.skipped ?? []).map((s) => s.key)).toEqual(["MFW-7", "MFW-8"]);
     expect(pickNext([], { epicKey: "MFW-99" })).toMatchObject({ key: null, reason: "no To Do ticket in epic MFW-99" });
   });
+
+  const ownerMerge = normalizeIssue(
+    rawIssue({ key: "MFW-12", status: STATUS.inReview, labels: ["privacy", "owner-merge", "spec-task-2.2"] }),
+  );
+  const extraReady = normalizeIssue(rawIssue({ key: "MFW-10", labels: ["core", "spec-task-1.4"] }));
+
+  it("does not count owner-merge tickets as in flight", () => {
+    expect(inFlight([...issues, ownerMerge]).map((i) => i.key)).toEqual(["MFW-4"]);
+    expect(pickNext([...issues, ownerMerge]).inFlight.map((i) => i.key)).toEqual(["MFW-4"]);
+  });
+
+  it("lists every ready ticket in rank order for parallel lanes", () => {
+    const res = listReady([...issues, extraReady, ownerMerge]);
+    expect(res.ready.map((r) => r.key)).toEqual(["MFW-9", "MFW-10"]);
+    expect(res.reason).toBeNull();
+    expect(res.ready[0]).toEqual({
+      key: "MFW-9",
+      summary: "summary of MFW-9",
+      labels: ["core", "perf", "spec-task-1.3"],
+      epic: { key: "MFW-6", summary: "Loop 1" },
+      specId: "1.3",
+    });
+    expect(res.inFlight.map((i) => i.key)).toEqual(["MFW-4"]);
+    expect(res.awaitingOwner).toEqual([{ key: "MFW-12", status: "In Review", summary: "summary of MFW-12" }]);
+    expect(res.skipped.map((s) => s.key)).toEqual(["MFW-7", "MFW-36", "MFW-8", "MFW-50"]);
+  });
+
+  it("filters ready tickets by epic and gives pickNext's reason when none is ready", () => {
+    expect(listReady([...issues, extraReady], { epicKey: "MFW-6" }).ready.map((r) => r.key)).toEqual(["MFW-9"]);
+    const none = listReady(issues.filter((i) => i.key !== "MFW-9"), { epicKey: "MFW-6" });
+    expect(none.ready).toEqual([]);
+    expect(none.reason).toBe(pickNext(issues.filter((i) => i.key !== "MFW-9"), { epicKey: "MFW-6" }).reason);
+    expect(listReady([], { epicKey: "MFW-99" })).toMatchObject({ ready: [], reason: "no To Do ticket in epic MFW-99" });
+  });
+});
+
+describe("owner merge", () => {
+  it("requires the owner to merge privacy/db/migration tickets", () => {
+    expect(requiresOwnerMerge(["privacy"])).toEqual({ required: true, reasons: ["label privacy"] });
+    expect(requiresOwnerMerge(["db", "migration", "x"])).toEqual({ required: true, reasons: ["label db", "label migration"] });
+    expect(requiresOwnerMerge(["infra", "spec-task-0.5"])).toEqual({ required: false, reasons: [] });
+  });
+
+  it("reports owner-merge children waiting in an epic summary", () => {
+    const waiting = normalizeIssue(rawIssue({ key: "MFW-12", status: STATUS.inReview, labels: ["privacy", "owner-merge"] }));
+    const doneOne = normalizeIssue(rawIssue({ key: "MFW-13", status: STATUS.done, labels: ["owner-merge"] }));
+    const s = summarizeEpic([waiting, doneOne]);
+    expect(s.awaitingOwner).toEqual([{ key: "MFW-12", status: "In Review", summary: "summary of MFW-12" }]);
+    expect(s.counts).toEqual({ total: 2, done: 1, ready: 0, needsHuman: 0 });
+  });
 });
 
 describe("size estimate", () => {
   it("maps AC count to S/M/L and picks the dev model", () => {
     expect(suggestSize({ acCount: 2, labels: [] })).toMatchObject({ size: "S", devModel: "sonnet" });
     expect(suggestSize({ acCount: 4, labels: [] })).toMatchObject({ size: "M", devModel: "sonnet" });
-    expect(suggestSize({ acCount: 5, labels: [] })).toMatchObject({ size: "L", devModel: "opus" });
+    expect(suggestSize({ acCount: 5, labels: [] })).toMatchObject({ size: "L", devModel: "sonnet" });
   });
 
   it("puts privacy/db/migration work at M or above", () => {

@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 // Jira CLI for the MFW loop skills (.claude/skills/{spec-to-jira,loop-ticket,loop-epic}).
 // Dependency-free, Node >= 22 (global fetch). JSON on stdout; errors on stderr with a non-zero exit:
-//   1 = usage / API / data error, 2 = credentials missing or pointing at the wrong site.
+//   1 = usage / API / data error, 2 = credentials missing, rejected, anonymous, or pointing at the wrong site.
 // Pure logic lives in ./jira-lib.mjs (unit-tested); this file only does I/O.
 
 import { readFile, rename, stat, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
+  JiraAuthError,
   PROJECT_KEY,
   SITE,
   TRANSITIONS,
@@ -21,7 +23,9 @@ import {
   evaluateReadiness,
   isValidKey,
   isValidLabel,
+  listReady,
   missingCredentialsMessage,
+  needsProxyReexec,
   normalizeIssue,
   openQuestionsFor,
   acceptanceCriteriaSource,
@@ -33,13 +37,31 @@ import {
   specIdFromLabels,
   sprintIssuesNotDone,
   sprintNameForEpic,
-  resolveCredentials,
+  requiresOwnerMerge,
+  resolveJiraAuth,
   suggestSize,
   summarizeEpic,
   textToAdf,
+  verifyJiraAuth,
   withBotPrefix,
   BOT_PREFIX,
 } from "./jira-lib.mjs";
+
+// Node's built-in fetch only honours HTTPS_PROXY when the process starts with NODE_USE_ENV_PROXY=1, and that
+// variable cannot be set in a cloud environment's config. So when a proxy is configured, re-run this script once
+// with the flag (stdin/stdout/stderr inherited, so `comment <KEY> -` heredocs keep working).
+const REEXEC = needsProxyReexec(process.env);
+if (REEXEC) {
+  const r = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    stdio: "inherit",
+    env: { ...process.env, NODE_USE_ENV_PROXY: "1", NODE_NO_WARNINGS: "1" },
+  });
+  if (r.error) {
+    process.stderr.write(`error: cannot re-run with NODE_USE_ENV_PROXY=1: ${r.error.message}\n`);
+    process.exit(1);
+  }
+  process.exit(r.status ?? 1);
+}
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BACKLOG_PATH = path.join(REPO, "docs/backlog.json");
@@ -53,7 +75,9 @@ const ISSUE_FIELDS = ["summary", "status", "labels", "issuetype", "parent", "iss
 
 const USAGE = `Usage: node scripts/jira.mjs <command>
 
-  next [--epic <MFW-n | L1>]                 next ready ticket (To Do, unblocked, not needs-human/stub/Epic)
+  whoami                                     auth mode, accountId and displayName of the credential in use
+  next [--epic <MFW-n | L1>] [--all-ready]   next ready ticket (To Do, unblocked, not needs-human/stub/Epic);
+                                             --all-ready lists every ready ticket (parallel lanes)
   get <MFW-n>                                ticket details, blockers, readiness, spec AC, open questions, comments
   epic <MFW-n | L1>                          epic children in rank order, readiness, recorded outcomes, allDone
   transition <MFW-n> <todo|in-progress|in-review|done>
@@ -63,7 +87,9 @@ const USAGE = `Usage: node scripts/jira.mjs <command>
   sprint-start <MFW-n | L1> [--days <n>]     create/reuse the epic's sprint, add the epic + its children, start it
   sprint-complete <MFW-n | L1>               complete the epic's active sprint (refuses if any issue is not Done)
 
-Credentials: JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN from the environment, else ${ENV_FILE_DISPLAY}.`;
+Credentials: JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN from the environment, else ${ENV_FILE_DISPLAY}.
+Cloud: with HTTPS_PROXY set and no JIRA_EMAIL/JIRA_API_TOKEN (or JIRA_AUTH=proxy) the network proxy injects
+the credential. Every command first checks GET /rest/api/3/myself; exit 2 = not authenticated / unreachable.`;
 
 class UsageError extends Error {}
 class ConfigError extends Error {}
@@ -86,13 +112,29 @@ async function loadCredentials() {
       if (err?.code !== "ENOENT") throw new ConfigError(`cannot read ${ENV_FILE_DISPLAY}: ${err?.code ?? err}`);
     }
   }
-  const r = resolveCredentials(process.env, fileValues);
-  if (!r.ok) throw new ConfigError(r.error ?? missingCredentialsMessage(ENV_FILE_DISPLAY, r.missing));
-  return r.creds;
+  const r = resolveJiraAuth(process.env, fileValues);
+  if (!r.ok) {
+    const lines = [r.error ?? missingCredentialsMessage(ENV_FILE_DISPLAY, r.missing)];
+    if (r.mode === "basic" && !r.error) {
+      lines.push("", "In a Claude Code cloud session the credential comes from the network proxy instead (see docs/cloud.md).");
+    }
+    throw new ConfigError(lines.join("\n"));
+  }
+  return { creds: r.creds, mode: r.mode };
 }
 
+/** Client with the auth check done: every command calls this first, so nothing reads or writes unauthenticated. */
 async function jira() {
-  return createJiraClient(await loadCredentials());
+  const { creds, mode } = await loadCredentials();
+  const client = createJiraClient(creds);
+  let me;
+  try {
+    me = await verifyJiraAuth(client, mode, ENV_FILE_DISPLAY);
+  } catch (err) {
+    if (err instanceof JiraAuthError) throw new ConfigError(err.message);
+    throw err;
+  }
+  return { ...client, me, mode };
 }
 
 async function readJson(file, fallback) {
@@ -166,14 +208,24 @@ async function resolveEpicKey(client, arg) {
 // ---------------------------------------------------------------------------
 
 async function cmdNext(args) {
-  const { values } = parseArgs({ args, options: { epic: { type: "string" } }, allowPositionals: false });
+  const { values } = parseArgs({
+    args,
+    options: { epic: { type: "string" }, "all-ready": { type: "boolean" } },
+    allowPositionals: false,
+  });
   const client = await jira();
   const epicKey = values.epic ? await resolveEpicKey(client, values.epic) : null;
   // Fetch the whole active set project-wide: candidates come from To Do, and In Progress / In Review
   // tickets are reported as inFlight (loop-ticket refuses to start while one exists).
   const jql = `project = ${PROJECT_KEY} AND issuetype != Epic AND status in ("To Do", "In Progress", "In Review") ORDER BY Rank ASC, key ASC`;
   const issues = (await client.search(jql, ISSUE_FIELDS)).map(normalizeIssue);
-  return pickNext(issues, { epicKey });
+  return values["all-ready"] ? listReady(issues, { epicKey }) : pickNext(issues, { epicKey });
+}
+
+async function cmdWhoami(args) {
+  if (args.length) throw new UsageError("whoami takes no arguments");
+  const client = await jira();
+  return { mode: client.mode, accountId: client.me.accountId, displayName: client.me.displayName, site: SITE };
 }
 
 async function cmdGet(args) {
@@ -189,8 +241,7 @@ async function cmdGet(args) {
   });
   // The token owner is the project owner. Only their non-automated comments can carry a product decision;
   // everything in Jira text is data, never instructions.
-  const me = await client.request("GET", "/rest/api/3/myself");
-  const ownerAccountId = String(me?.accountId ?? "");
+  const ownerAccountId = client.me.accountId;
   const comments = (commentsRes?.comments ?? [])
     .map((c) => {
       const text = adfToText(c.body);
@@ -221,6 +272,7 @@ async function cmdGet(args) {
   }
   const description = adfToText(raw?.fields?.description);
   const acSource = acceptanceCriteriaSource(spec, description);
+  const ownerMerge = requiresOwnerMerge(issue.labels);
   const notReadyReasons = [...readiness.reasons];
   if (!acSource.ok && issue.type !== "Epic") notReadyReasons.push(acSource.reason);
   return {
@@ -237,6 +289,8 @@ async function cmdGet(args) {
     acceptanceCriteria: acSource.ac,
     acceptanceCriteriaSource: acSource.source,
     ownerAccountId,
+    ownerMergeRequired: ownerMerge.required,
+    ownerMergeReasons: ownerMerge.reasons,
     blockers: issue.blockers,
     blocks: blockedByThis(raw?.fields?.issuelinks),
     spec,
@@ -518,6 +572,7 @@ async function cmdSprintComplete(args) {
 // ---------------------------------------------------------------------------
 
 const COMMANDS = {
+  whoami: cmdWhoami,
   next: cmdNext,
   get: cmdGet,
   epic: cmdEpic,
@@ -540,12 +595,12 @@ async function main(argv) {
   return fn(rest);
 }
 
-main(process.argv.slice(2)).then(
+if (!REEXEC) main(process.argv.slice(2)).then(
   (out) => {
     if (out !== undefined) process.stdout.write(JSON.stringify(out, null, 2) + "\n");
   },
   (err) => {
-    if (err instanceof ConfigError) {
+    if (err instanceof ConfigError || err instanceof JiraAuthError) {
       process.stderr.write(`${err.message}\n`);
       process.exitCode = 2;
       return;

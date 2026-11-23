@@ -2,17 +2,20 @@
 # Merge-gate wait for one PR (docs/ci.md). Blocks until the `ci` check-run on exactly <head-sha> has
 # completed, or a global deadline expires. Run it as ONE background command; it never merges anything.
 #
-#   GH_TOKEN=$(gh auth token -u chocody) bash scripts/wait-ci.sh <pr-number> <head-sha> [ignore-check-run-id]
+#   node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <pr-number> <head-sha> [ignore-check-run-id]
+#
+# REST only (gh api); works in cloud sessions where GraphQL is blocked. Locally, gh-rest.mjs exec
+# sets GH_TOKEN for the chocody account; in a cloud session the proxy authenticates gh.
 #
 # It polls only the `ci` check-run of <head-sha> (GitHub check-runs API, latest attempt), so a stuck
 # unrelated check (e.g. a preview deployment) can never hang it. Pass the id of a previous, failed `ci`
-# check-run as the third argument after `gh run rerun`, so the old result is not mistaken for the new one.
+# check-run as the third argument after a CI re-run (gh-rest.mjs ci-rerun), so the old result is not mistaken for the new one.
 #
 # Env: WAIT_CI_TIMEOUT_S (default 1800 = 30 min, covers appear + queue + 20 min job),
 #      WAIT_CI_INTERVAL_S (default 20).
 #
 # Last line of output is the verdict:
-#   GATE: PASS sha=<sha> check-run=<id>     ci SUCCESS on exactly <sha>; merge with --match-head-commit <sha>
+#   GATE: PASS sha=<sha> check-run=<id>     ci SUCCESS on exactly <sha>; merge pinned to <sha> (gh-rest.mjs pr-merge --sha)
 #   GATE: FAIL <reason> [check-run=<id>]    do not merge
 # Exit code: 0 on PASS, 1 on FAIL, 2 on usage error. Anything else (killed, no verdict line) is a FAIL.
 # Portable to macOS bash 3.2 (no `timeout`, no associative arrays).
@@ -26,7 +29,7 @@ pr="${1:-}"
 sha="${2:-}"
 ignore_id="${3:-}"
 usage() {
-  echo "usage: GH_TOKEN=\$(gh auth token -u chocody) bash scripts/wait-ci.sh <pr-number> <40-char head sha> [ignore-check-run-id]" >&2
+  echo "usage: node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <pr-number> <40-char head sha> [ignore-check-run-id]" >&2
   exit 2
 }
 [[ "$pr" =~ ^[0-9]+$ && "$sha" =~ ^[0-9a-f]{40}$ ]] || usage
@@ -34,9 +37,9 @@ usage() {
 [[ "$TIMEOUT_S" =~ ^[0-9]+$ && "$INTERVAL_S" =~ ^[0-9]+$ && "$INTERVAL_S" -gt 0 ]] || usage
 
 fail() { echo "GATE: FAIL $*"; exit 1; }
-[[ -n "${GH_TOKEN:-}" ]] || fail "GH_TOKEN is not set (export GH_TOKEN=\$(gh auth token -u chocody))"
+[[ -n "${GH_TOKEN:-}" ]] || fail "GH_TOKEN is not set (run it through: node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh …)"
 
-head_sha() { gh pr view "$pr" --repo "$REPO_SLUG" --json headRefOid --jq .headRefOid 2>/dev/null; }
+head_sha() { gh api "repos/$REPO_SLUG/pulls/$pr" --jq .head.sha 2>/dev/null; }
 
 check_head() {
   local now
@@ -83,9 +86,8 @@ while :; do
   sleep "$INTERVAL_S"
 done
 
-# Cross-check with the PR view (docs/ci.md step 3) and the head once more.
-pr_state="$(gh pr checks "$pr" --repo "$REPO_SLUG" --json name,state \
-  --jq '[.[] | select(.name=="ci") | .state] | join(",")' 2>/dev/null || true)"
-[[ "$pr_state" == "SUCCESS" ]] || fail "gh pr checks reports ci='$pr_state' check-run=$id"
+# Cross-check: re-read the same check-run by id (docs/ci.md step 3) and the head once more.
+pr_state="$(gh api "repos/$REPO_SLUG/commits/$sha/check-runs?check_name=ci&filter=latest" --jq '[.check_runs[] | select(.id=='"$id"') | (if .conclusion=="success" then "SUCCESS" else (.conclusion // .status) end)] | join(",")' 2>/dev/null || true)"
+[[ "$pr_state" == "SUCCESS" ]] || fail "gh api reports ci='$pr_state' check-run=$id"
 check_head
 echo "GATE: PASS sha=$sha check-run=$id"
