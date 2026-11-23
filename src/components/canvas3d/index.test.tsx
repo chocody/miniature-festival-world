@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TIER_BUDGETS } from "@/config/performance.config";
+import { getPinchZoomFactor } from "@/core/interaction";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { getSceneRenderSettings, SceneViewport, TOY_MATTE_MATERIALS, TOY_SCENE_CAMERA, TOY_SCENE_LIGHTING } from "./index";
 
@@ -35,6 +36,8 @@ beforeEach(() => {
 describe("toy-like night scene", () => {
   it("uses an orthographic camera and soft night light with a warm candle light", () => {
     expect(TOY_SCENE_CAMERA.orthographic).toBe(true);
+    expect(getPinchZoomFactor(1, 1.5)).toBe(1.5);
+    expect(getPinchZoomFactor(1, 10)).toBe(1.6);
     expect(TOY_SCENE_LIGHTING.ambient.color).toBe("#8499c5");
     expect(TOY_SCENE_LIGHTING.candle.color).toBe("#ffb35c");
   });

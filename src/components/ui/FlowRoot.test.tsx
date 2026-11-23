@@ -21,14 +21,18 @@ describe("FlowRoot", () => {
   it("clicks through all 5 states", () => {
     const { container } = render(<FlowRoot />);
     expect(stateOf(container)).toBe("LANDING_EVENT_SELECT");
+    expect(container.querySelector("[data-flow-state]")).not.toHaveAttribute("data-interaction-mode");
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+    expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+    expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
