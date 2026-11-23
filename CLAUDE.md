@@ -7,6 +7,9 @@ and release it into a world everyone sees. One core engine + per-festival config
 - **Phase 1 = Loy Krathong only** (make a krathong → wish → release onto a spline river).
   Every other festival (Christmas, New Year, CNY, Valentine's, Songkran, Mid-Autumn, Halloween)
   is a **config stub** that shows "Coming Soon". Do not build their scenes/gimmicks.
+- **Launch plan (owner, 2026-11-23):** Loy Krathong 2026 is a private test only; the first public
+  launch is Christmas. Christmas stays a stub until its stories exist in `docs/backlog.json`
+  (open questions 14–20, Jira MFW-36). See `docs/spec/01-roadmap.md`.
 - **Source of truth:** `docs/spec/` (start at `docs/spec/README.md`; mostly Thai). Unresolved gaps are tracked in `docs/spec/open-questions.md` — check it before implementing a ticket.
   Most-cited: `04-coordinates.md` (coord model), `05-privacy-db.md` (tables).
 - **Scope:** `docs/backlog.json` (stories + acceptance criteria), keys in `docs/backlog-keys.json`.

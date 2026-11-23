@@ -18,5 +18,12 @@ lead with the decision written in the PR) **before** the listed ticket is implem
 | 11 | Animation library: GSAP or `@react-spring/three`. | §2.1 | MFW-15 (3.1) |
 | 12 | How "My Creations" lists a device's items: query by token hash, or keep creation ids locally. | §6.7 Task 7.1 | MFW-11 (2.1), MFW-30 (7.1) |
 | 13 | Profanity: block or only warn? (PII is clearly blocked.) | §6.2 Task 2.3 | MFW-13 (2.3) |
+| 14 | Christmas public launch dates: 24–25 Dec (roadmap table) or 20–26 Dec (§1.1)? | §1, §1.1.2 | MFW-36 (S.1) — owner |
+| 15 | Christmas scope for the public launch: MVP (decorate, wish + PII guard, hang on the shared tree with ghost preview, growing tiers, find-mine, 2D fallback) or full §1.1.2 with all gimmicks? | §1.1.2 | MFW-36 (S.1) — owner |
+| 16 | Priority of the remaining Loy Krathong work: build the engine loops generically and finish Loy Krathong only as far as the private test needs, or finish Loy Krathong fully first? | §1, §6 | MFW-36 (S.1) — owner |
+| 17 | Where the Loy Krathong private test runs (Supabase env exists only in Vercel Production): second Supabase project + protected staging, production behind protection, or local only? | §2, CLAUDE.md env facts | MFW-36 (S.1) — owner |
+| 18 | Wipe the private-test data before the Christmas launch? | §5 | MFW-36 (S.1) — owner |
+| 19 | Loy Krathong in the selector during the Christmas launch: shown as ended (flag off) or still playable? | §1 | MFW-36 (S.1) — owner |
+| 20 | Testers and devices for the private test (affects the iOS LOW-tier note from MFW-9 and the 2D fallback). | §6.1 Task 1.3 | MFW-36 (S.1) — owner |
 
 Also noted in MFW-2: Christmas date 24–25 Dec (roadmap table) vs 20–26 Dec (§1.1).
