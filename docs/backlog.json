@@ -53,6 +53,22 @@
             "Vercel preview URL is posted on the PR; previews do not need Supabase env"
           ],
           "labels": ["infra", "ci"]
+        },
+        {
+          "id": "0.5", "type": "Task",
+          "summary": "Cloud-ready loop: in-repo agents, REST GitHub mode, proxy Jira auth",
+          "goal": "/loop-ticket and /loop-epic run unattended in a fresh Claude Code cloud session (no ~/.claude files, no GitHub GraphQL, Jira auth injected by the network proxy).",
+          "ac": [
+            "lead, dev, reviewer and qa agents live in .claude/agents/ with their models (lead opus; dev, reviewer, qa sonnet); loop-ticket no longer depends on any file under ~/.claude",
+            "GitHub steps (open PR, wait for the ci check on the exact head SHA, squash merge pinned to that SHA) work through the GitHub REST API only; cloud mode uses no `gh auth token -u` and no GraphQL-only gh commands",
+            "scripts/jira.mjs works with credentials injected by the network proxy (no jira.env file) and routes its HTTPS calls through HTTPS_PROXY by itself",
+            "playwright.config.ts uses PW_CHROMIUM_PATH and E2E_PORT when set; defaults are unchanged",
+            "loop-epic can run independent ready tickets in parallel git worktrees, merges them one at a time (rebase + green ci before each merge) and stops at a per-run ticket cap",
+            "Tickets labelled privacy, db or migration get a PR but are never auto-merged; they wait for the owner",
+            "docs/cloud.md documents the environment setup and the daily unattended run"
+          ],
+          "labels": ["infra"],
+          "blockedBy": ["0.4"]
         }
       ]
     },
