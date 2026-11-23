@@ -196,6 +196,20 @@
           ],
           "labels": ["3d", "camera"],
           "blockedBy": ["3.1"]
+        },
+        {
+          "id": "3.4", "type": "Task",
+          "summary": "Loop 3 retro-review fixes: lazy 3D scene, interactive-mode canvas, ritual camera lock",
+          "goal": "Fix the findings of the retro review of MFW-15/16/17 (merged without the loop's review gate) that do not belong to a later ticket.",
+          "ac": [
+            "The 3D scene code (three, @react-three/fiber, @react-spring/three) is loaded lazily and only after the device profiler has decided a tier other than FALLBACK_2D: the landing page's initial JS contains no WebGLRenderer chunk, and FALLBACK_2D never downloads it",
+            "The scene canvas is mounted only in the modes that use it (CUSTOMIZE_OBJECT, RITUAL_RELEASE, SHARED_WORLD_EXPLORE); LANDING and WRITE_WISH render no canvas and no touch-none block, so page scroll is never trapped",
+            "RITUAL_RELEASE keeps the camera locked: a tap on water or an object never triggers flyTo or a highlight; selection and highlight are cleared on every mode change",
+            "The camera options passed to the canvas are a stable object across renders (pinch zoom survives drag re-renders), covered by a test",
+            "e2e: a canvas exists on a 3D tier and none exists on FALLBACK_2D (stubbed tier/WebGL); component tests drive the pointer flow with a real or stub R3F context instead of a mocked Canvas"
+          ],
+          "labels": ["3d", "perf"],
+          "blockedBy": ["3.1", "3.2", "3.3"]
         }
       ]
     },
