@@ -30,8 +30,11 @@ Read `CLAUDE.md` (invariants C, D, G) and `docs/spec/05-privacy-db.md` first. Th
 - `creations_private_ownership` — **never** exposed through the public/anon Data API: creation_id,
   owner_token_hash (SHA-256 of the device token), private_wish_text (**encrypted**), report_count,
   moderation_status (`approved | flagged | hidden`).
-- DeviceOwnerToken: cryptographically random, stored in the device's LocalStorage. **The raw token never
-  leaves the device; only its SHA-256 hash is sent.**
+- DeviceOwnerToken: cryptographically random, stored in the device's LocalStorage. **The server stores only
+  its SHA-256 hash. The raw token is sent only over HTTPS to the ownership endpoints (create / prove
+  ownership), in a POST body or the Authorization header — never in a URL or query string — where it is
+  hashed and compared in constant time; it is never stored, logged or returned** (owner decision,
+  `docs/spec/open-questions.md` row 1).
 
 ## What to check
 
@@ -43,15 +46,20 @@ Read `CLAUDE.md` (invariants C, D, G) and `docs/spec/05-privacy-db.md` first. Th
    fields. LocalStorage/sessionStorage/IndexedDB/cookies: only the DeviceOwnerToken (and whatever the
    ticket explicitly allows); no private wish text cached in plain form beyond the owner's own device need.
 3. **Token handling** — token generated with `crypto.getRandomValues` / `crypto.randomUUID` (not
-   `Math.random`); hashing is SHA-256; the raw token is never in a request body, query string, header,
-   URL, analytics event or log. Ownership checks compare hashes server-side.
+   `Math.random`); hashing is SHA-256. The raw token may appear only in the HTTPS request to the
+   ownership endpoints, and only in a POST body or the Authorization header. Flag as Critical: the raw
+   token in a URL, query string, path segment, GET request, cookie, analytics event, log line, error
+   message, response body or any DB column; a non-constant-time comparison (`===` on hashes); a
+   server storing anything but SHA-256(token).
 4. **SQL / migrations / RLS** (`supabase/**`) — every `create table` is followed by
    `enable row level security` and explicit policies; no `grant … to anon` or permissive `using (true)`
    on `creations_private_ownership`; views/RPCs (`security definer`) don't re-expose ownership columns;
    service-role key is used server-side only, never in client bundles (`NEXT_PUBLIC_*`).
 5. **Private wish encryption** — `private_wish_text` is encrypted before storage and decrypted only for a
-   caller whose token hash matches. The spec does not name the algorithm or key management: if the diff
-   chooses one, check the key is server-only and not hard-coded; if it stores plaintext, that is Critical.
+   caller whose presented token hashes to the stored owner_token_hash. Owner decision (open question 2):
+   AES-256-GCM in the server API route, key in a server-only env var (never `NEXT_PUBLIC_*`, never
+   hard-coded), a key id stored with each row. Plaintext storage, a reused IV/nonce or a client-side key
+   is Critical.
 6. **Moderation (invariant G)** — `public_wish_text` passes the PII guard (phone, email, LINE ID, social
    handles) and profanity filter **on the server** before insert; client-only checks are bypassable.
    Rules live in `src/config/moderation.config.ts`. Tests cover Thai and English cases. Flagged/hidden

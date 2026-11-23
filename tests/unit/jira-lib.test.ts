@@ -271,6 +271,17 @@ describe("readiness and next", () => {
     expect(pickNext([...issues, ownerMerge]).inFlight.map((i) => i.key)).toEqual(["MFW-4"]);
   });
 
+  it("ignores handed-off tickets: not in flight, never offered", () => {
+    const handedInProgress = normalizeIssue(
+      rawIssue({ key: "MFW-20", status: STATUS.inProgress, labels: ["ui", "handed-off", "spec-task-4.2"] }),
+    );
+    const handedTodo = normalizeIssue(rawIssue({ key: "MFW-21", labels: ["ui", "handed-off", "spec-task-4.3"] }));
+    expect(inFlight([...issues, handedInProgress]).map((i) => i.key)).toEqual(["MFW-4"]);
+    const res = pickNext([handedTodo]);
+    expect(res.key).toBeNull();
+    expect(evaluateReadiness(handedTodo).reasons).toContain("labelled handed-off (handed to another agent)");
+  });
+
   it("lists every ready ticket in rank order for parallel lanes", () => {
     const res = listReady([...issues, extraReady, ownerMerge]);
     expect(res.ready.map((r) => r.key)).toEqual(["MFW-9", "MFW-10"]);

@@ -40,8 +40,8 @@ Read `CLAUDE.md` (invariants A, B, E, F) and `docs/spec/04-coordinates.md` first
 5. **Effects and pools** — ripples, fireworks, confetti, glow come from `ObjectPoolManager`
    (`src/core/effects/`) with a fixed cap; a tap never allocates a new mesh/material; pooled items reset
    state on reuse; spam-tapping cannot grow the scene.
-6. **Zone cap** — at most ~80–100 rendered items per zone (backlog 5.3: ~80); only the visible zone is
-   loaded; overflow opens a new zone rather than adding to the current one.
+6. **Zone cap** — at most 80 rendered items per zone (owner decision, open question 4), as a named
+   constant; only the visible zone is loaded; overflow opens a new zone rather than adding to the current one.
 7. **Textures and assets** — flag large textures/GLBs for a matte low-poly style (no exact limit is
    specified — report the size and why it is risky, do not invent a hard limit), missing mipmaps on
    non-power-of-two textures, unnecessary alpha, real-time shadows or post-processing on LOW.

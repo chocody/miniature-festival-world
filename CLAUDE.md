@@ -26,7 +26,7 @@ using any Next.js API; this Next.js (16.x) differs from training data.
 ## Stack (spec §2.1, as chosen for this repo)
 
 Next.js App Router + TypeScript + Tailwind · Three.js + React Three Fiber + @react-three/drei ·
-GSAP or @react-spring/three (procedural micro-animation, no physics; spec leaves the choice open) ·
+@react-spring/three (procedural micro-animation, no physics; owner decision, open question 11) ·
 Zustand (separate UI / builder / world / device stores) · 2D fallback on HTML5 Canvas/SVG ·
 Supabase (Postgres) · pnpm. Folder layout: follow [`docs/spec/03-structure.md`](docs/spec/03-structure.md)
 exactly (`src/config`, `src/core/*`, `src/components/*`, `src/services/*`, `src/store/*`).
@@ -53,7 +53,10 @@ stored coord; no 2D-only or 3D-only position field. Spline position is determini
 **C. No private data on public paths.** `creations_public` rows, every public API response
 (e.g. `GET /api/creations`), and every client store fed from a public endpoint must never contain
 `owner_token`, `owner_token_hash` or `private_wish_text`. The raw owner token (DeviceOwnerToken)
-lives only in the device's LocalStorage; only its SHA-256 hash is ever sent or stored.
+is kept only in the device's LocalStorage; the server stores only its SHA-256 hash. The raw token is sent
+only over HTTPS to the ownership endpoints (create / prove ownership), in a POST body or the Authorization
+header — never in a URL or query string — where it is hashed and compared in constant time; it is never
+stored, logged or returned (owner decision, open question 1).
 - Check: API routes select an explicit column allowlist (no `select('*')`, no spreading DB rows into
   responses); a test asserts those three keys are absent from the serialized response; grep the diff
   for the three names outside `src/services/auth/` and the ownership write path. No logging of them.
@@ -65,8 +68,8 @@ or writable through the public/anon Supabase Data API. Every table has RLS enabl
   permissive policy on the ownership table; a test proves private text is not returned without a
   matching owner token (backlog 7.2).
 
-**E. Mobile performance budget.** ~80–100 rendered items per zone max (spec gives a range; backlog 5.3
-says ~80) — more participants open new zones instead. Ripples, fireworks, confetti and glow come from
+**E. Mobile performance budget.** 80 rendered items per zone max (owner decision, open question 4) —
+more participants open new zones instead. Ripples, fireworks, confetti and glow come from
 `ObjectPoolManager` (`src/core/effects/`) with a fixed cap. Geometry/material/texture are disposed on
 zone switch and unmount. Repeated parts (flowers, leaves, riverside trees) use `InstancedMesh`.
 - Check: zone query/pagination enforces the cap; no `new` effect objects per tap; zone-switch code
@@ -75,8 +78,8 @@ zone switch and unmount. Repeated parts (flowers, leaves, riverside trees) use `
 **F. Reduced motion + quality tiers.** Honor `prefers-reduced-motion` (e.g. camera fly-to becomes an
 instant cut, bounce animations off) and the tiers `HIGH | MEDIUM | LOW | FALLBACK_2D` from
 `useDeviceStore` / `performance.config.ts`. FALLBACK_2D is used when WebGL is unavailable or FPS stays
-below threshold. **The FPS threshold and per-tier budgets are not specified yet** — define them in
-`performance.config.ts`, never inline magic numbers.
+below threshold. The FPS threshold and per-tier budgets were decided by the owner (open question 5, MFW-9)
+and live in `performance.config.ts` (`TIER_BUDGETS` etc.) — read them from there, never inline magic numbers.
 - Check: new animated/3D code reads `reducedMotion` and `qualityTier` from the store; tests cover
   the reduced-motion branch.
 
@@ -136,7 +139,8 @@ Atlassian MCP connector — it points at another site):
   `spec-task-*` labels; never deletes) and refresh `docs/backlog-keys.json`.
 - `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors) → PR → `ci` gate
   (`docs/ci.md`) → squash merge → Done; privacy/db/migration tickets stop at a green PR labelled
-  `owner-merge`. Stop conditions label `needs-human`.
+  `owner-merge`. Stop conditions label `needs-human`. `--review-pr <PR>` reviews a PR that another AI agent
+  opened for a card labelled `handed-off` (prompts in `docs/prompts/`); the loop never picks `handed-off` cards.
 - `/loop-epic <MFW-n|Ln> [--max <n>] [--parallel <n>]` — one epic = one Jira sprint: `sprint-start`, `loop-ticket` repeatedly (`--max <n>` per-run cap, `--parallel <n>` lanes in git worktrees with a serialized merge queue), then close the epic, `sprint-complete` and post an epic report.
 
 Jira auth: locally `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`,
