@@ -5,7 +5,13 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { FlowRoot } from "./FlowRoot";
 
-vi.mock("@/components/canvas3d", () => ({ SceneViewport: () => null }));
+vi.mock("@/components/canvas3d", async () => {
+  const React = await import("react");
+  return {
+    SceneViewport: ({ mode, onGestureRelease }: { mode: string | null; onGestureRelease?: () => void }) =>
+      React.createElement("div", { "data-testid": "scene-viewport", "data-mode": mode ?? "", onClick: onGestureRelease }),
+  };
+});
 
 afterEach(cleanup);
 
@@ -53,5 +59,37 @@ describe("FlowRoot", () => {
     });
     expect(root).toHaveAttribute("data-quality-tier", "LOW");
     expect(root).toHaveAttribute("data-reduced-motion", "true");
+  });
+
+  it("mounts the lazy scene only in canvas modes on a profiled 3D tier", async () => {
+    act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+    const { container } = render(<FlowRoot />);
+    await act(async () => {});
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
+
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    const marker = await screen.findByTestId("scene-viewport");
+    expect(marker).toHaveAttribute("data-mode", "RITUAL_RELEASE");
+
+    fireEvent.click(marker);
+    expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "WORLD_EXPLORE");
+    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+  });
+
+  it("never mounts the scene before profiling or on FALLBACK_2D", async () => {
+    render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    await act(async () => {});
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
+
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    await act(async () => {});
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 });
