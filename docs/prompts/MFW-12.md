@@ -14,7 +14,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 1. Supabase tables creations_public (id, event_id, zone_id, appearance JSONB, coord JSONB, public_wish_text, created_at, expires_at) and creations_private_ownership (creation_id FK, owner_token_hash, private_wish_text encrypted, report_count, moderation_status enum)
 2. RLS on both; creations_private_ownership is not exposed to the anon Data API
 3. GET /api/creations?event=loy_krathong&zone=1 returns only public fields; test asserts owner_token / owner_token_hash / private_wish_text never appear
-4. Zone pagination: ≤ 80–100 items per zone
+4. Zone pagination: ≤ 80 items per zone (owner decision, open question 4)
 
 ## Before you start
 - These tickets must already be merged on `main`: MFW-11 [2.1]. If one is not merged, stop and say so.
@@ -23,7 +23,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 - Look at the existing code first (`src/config`, `src/core`, `src/store`, `src/components`) and reuse it: coordinate converters in `src/core/coordinates`, the device profiler and `TIER_BUDGETS` in `src/core/performance` / `src/config/performance.config.ts`, the flow state machine in `src/core/flow`.
 
 ## Owner decisions that apply (already made — do not reopen them)
-- Open question 1 (owner): the device keeps the raw DeviceOwnerToken in LocalStorage; the server stores only SHA-256(token). To prove ownership the device sends the raw token over HTTPS to the ownership endpoint, which hashes it and compares in constant time; the raw token is never stored or logged server-side.
+- Open question 1 (owner): the device keeps the raw DeviceOwnerToken in LocalStorage; the server stores only SHA-256(token). To prove ownership the device sends the raw token over HTTPS to the ownership endpoint — in a POST body or the Authorization header, never in a URL or query string — which hashes it and compares in constant time; the raw token is never stored, logged or returned.
 - Open question 2 (owner): encrypt private_wish_text with AES-256-GCM in the server API route; key in a server-only env var (never NEXT_PUBLIC); store a key id with each encrypted row for rotation.
 - Open question 3 (owner): public reads go through a view / server query that joins the private moderation status and excludes hidden and flagged items; auto-hide when report_count reaches 3.
 - Open question 4 (owner): 80 items per zone.
@@ -32,6 +32,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 
 ## Known follow-ups you must honour
 - Open question 4 caps a zone at 80 items: use 80 for the zone pagination limit (AC 4 says 80–100; the owner chose 80), as a named constant.
+- Retention (open question 10): add only the expires_at column and set it from a named config constant (festival end date + 30 days; Loy Krathong 2026 is 24 Nov per docs/spec/01-roadmap.md). A deletion job is out of scope for this ticket.
 - Supabase env exists only in Vercel Production today. The private-test staging project (open question 17) is not set up yet: migrations must be plain SQL files under supabase/ that the owner applies; nothing may require a live DB in CI.
 
 ## Non-negotiable invariants (full text in CLAUDE.md — breaking one blocks the merge)

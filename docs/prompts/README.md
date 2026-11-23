@@ -7,18 +7,20 @@ disagree, the files win — regenerate the prompt. `index.json` lists every prom
 ## How to hand a ticket to another AI
 
 1. Pick a ticket whose blockers are merged on `main` (`node scripts/jira.mjs next --all-ready` lists them).
-2. In Jira, move the card to **In Progress** and add a comment such as "handed to <agent>" — the loop
-   (`/loop-ticket`, `/loop-epic`) then skips it, so two agents never work on the same ticket.
+2. In Jira, add the label **`handed-off`** to the card (and move it to In Progress if you like). With that
+   label the loop (`/loop-ticket`, `/loop-epic`) never offers the ticket and does not count it as in flight,
+   so it keeps working on other tickets — and two agents never work on the same ticket.
 3. Give the agent the whole `MFW-<n>.md` file. It opens a ready PR on `feat/MFW-<n>-<slug>` and stops.
+   External agents never merge, never change Jira and never push to `main`.
 
 ## Review (Claude)
 
-Ask Claude: "review PR #<n> for MFW-<n>". Claude runs the same gate as `/loop-ticket` on that PR:
-reviewer ∥ qa ∥ the project auditors (`privacy-auditor`, `r3f-perf-reviewer` per CLAUDE.md), local
-verify, the `ci` gate on the exact head SHA, and then
+Ask Claude: "review PR #<pr> for MFW-<n>", which runs `/loop-ticket MFW-<n> --review-pr <pr>` (review mode in
+`.claude/skills/loop-ticket/SKILL.md`). It checks out the PR branch and runs the normal gate on it:
+reviewer ∥ qa ∥ the project auditors (chosen from the labels **and** the changed paths, as in CLAUDE.md —
+so an auditor may run even if the prompt does not name it), one fix round as new commits on the PR branch,
+local verify, the `ci` gate on the exact head SHA, and then
 
-- merges and moves the card to Done, or
-- for tickets labelled `privacy` / `db` / `migration`, labels the PR `owner-merge` and leaves the merge to you, or
-- comments the findings on the PR and Jira and labels the card `needs-human` if it must go back.
-
-External agents never merge, never change Jira and never push to `main`.
+- merges, removes `handed-off` and moves the card to Done, or
+- for tickets labelled `privacy` / `db` / `migration`, stops at a green PR labelled `owner-merge` — you merge it, or
+- parks it: findings on the PR and in Jira, card labelled `needs-human`, PR left open for the other agent.

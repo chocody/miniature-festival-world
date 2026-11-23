@@ -22,7 +22,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 - Look at the existing code first (`src/config`, `src/core`, `src/store`, `src/components`) and reuse it: coordinate converters in `src/core/coordinates`, the device profiler and `TIER_BUDGETS` in `src/core/performance` / `src/config/performance.config.ts`, the flow state machine in `src/core/flow`.
 
 ## Owner decisions that apply (already made — do not reopen them)
-- Open question 1 (owner): the device keeps the raw DeviceOwnerToken in LocalStorage; the server stores only SHA-256(token). To prove ownership the device sends the raw token over HTTPS to the ownership endpoint, which hashes it and compares in constant time; the raw token is never stored or logged server-side.
+- Open question 1 (owner): the device keeps the raw DeviceOwnerToken in LocalStorage; the server stores only SHA-256(token). To prove ownership the device sends the raw token over HTTPS to the ownership endpoint — in a POST body or the Authorization header, never in a URL or query string — which hashes it and compares in constant time; the raw token is never stored, logged or returned.
 - Launch plan (owner): Loy Krathong 2026 is a private test only; the first public launch is Christmas. Build engine pieces generically (they will be reused for Christmas on NormalizedCylindricalCoord) and finish Loy Krathong-specific parts only as far as the private test needs (open questions 14–19).
 
 ## Non-negotiable invariants (full text in CLAUDE.md — breaking one blocks the merge)

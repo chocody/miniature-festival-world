@@ -29,6 +29,8 @@ export const LINK_TYPE = "Blocks";
 export const LABEL_NEEDS_HUMAN = "needs-human";
 export const LABEL_STUB = "stub";
 export const LABEL_OWNER_MERGE = "owner-merge";
+/** A ticket the owner handed to another AI agent (docs/prompts/): the loop neither picks it nor counts it as in flight. */
+export const LABEL_HANDED_OFF = "handed-off";
 /** Every comment written by the automation starts with this marker, so human comments can be told apart. */
 export const BOT_PREFIX = "[mfw-loop]";
 export const RISK_LABELS = ["privacy", "db", "migration"];
@@ -640,6 +642,7 @@ export function evaluateReadiness(issue) {
   if (issue.type === "Subtask" || issue.type === "Sub-task") reasons.push("is a Subtask");
   if (issue.labels.includes(LABEL_NEEDS_HUMAN)) reasons.push(`labelled ${LABEL_NEEDS_HUMAN}`);
   if (issue.labels.includes(LABEL_STUB)) reasons.push(`labelled ${LABEL_STUB}`);
+  if (issue.labels.includes(LABEL_HANDED_OFF)) reasons.push(`labelled ${LABEL_HANDED_OFF} (handed to another agent)`);
   for (const b of issue.blockers) {
     if (!b.done) reasons.push(`blocked by ${b.key} (${b.status})`);
   }
@@ -660,7 +663,8 @@ export function requiresOwnerMerge(labels) {
  * Tickets someone (probably a crashed run) is already working on: In Progress / In Review and not
  * parked with needs-human. loop-ticket refuses to start a new ticket while any exist, except keys the
  * current run claimed itself (parallel lanes). Tickets labelled owner-merge are In Review waiting for the
- * owner to merge their green PR: no run owns them, so they are not in flight.
+ * owner to merge their green PR, and tickets labelled handed-off are being implemented by another agent
+ * (docs/prompts/): no run owns them, so they are not in flight.
  * @param {Issue[]} issues
  */
 export function inFlight(issues) {
@@ -670,7 +674,8 @@ export function inFlight(issues) {
         i.type !== "Epic" &&
         (i.status === TRANSITIONS["in-progress"].status || i.status === TRANSITIONS["in-review"].status) &&
         !i.labels.includes(LABEL_NEEDS_HUMAN) &&
-        !i.labels.includes(LABEL_OWNER_MERGE),
+        !i.labels.includes(LABEL_OWNER_MERGE) &&
+        !i.labels.includes(LABEL_HANDED_OFF),
     )
     .map((i) => ({ key: i.key, status: i.status, summary: i.summary }));
 }

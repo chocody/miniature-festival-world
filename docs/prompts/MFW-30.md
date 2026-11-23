@@ -25,6 +25,9 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 - Open question 12 (owner): "My Creations" keeps creation ids in LocalStorage next to the token (no server query by owner); private text is read only with ownership proof (question 1).
 - Launch plan (owner): Loy Krathong 2026 is a private test only; the first public launch is Christmas. Build engine pieces generically (they will be reused for Christmas on NormalizedCylindricalCoord) and finish Loy Krathong-specific parts only as far as the private test needs (open questions 14–19).
 
+## Known follow-ups you must honour
+- You own the LocalStorage list of the device's creation ids (open question 12). If the save path from MFW-23 does not record the returned id yet, add that hook here and test it.
+
 ## Non-negotiable invariants (full text in CLAUDE.md — breaking one blocks the merge)
 - A (parametric coords only)
 - B (3D and 2D read one coord set)
@@ -54,4 +57,4 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
    - Decisions (anything the spec was silent on, numbers you chose)
    - Test plan (the five commands and their results)
    - Known follow-ups / out of scope
-4. Leave the PR open. The owner's review agent will review it (reviewer + qa), run the CI gate and merge.
+4. Leave the PR open. The owner's review agent will review it (reviewer + qa + privacy-auditor), run the CI gate and merge.

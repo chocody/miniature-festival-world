@@ -30,6 +30,7 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
 - B (3D and 2D read one coord set)
 - E (mobile performance budget)
 - F (reduced motion + quality tiers)
+- C (no private data on public paths)
 - All other invariants in CLAUDE.md apply as well.
 
 ## Rules
@@ -54,4 +55,4 @@ You are implementing ONE ticket in the repository **chocody/miniature-festival-w
    - Decisions (anything the spec was silent on, numbers you chose)
    - Test plan (the five commands and their results)
    - Known follow-ups / out of scope
-4. Leave the PR open. The owner's review agent will review it (reviewer + qa + r3f-perf-reviewer), run the CI gate and merge.
+4. Leave the PR open. The owner's review agent will review it (reviewer + qa + privacy-auditor + r3f-perf-reviewer), run the CI gate and merge.

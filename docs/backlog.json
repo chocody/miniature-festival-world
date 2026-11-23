@@ -139,7 +139,7 @@
             "Supabase tables creations_public (id, event_id, zone_id, appearance JSONB, coord JSONB, public_wish_text, created_at, expires_at) and creations_private_ownership (creation_id FK, owner_token_hash, private_wish_text encrypted, report_count, moderation_status enum)",
             "RLS on both; creations_private_ownership is not exposed to the anon Data API",
             "GET /api/creations?event=loy_krathong&zone=1 returns only public fields; test asserts owner_token / owner_token_hash / private_wish_text never appear",
-            "Zone pagination: ≤ 80–100 items per zone"
+            "Zone pagination: ≤ 80 items per zone (owner decision, open question 4)"
           ],
           "labels": ["privacy", "api", "db"],
           "blockedBy": ["2.1"]

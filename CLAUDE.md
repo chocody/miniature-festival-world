@@ -54,8 +54,9 @@ stored coord; no 2D-only or 3D-only position field. Spline position is determini
 (e.g. `GET /api/creations`), and every client store fed from a public endpoint must never contain
 `owner_token`, `owner_token_hash` or `private_wish_text`. The raw owner token (DeviceOwnerToken)
 is kept only in the device's LocalStorage; the server stores only its SHA-256 hash. The raw token is sent
-only over HTTPS to the ownership endpoints (create / prove ownership), where it is hashed and compared in
-constant time and never stored or logged (owner decision, open question 1).
+only over HTTPS to the ownership endpoints (create / prove ownership), in a POST body or the Authorization
+header — never in a URL or query string — where it is hashed and compared in constant time; it is never
+stored, logged or returned (owner decision, open question 1).
 - Check: API routes select an explicit column allowlist (no `select('*')`, no spreading DB rows into
   responses); a test asserts those three keys are absent from the serialized response; grep the diff
   for the three names outside `src/services/auth/` and the ownership write path. No logging of them.
@@ -138,7 +139,8 @@ Atlassian MCP connector — it points at another site):
   `spec-task-*` labels; never deletes) and refresh `docs/backlog-keys.json`.
 - `/loop-ticket [MFW-n]` — one ticket end-to-end: lead → dev → reviewer ∥ qa (+ auditors) → PR → `ci` gate
   (`docs/ci.md`) → squash merge → Done; privacy/db/migration tickets stop at a green PR labelled
-  `owner-merge`. Stop conditions label `needs-human`.
+  `owner-merge`. Stop conditions label `needs-human`. `--review-pr <PR>` reviews a PR that another AI agent
+  opened for a card labelled `handed-off` (prompts in `docs/prompts/`); the loop never picks `handed-off` cards.
 - `/loop-epic <MFW-n|Ln> [--max <n>] [--parallel <n>]` — one epic = one Jira sprint: `sprint-start`, `loop-ticket` repeatedly (`--max <n>` per-run cap, `--parallel <n>` lanes in git worktrees with a serialized merge queue), then close the epic, `sprint-complete` and post an epic report.
 
 Jira auth: locally `~/.config/mfw/jira.env` (outside the repo) with `JIRA_BASE_URL`, `JIRA_EMAIL`,
