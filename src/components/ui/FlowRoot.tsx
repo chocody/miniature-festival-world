@@ -3,6 +3,7 @@
 import type { FlowEvent, FlowState } from "@/core/flow";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
+import { SceneViewport } from "@/components/canvas3d";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 
@@ -28,6 +29,7 @@ export function FlowRoot() {
       data-reduced-motion={reducedMotion ? "true" : "false"}
       className="flex w-full flex-col"
     >
+      <SceneViewport />
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
       ) : (

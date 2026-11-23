@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { FlowRoot } from "./FlowRoot";
+
+vi.mock("@/components/canvas3d", () => ({ SceneViewport: () => null }));
 
 afterEach(cleanup);
 
