@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@react-spring/three": "^10.1.2",
     "@react-three/fiber": "^9.8.2",
     "next": "16.4.6",
     "react": "19.3.0",
