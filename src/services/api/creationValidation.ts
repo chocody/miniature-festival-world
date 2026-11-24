@@ -4,6 +4,7 @@ import { PRIVATE_WISH_CIPHERTEXT_PATTERN, PRIVATE_WISH_KEY_ID_PATTERN } from "@/
 import { ZONE_ID_MIN } from "@/config/world.config";
 import { parsePersistableCoord } from "@/core/coordinates/validateCoord";
 import { isOwnerTokenHash } from "@/services/auth";
+import { checkPublicWish } from "@/services/moderation";
 import { CreationRepositoryError } from "./creationRepository";
 import type { AppearanceJson, NewCreation, PrivateWishCiphertext } from "./creationTypes";
 import { isJsonObject, isPlainObject } from "./json";
@@ -38,8 +39,11 @@ export function validateNewCreation(input: NewCreation, nowMs: number): NewCreat
   const parsed = parsePersistableCoord(input.coord);
   if (!parsed.ok) throw invalid("coord");
   const publicWishText: unknown = input.publicWishText;
-  if (publicWishText !== null && (typeof publicWishText !== "string" || publicWishText.trim() === "")) {
-    throw invalid("publicWishText");
+  if (
+    publicWishText !== null &&
+    (typeof publicWishText !== "string" || publicWishText.trim() === "" || !checkPublicWish(publicWishText).ok)
+  ) {
+    throw invalid("publicWishText"); // MFW-13 backstop (invariant G); no reasons or text in the error
   }
   const expiresAt: unknown = input.expiresAt;
   if (!(expiresAt instanceof Date) || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= nowMs) {

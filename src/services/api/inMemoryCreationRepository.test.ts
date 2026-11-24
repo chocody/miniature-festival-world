@@ -146,3 +146,67 @@ describe("in-memory creation repository", () => {
     expect(second[0]?.appearance.base).toBe("banana_trunk_01");
   });
 });
+
+describe("in-memory creation repository: moderation (MFW-13)", () => {
+  it("insert with a PII public wish stores nothing", async () => {
+    const { repo } = setup();
+    const before = (await repo.listPublicZone(Z1)).length;
+    await expect(repo.insertCreation(makeNewCreation({ publicWishText: "0812345678" }))).rejects.toMatchObject({
+      code: "invalid_input",
+      detail: "publicWishText",
+    });
+    expect(await repo.listPublicZone(Z1)).toHaveLength(before);
+  });
+
+  it("report: counts, flags at 3, then hidden", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation());
+    expect(await repo.reportCreation(c.id)).toBe("counted");
+    expect(repo.getModerationState(c.id)).toEqual({ reportCount: 1, moderationStatus: "approved" });
+    expect(await repo.listPublicZone(Z1)).toHaveLength(1);
+    expect(await repo.reportCreation(c.id)).toBe("counted");
+    expect(repo.getModerationState(c.id)).toEqual({ reportCount: 2, moderationStatus: "approved" });
+    expect(await repo.listPublicZone(Z1)).toHaveLength(1);
+    expect(await repo.reportCreation(c.id)).toBe("counted");
+    expect(repo.getModerationState(c.id)).toEqual({ reportCount: 3, moderationStatus: "flagged" });
+    expect(await repo.listPublicZone(Z1)).toHaveLength(0);
+    expect(await repo.reportCreation(c.id)).toBe("ignored");
+    expect(repo.getModerationState(c.id)?.reportCount).toBe(3);
+  });
+
+  it("report ignores private-only creations", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() }));
+    expect(await repo.reportCreation(c.id)).toBe("ignored");
+    expect(repo.getModerationState(c.id)?.reportCount).toBe(0);
+  });
+
+  it("report ignores unknown, hidden and expired", async () => {
+    const { repo, tick, now } = setup();
+    expect(await repo.reportCreation("00000000-0000-4000-8000-000000000001")).toBe("ignored");
+    const h = await repo.insertCreation(makeNewCreation());
+    repo.setModeration(h.id, { moderationStatus: "hidden" });
+    expect(await repo.reportCreation(h.id)).toBe("ignored");
+    const e = await repo.insertCreation(makeNewCreation({ expiresAt: new Date(now() + STEP) }));
+    tick();
+    expect(await repo.reportCreation(e.id)).toBe("ignored");
+    expect(repo.getModerationState(e.id)?.reportCount).toBe(0);
+  });
+
+  it("report rejects a non-uuid", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation());
+    for (const bad of ["nope", "", c.id.toUpperCase()]) {
+      await expect(repo.reportCreation(bad)).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+    }
+  });
+
+  it("getModerationState: null for unknown, copy for known", async () => {
+    const { repo } = setup();
+    expect(repo.getModerationState("00000000-0000-4000-8000-000000000000")).toBeNull();
+    const c = await repo.insertCreation(makeNewCreation());
+    const state = repo.getModerationState(c.id) as { reportCount: number };
+    (state as { reportCount: number }).reportCount = 99;
+    expect(repo.getModerationState(c.id)?.reportCount).toBe(0);
+  });
+});

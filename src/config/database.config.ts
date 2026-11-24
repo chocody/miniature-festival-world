@@ -28,3 +28,6 @@ export const SUPABASE_REQUEST_TIMEOUT_MS = 5_000;
 export const PG_INT4_MAX = 2_147_483_647;
 /** Postgres uuid text form (lowercase). */
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Atomic report increment (relative to SUPABASE_REST_PATH). MFW-13. */
+export const REPORT_CREATION_RPC_PATH = "rpc/mfw_report_creation";

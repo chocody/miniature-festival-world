@@ -6,7 +6,10 @@ export type CreationRepositoryErrorCode =
   | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name)
   | "backend_misconfigured" // env / options wrong (detail = env var name or option name, never its value)
   | "backend_request_failed" // network error or non-2xx (detail = "network" | "status <n>")
-  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id")
+  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report")
+
+/** counted = report_count was incremented; ignored = unknown, private-only, expired or already hidden/flagged creation. */
+export type ReportOutcome = "counted" | "ignored";
 
 export class CreationRepositoryError extends Error {
   readonly code: CreationRepositoryErrorCode;
@@ -35,4 +38,10 @@ export interface CreationRepository {
    * ownership row atomically. Returns only the public part. Rejects with CreationRepositoryError.
    */
   insertCreation(input: NewCreation): Promise<PublicCreation>;
+  /**
+   * Report a public wish (backlog 2.3). Atomically: if the creation exists, has public_wish_text, is not expired, is
+   * 'approved' and report_count < AUTO_HIDE_REPORT_THRESHOLD, then report_count += 1, and when it reaches the threshold
+   * moderation_status = AUTO_HIDE_MODERATION_STATUS. Rejects invalid_input "creationId" for a non-uuid. Never needs a token.
+   */
+  reportCreation(creationId: string): Promise<ReportOutcome>;
 }

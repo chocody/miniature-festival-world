@@ -222,3 +222,66 @@ describe("supabase repository: construction", () => {
     );
   });
 });
+
+describe("supabase repository: report and moderation backstop (MFW-13)", () => {
+  const ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+
+  it("report request", async () => {
+    const { fetchMock, repo } = make(true);
+    expect(await repo.reportCreation(ID)).toBe("counted");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_report_creation");
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body).toEqual({ p_creation_id: ID });
+    expect(Object.keys(body).sort()).toEqual(["p_creation_id"]);
+    const headers = new Headers(init.headers);
+    expect(headers.get("apikey")).toBe(KEY);
+    expect(headers.get("authorization")).toBe(`Bearer ${KEY}`);
+    expect(headers.get("content-type")).toBe("application/json");
+  });
+
+  it("false means ignored; other bodies are invalid", async () => {
+    expect(await make(false).repo.reportCreation(ID)).toBe("ignored");
+    for (const bad of [{}, null, 1]) {
+      await expect(make(bad).repo.reportCreation(ID)).rejects.toMatchObject({
+        code: "invalid_backend_response",
+        detail: "report",
+      });
+    }
+  });
+
+  it("report non-2xx: no body is read", async () => {
+    const res = new Response(`{"leak":"${OWNER_HASH_FIXTURE}"}`, { status: 500 });
+    const jsonSpy = vi.spyOn(res, "json");
+    const textSpy = vi.spyOn(res, "text");
+    const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
+      void args;
+      return res;
+    });
+    const repo = createSupabaseCreationRepository({ url: URL_OK, serviceRoleKey: KEY, fetch: fetchMock });
+    const err = (await repo.reportCreation(ID).catch((e: unknown) => e)) as CreationRepositoryError;
+    expect(err).toBeInstanceOf(CreationRepositoryError);
+    expect(err.code).toBe("backend_request_failed");
+    expect(err.detail).toBe("status 500");
+    expect(jsonSpy).not.toHaveBeenCalled();
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(err.message).not.toContain(OWNER_HASH_FIXTURE);
+    expect(err.message).not.toContain(KEY);
+  });
+
+  it("invalid report id makes no request", async () => {
+    const { fetchMock, repo } = make(true);
+    await expect(repo.reportCreation("nope")).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("insert with a PII public wish makes no request", async () => {
+    const { fetchMock, repo } = make({});
+    await expect(repo.insertCreation(makeNewCreation({ publicWishText: "ig: somchai" }))).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
