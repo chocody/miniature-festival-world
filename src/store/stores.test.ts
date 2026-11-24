@@ -20,7 +20,10 @@ describe("zustand stores", () => {
   });
 
   it("have the specified initial shapes", () => {
-    expect(useBuilderStore.getState()).toEqual({ appearance: null });
+    const builder = useBuilderStore.getState();
+    expect(builder.appearance).toBeNull();
+    expect(Object.keys(builder).sort()).toEqual(["appearance", "chooseKrathong"]);
+    expect(typeof builder.chooseKrathong).toBe("function");
     expect(useWorldStore.getState()).toEqual({ currentZoneId: null, participantCount: null });
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,

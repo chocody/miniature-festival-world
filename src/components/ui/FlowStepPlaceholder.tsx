@@ -13,9 +13,6 @@ export function FlowStepPlaceholder({ step, nextLabel = "ถัดไป", onNex
   return (
     <section className="flex w-full flex-col items-start gap-4">
       <h2 className="text-xl font-semibold">{step}</h2>
-      {step === "CUSTOMIZE_OBJECT" && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">ลากเพื่อหมุนกระทง ใช้สองนิ้วเพื่อซูม</p>
-      )}
       {step === "RITUAL_RELEASE" && (
         <p className="text-sm text-zinc-600 dark:text-zinc-300">ลากกระทงลงน้ำ หรือกดปุ่มปล่อยกระทง</p>
       )}

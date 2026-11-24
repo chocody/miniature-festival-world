@@ -1,15 +1,30 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
+import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
 import { FlowRoot } from "./FlowRoot";
+import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
+
+const viewSpies = vi.hoisted(() => ({ rotate: vi.fn(), zoom: vi.fn() }));
 
 vi.mock("@/components/canvas3d", async () => {
   const React = await import("react");
   return {
-    SceneViewport: ({ mode, onGestureRelease }: { mode: string | null; onGestureRelease?: () => void }) =>
-      React.createElement("div", { "data-testid": "scene-viewport", "data-mode": mode ?? "", onClick: onGestureRelease }),
+    SceneViewport: ({
+      mode,
+      onGestureRelease,
+      viewControlRef,
+    }: {
+      mode: string | null;
+      onGestureRelease?: () => void;
+      viewControlRef?: React.Ref<{ rotate: (d: -1 | 1) => void; zoom: (d: -1 | 1) => void }>;
+    }) => {
+      React.useImperativeHandle(viewControlRef, () => ({ rotate: viewSpies.rotate, zoom: viewSpies.zoom }));
+      return React.createElement("div", { "data-testid": "scene-viewport", "data-mode": mode ?? "", onClick: onGestureRelease });
+    },
   };
 });
 
@@ -18,6 +33,9 @@ afterEach(cleanup);
 beforeEach(() => {
   useUIStore.setState(useUIStore.getInitialState(), true);
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  useBuilderStore.setState(useBuilderStore.getInitialState(), true);
+  viewSpies.rotate.mockClear();
+  viewSpies.zoom.mockClear();
 });
 
 const stateOf = (container: HTMLElement) =>
@@ -40,6 +58,51 @@ describe("FlowRoot", () => {
     expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows the ownership notice only in WRITE_WISH", () => {
+    render(<FlowRoot />);
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(window.localStorage.getItem(DEVICE_OWNER_TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it("CUSTOMIZE_OBJECT shows the customizer panel only in that step", () => {
+    render(<FlowRoot />);
+    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+  });
+
+  it("3D tier: the bar's view buttons drive the scene", async () => {
+    act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+    render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    await screen.findByTestId("scene-viewport");
+    fireEvent.click(screen.getByRole("button", { name: "หมุนขวา" }));
+    expect(viewSpies.rotate).toHaveBeenCalledWith(1);
+    fireEvent.click(screen.getByRole("button", { name: "ซูมออก" }));
+    expect(viewSpies.zoom).toHaveBeenCalledWith(-1);
+  });
+
+  it("FALLBACK_2D and unprofiled: bar without view buttons", async () => {
+    render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
+    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
   });
 
   it("clicking a Coming Soon festival keeps landing", () => {

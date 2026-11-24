@@ -10,3 +10,12 @@ export const HIGHLIGHT_RING_SIZES = Object.freeze({
   krathong: Object.freeze({ innerRadius: 1.35, outerRadius: 1.55, heightOffset: 0.26 }),
   lamp: Object.freeze({ innerRadius: 0.28, outerRadius: 0.42, heightOffset: 0.04 }),
 });
+
+/** Toy scene orthographic camera (MFW-15 values, moved from canvas3d in MFW-27). */
+export const SCENE_CAMERA_ZOOM = 52;
+export const SCENE_CAMERA_NEAR = 0.1;
+export const SCENE_CAMERA_FAR = 40;
+/** Highlight ring look (MFW-17 values, moved in MFW-27). */
+export const HIGHLIGHT_RING_COLOR = "#ffd166";
+export const HIGHLIGHT_RING_OPACITY = 0.9;
+export const HIGHLIGHT_RING_SEGMENTS = 32;

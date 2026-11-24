@@ -55,3 +55,15 @@ export const FPS_SAMPLE_WINDOW_MS = 1_000;
 export const TIER_SETTLE_MS = 2_000;
 /** A single gap between frames longer than this is a stall (freeze, dialog, load), not low FPS: discard the window and re-arm warm-up. Lead decision, MFW-9. */
 export const FPS_STALL_GAP_MS = 1_000;
+
+// Technical numbers (lead decision, MFW-27)
+
+/**
+ * WebGL MSAA per 3D tier. The renderer reads it only when it is created, so SceneViewport re-creates the canvas when
+ * the value flips (at most once per session: tiers never step up). Lead decision, MFW-27.
+ */
+export const TIER_ANTIALIAS: Readonly<Record<RenderTier, boolean>> = Object.freeze({
+  HIGH: true,
+  MEDIUM: true,
+  LOW: false,
+});

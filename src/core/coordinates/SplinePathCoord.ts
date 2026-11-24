@@ -127,14 +127,17 @@ export function findLane(lanes: readonly RiverLane[], laneId: number): RiverLane
 
 const scratchA = new Vector3();
 const scratchB = new Vector3();
+const scratchCenter = new Vector3();
+/** Written by writeLaneFrame: unit horizontal right of the flow (y is always 0). */
+const frameRight = { x: 0, z: 0 };
 
 interface LaneFrame {
   readonly tangent: WorldVec3;
   readonly right: WorldVec3;
 }
 
-/** Wrapped central-difference tangent (three's getTangentAt is one-sided at the seam). */
-function laneFrameAt(lane: RiverLane, u: number): LaneFrame {
+/** Leaves the unit tangent in scratchB and the unit right vector in frameRight. Allocation-free. */
+function writeLaneFrame(lane: RiverLane, u: number): void {
   let a = u - TANGENT_DELTA;
   let b = u + TANGENT_DELTA;
   if (lane.closed) {
@@ -149,18 +152,33 @@ function laneFrameAt(lane: RiverLane, u: number): LaneFrame {
   scratchB.sub(scratchA).normalize();
   const h = Math.hypot(scratchB.x, scratchB.z);
   if (h < HORIZONTAL_TANGENT_EPSILON) throw new Error("lane tangent is vertical");
+  frameRight.x = -scratchB.z / h;
+  frameRight.z = scratchB.x / h;
+}
+
+/** Wrapped central-difference tangent (three's getTangentAt is one-sided at the seam). */
+function laneFrameAt(lane: RiverLane, u: number): LaneFrame {
+  writeLaneFrame(lane, u);
   return {
     tangent: { x: scratchB.x, y: scratchB.y, z: scratchB.z },
-    right: { x: -scratchB.z / h, y: 0, z: scratchB.x / h },
+    right: { x: frameRight.x, y: 0, z: frameRight.z },
   };
+}
+
+function laneParam(lane: RiverLane, progress: number): number {
+  return lane.closed ? wrap01(progress) : progress >= 0 && progress <= 1 ? progress : wrap01(progress);
+}
+
+function clampLateral(lateralOffset: number): number {
+  return Math.min(0.5, Math.max(-0.5, lateralOffset)); // defensive clamp, rendering only
 }
 
 export function splineProgressToWorld(lane: RiverLane, progress: number, lateralOffset: number): SplineWorldPlacement {
   if (!Number.isFinite(progress) || !Number.isFinite(lateralOffset)) {
     throw new RangeError("progress and lateralOffset must be finite");
   }
-  const u = lane.closed ? wrap01(progress) : progress >= 0 && progress <= 1 ? progress : wrap01(progress);
-  const lat = Math.min(0.5, Math.max(-0.5, lateralOffset)); // defensive clamp, rendering only
+  const u = laneParam(lane, progress);
+  const lat = clampLateral(lateralOffset);
   const c = lane.curve.getPointAt(u, new Vector3()); // arc-length parametrization: uniform speed
   const { tangent, right } = laneFrameAt(lane, u);
   const d = lat * lane.width;
@@ -181,6 +199,56 @@ export function splineCoordToWorld(
 ): SplineWorldPlacement {
   if (coord.laneId !== lane.laneId) throw new RangeError("coord.laneId does not match lane");
   return splineProgressToWorld(lane, currentProgress(coord, createdAtMs, nowMs), coord.lateralOffset);
+}
+
+/** Mutable out-parameter for per-frame use. Derived at render time, NEVER persisted (invariant A). */
+export interface SplinePoseOut {
+  x: number;
+  y: number;
+  z: number;
+  /** Same as SplineWorldPlacement.yawRad. */
+  yawRad: number;
+}
+
+export function createSplinePoseOut(): SplinePoseOut {
+  return { x: 0, y: 0, z: 0, yawRad: 0 };
+}
+
+/**
+ * Allocation-free twin of splineProgressToWorld: writes position and yaw into `out` and returns `out`.
+ * Bit-identical to splineProgressToWorld(lane, progress, lateralOffset).position / .yawRad. Not re-entrant.
+ */
+export function splineProgressToPoseInto(
+  lane: RiverLane,
+  progress: number,
+  lateralOffset: number,
+  out: SplinePoseOut,
+): SplinePoseOut {
+  if (!Number.isFinite(progress) || !Number.isFinite(lateralOffset)) {
+    throw new RangeError("progress and lateralOffset must be finite");
+  }
+  const u = laneParam(lane, progress);
+  const lat = clampLateral(lateralOffset);
+  lane.curve.getPointAt(u, scratchCenter);
+  writeLaneFrame(lane, u);
+  const d = lat * lane.width;
+  out.x = scratchCenter.x + frameRight.x * d;
+  out.y = scratchCenter.y;
+  out.z = scratchCenter.z + frameRight.z * d;
+  out.yawRad = Math.atan2(scratchB.x, scratchB.z);
+  return out;
+}
+
+/** Allocation-free twin of splineCoordToWorld (same laneId check, same currentProgress). */
+export function splineCoordToPoseInto(
+  coord: SplinePathCoord,
+  lane: RiverLane,
+  createdAtMs: number,
+  nowMs: number,
+  out: SplinePoseOut,
+): SplinePoseOut {
+  if (coord.laneId !== lane.laneId) throw new RangeError("coord.laneId does not match lane");
+  return splineProgressToPoseInto(lane, currentProgress(coord, createdAtMs, nowMs), coord.lateralOffset, out);
 }
 
 /**

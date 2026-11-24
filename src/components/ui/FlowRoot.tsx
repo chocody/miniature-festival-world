@@ -1,12 +1,14 @@
 "use client";
 
 import type { FlowEvent, FlowState } from "@/core/flow";
-import { getInteractionMode } from "@/core/interaction";
+import { getInteractionMode, type CustomizeViewControl } from "@/core/interaction";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useRef } from "react";
+import { CustomizerPanel } from "./CustomizerPanel";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
+import { OwnershipNotice } from "./OwnershipNotice";
 
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
 const SceneViewport = lazy(() =>
@@ -27,6 +29,9 @@ export function FlowRoot() {
   const qualityTier = useDeviceStore((s) => s.qualityTier);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);
   const profiled = useDeviceStore((s) => s.profiled);
+  const selectedEventId = useUIStore((s) => s.selectedEventId);
+  const viewControlRef = useRef<CustomizeViewControl | null>(null);
+  const show3D = profiled && qualityTier !== "FALLBACK_2D";
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
 
@@ -38,16 +43,24 @@ export function FlowRoot() {
       data-interaction-mode={interactionMode ?? undefined}
       className="flex w-full flex-col"
     >
-      {profiled && qualityTier !== "FALLBACK_2D" && interactionMode !== null && (
+      {show3D && interactionMode !== null && (
         <Suspense fallback={null}>
           <SceneViewport
             mode={interactionMode}
+            viewControlRef={viewControlRef}
             onGestureRelease={interactionMode === "RITUAL_RELEASE" ? () => dispatch({ type: "FINISH_RITUAL" }) : undefined}
           />
         </Suspense>
       )}
+      {flowState === "WRITE_WISH" && <OwnershipNotice />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
+      ) : flowState === "CUSTOMIZE_OBJECT" ? (
+        <CustomizerPanel
+          eventId={selectedEventId}
+          onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
+          viewControlRef={show3D ? viewControlRef : null}
+        />
       ) : (
         <FlowStepPlaceholder
           step={flowState}
