@@ -1,6 +1,7 @@
 import { UUID_PATTERN } from "@/config/database.config";
 import type { FestivalEventId } from "@/config/events/types";
 import {
+  AUTO_HIDE_MODERATION_STATUS,
   AUTO_HIDE_REPORT_THRESHOLD,
   DEFAULT_MODERATION_STATUS,
   MODERATION_STATUSES,
@@ -9,7 +10,7 @@ import {
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
 import type { OwnerTokenHash } from "@/services/auth";
-import { CreationRepositoryError, type CreationRepository } from "./creationRepository";
+import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type { AppearanceJson, EncryptedPrivateWish, NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
 import { isFestivalEventId, isZoneId, validateNewCreation } from "./creationValidation";
 
@@ -25,10 +26,17 @@ export interface CreationModerationPatch {
   readonly reportCount?: number; // integer >= 0
 }
 
+export interface CreationModerationState {
+  readonly reportCount: number;
+  readonly moderationStatus: ModerationStatus;
+}
+
 export interface InMemoryCreationRepository extends CreationRepository {
   readonly backend: "memory";
   /** Mirrors a private-table update (used by tests now, by MFW-13's in-memory report path later). false = unknown id. */
   setModeration(id: string, patch: CreationModerationPatch): boolean;
+  /** Test/inspection helper (server only): a copy of the private moderation fields, or null for an unknown id. */
+  getModerationState(id: string): CreationModerationState | null;
 }
 
 interface StoredPublicRow {
@@ -136,6 +144,29 @@ export function createInMemoryCreationRepository(
       if (patch.moderationStatus !== undefined) row.moderationStatus = patch.moderationStatus;
       if (patch.reportCount !== undefined) row.reportCount = patch.reportCount;
       return true;
+    },
+
+    async reportCreation(creationId: string): Promise<ReportOutcome> {
+      if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+        throw new CreationRepositoryError("invalid_input", "creationId");
+      }
+      const nowMs = now();
+      const pub = publicRows.get(creationId);
+      const priv = privateRows.get(creationId);
+      if (pub === undefined || priv === undefined) return "ignored";
+      if (pub.publicWishText === null || pub.expiresAtMs <= nowMs) return "ignored";
+      if (priv.moderationStatus !== DEFAULT_MODERATION_STATUS || priv.reportCount >= AUTO_HIDE_REPORT_THRESHOLD) {
+        return "ignored";
+      }
+      const reportCount = priv.reportCount + 1;
+      priv.reportCount = reportCount;
+      if (reportCount >= AUTO_HIDE_REPORT_THRESHOLD) priv.moderationStatus = AUTO_HIDE_MODERATION_STATUS;
+      return "counted";
+    },
+
+    getModerationState(id: string): CreationModerationState | null {
+      const priv = privateRows.get(id);
+      return priv === undefined ? null : { reportCount: priv.reportCount, moderationStatus: priv.moderationStatus };
     },
   };
 }

@@ -4,12 +4,14 @@ import {
   LOCAL_SUPABASE_HOSTNAMES,
   PUBLIC_CREATION_COLUMNS,
   PUBLIC_ZONE_ORDER,
+  REPORT_CREATION_RPC_PATH,
   SUPABASE_REQUEST_TIMEOUT_MS,
   SUPABASE_REST_PATH,
+  UUID_PATTERN,
 } from "@/config/database.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
-import { CreationRepositoryError, type CreationRepository } from "./creationRepository";
+import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type { AppearanceJson, NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
 import { isFestivalEventId, isZoneId, validateNewCreation } from "./creationValidation";
 import { publicRowToCreation } from "./publicCreation";
@@ -33,6 +35,11 @@ export interface InsertCreationRpcBody {
   readonly p_owner_token_hash: string;
   readonly p_private_wish_text: string | null; // ciphertext envelope, never plaintext
   readonly p_private_wish_key_id: string | null;
+}
+
+/** Body of POST /rest/v1/rpc/mfw_report_creation; key equals the SQL parameter name. */
+export interface ReportCreationRpcBody {
+  readonly p_creation_id: string;
 }
 
 export function createSupabaseCreationRepository(options: SupabaseCreationRepositoryOptions): CreationRepository {
@@ -125,6 +132,17 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
       const created = publicRowToCreation(row);
       if (created === null) throw new CreationRepositoryError("invalid_backend_response", "insert");
       return created;
+    },
+
+    async reportCreation(creationId: string): Promise<ReportOutcome> {
+      if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+        throw new CreationRepositoryError("invalid_input", "creationId"); // before any request
+      }
+      const body: ReportCreationRpcBody = { p_creation_id: creationId };
+      const data = await send(new URL(REPORT_CREATION_RPC_PATH, restBase), "POST", JSON.stringify(body));
+      if (data === true) return "counted";
+      if (data === false) return "ignored";
+      throw new CreationRepositoryError("invalid_backend_response", "report");
     },
   };
 }

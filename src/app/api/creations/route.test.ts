@@ -7,7 +7,11 @@ import {
   makeNewCreation,
   makePrivateWish,
 } from "@/services/api/__fixtures__/creations";
-import { CreationRepositoryError, type CreationRepository } from "@/services/api/creationRepository";
+import {
+  CreationRepositoryError,
+  type CreationRepository,
+  type ReportOutcome,
+} from "@/services/api/creationRepository";
 import { PUBLIC_CREATION_KEYS } from "@/services/api/creationTypes";
 import { createInMemoryCreationRepository } from "@/services/api/inMemoryCreationRepository";
 import { handleListCreations } from "@/services/api/listCreations";
@@ -111,6 +115,7 @@ describe("GET /api/creations", () => {
       backend: "memory",
       listPublicZone: () => Promise.reject(new Error(`boom ${OWNER_HASH_FIXTURE}`)),
       insertCreation: () => Promise.reject(new Error("unused")),
+      reportCreation: async (): Promise<ReportOutcome> => "ignored",
     };
     const res = await call("event=loy_krathong&zone=1", () => failing);
     expect(res.status).toBe(503);

@@ -8,3 +8,9 @@ export {
   type PublicZoneResponse,
   type ZoneQueryField,
 } from "./creationTypes";
+export {
+  REPORT_ENDPOINT_PATH,
+  type ReportAcceptedBody,
+  type ReportErrorBody,
+  type ReportRequestBody,
+} from "./reportTypes";

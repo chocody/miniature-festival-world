@@ -84,3 +84,27 @@ describe("helpers", () => {
     expect(toIsoTimestamp(5)).toBeNull();
   });
 });
+
+describe("validateNewCreation: moderation backstop (MFW-13)", () => {
+  it.each(["โทร 081-234-5678", "line: somchai99", "somchai@gmail.com", "ไอ้เหี้ย", "fuck"])(
+    "rejects a public wish with PII / profanity: %s",
+    (text) => {
+      const err = failure(makeNewCreation({ publicWishText: text }));
+      expect(err.code).toBe("invalid_input");
+      expect(err.detail).toBe("publicWishText");
+      expect(err.message).not.toContain("0812");
+      expect(err.message).not.toContain("somchai");
+      expect(err.message).not.toContain(text);
+    },
+  );
+
+  it("a private creation is not moderated", () => {
+    const input = makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() });
+    expect(validateNewCreation(input, NOW)).toEqual(input);
+  });
+
+  it("a normal wish with a year passes", () => {
+    const input = makeNewCreation({ publicWishText: "ขอให้ปี 2569 ทุกคนสุขภาพแข็งแรง" });
+    expect(validateNewCreation(input, NOW).publicWishText).toBe("ขอให้ปี 2569 ทุกคนสุขภาพแข็งแรง");
+  });
+});
