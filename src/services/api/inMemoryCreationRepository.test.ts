@@ -11,7 +11,7 @@ import {
   makePrivateWish,
 } from "./__fixtures__/creations";
 import { CreationRepositoryError } from "./creationRepository";
-import { PUBLIC_CREATION_KEYS } from "./creationTypes";
+import { PUBLIC_CREATION_KEYS, type GuardedNewCreation } from "./creationTypes";
 import { createInMemoryCreationRepository } from "./inMemoryCreationRepository";
 
 const START = Date.parse("2026-11-24T12:00:00.000Z");
@@ -242,5 +242,85 @@ describe("in-memory creation repository: highestVisibleZoneId", () => {
       code: "invalid_input",
       detail: "eventId",
     });
+  });
+});
+
+describe("MFW-45 zone occupancy and guarded insert", () => {
+  const ID_A = "00000000-0000-4000-8000-00000000000a";
+  const guarded = (nowMs: number, ids: readonly string[], over: Partial<GuardedNewCreation> = {}): GuardedNewCreation => ({
+    ...makeNewCreation(),
+    createdAt: new Date(nowMs),
+    expectedOccupantIds: ids,
+    ...over,
+  });
+
+  it("zone counts include hidden rows and skip expired ones", async () => {
+    const { repo, tick, now } = setup();
+    const a = await repo.insertCreation(makeNewCreation({ zoneId: 1 }));
+    await repo.insertCreation(makeNewCreation({ zoneId: 1 }));
+    await repo.insertCreation(makeNewCreation({ zoneId: 3 }));
+    await repo.insertCreation(makeNewCreation({ zoneId: 2, expiresAt: new Date(now() + STEP) }));
+    repo.setModeration(a.id, { moderationStatus: "hidden" });
+    expect(await repo.zoneItemCounts("loy_krathong")).toEqual([
+      { zoneId: 1, itemCount: 2 },
+      { zoneId: 2, itemCount: 1 },
+      { zoneId: 3, itemCount: 1 },
+    ]);
+    tick();
+    expect((await repo.zoneItemCounts("loy_krathong")).map((c) => c.zoneId)).toEqual([1, 3]);
+    expect(await repo.zoneItemCounts("christmas")).toEqual([]);
+  });
+
+  it("occupants are ordered and include flagged rows", async () => {
+    const { repo, tick } = setup();
+    const a = await repo.insertCreation(makeNewCreation());
+    tick();
+    const b = await repo.insertCreation(makeNewCreation());
+    repo.setModeration(a.id, { moderationStatus: "flagged" });
+    const occupants = await repo.listZoneOccupants(Z1);
+    expect(occupants.map((o) => o.id)).toEqual([a.id, b.id]);
+    expect(occupants[1]?.createdAtMs).toBe(START + STEP);
+    expect(Object.keys(occupants[0] ?? {}).sort()).toEqual(["coord", "createdAtMs", "id"]);
+  });
+
+  it("guarded insert: stale expected ids give zone_changed and store nothing", async () => {
+    const { repo } = setup();
+    const result = await repo.insertCreationGuarded(guarded(START, [ID_A]));
+    expect(result).toEqual({ status: "zone_changed" });
+    expect(await repo.zoneItemCounts("loy_krathong")).toEqual([]);
+  });
+
+  it("guarded insert: a missing occupant also gives zone_changed", async () => {
+    const { repo } = setup();
+    await repo.insertCreation(makeNewCreation());
+    expect(await repo.insertCreationGuarded(guarded(START, []))).toEqual({ status: "zone_changed" });
+  });
+
+  it("guarded insert at the cap gives zone_changed", async () => {
+    const { repo } = setup();
+    const ids: string[] = [];
+    for (let i = 0; i < 80; i += 1) ids.push((await repo.insertCreation(makeNewCreation())).id);
+    expect(await repo.insertCreationGuarded(guarded(START, ids.slice(0, 79)))).toEqual({ status: "zone_changed" });
+    expect((await repo.zoneItemCounts("loy_krathong"))[0]?.itemCount).toBe(80);
+  });
+
+  it("expected ids in any order are accepted; createdAt is the input's", async () => {
+    const { repo } = setup();
+    const a = await repo.insertCreation(makeNewCreation());
+    const b = await repo.insertCreation(makeNewCreation());
+    const at = START + 5 * STEP;
+    const result = await repo.insertCreationGuarded(guarded(at, [b.id, a.id]));
+    expect(result.status).toBe("inserted");
+    if (result.status !== "inserted") return;
+    expect(result.creation.createdAt).toBe(new Date(at).toISOString());
+    expect(Object.keys(result.creation).sort()).toEqual([...PUBLIC_CREATION_KEYS].sort());
+    expect(repo.getModerationState(result.creation.id)).toEqual({ reportCount: 0, moderationStatus: "approved" });
+  });
+
+  it("invalid input stores nothing", async () => {
+    const { repo } = setup();
+    await expect(repo.insertCreationGuarded(guarded(START, [], { zoneId: 0 }))).rejects.toBeInstanceOf(CreationRepositoryError);
+    await expect(repo.insertCreationGuarded(guarded(START, ["nope"]))).rejects.toBeInstanceOf(CreationRepositoryError);
+    expect(await repo.zoneItemCounts("loy_krathong")).toEqual([]);
   });
 });

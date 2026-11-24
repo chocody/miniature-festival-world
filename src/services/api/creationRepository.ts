@@ -1,13 +1,21 @@
 import type { FestivalEventId } from "@/config/events/types";
-import type { NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
+import type {
+  GuardedInsertResult,
+  GuardedNewCreation,
+  NewCreation,
+  PublicCreation,
+  ZoneItemCount,
+  ZoneOccupant,
+  ZoneQuery,
+} from "./creationTypes";
 
 export type CreationBackend = "memory" | "supabase";
 
 export type CreationRepositoryErrorCode =
-  | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name)
+  | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name, incl. "createdAt" | "expectedOccupantIds")
   | "backend_misconfigured" // env / options wrong (detail = env var name or option name, never its value)
   | "backend_request_failed" // network error or non-2xx (detail = "network" | "status <n>")
-  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone")
+  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone" | "occupant")
 
 /** counted = report_count was incremented; ignored = unknown, private-only, expired or already hidden/flagged creation. */
 export type ReportOutcome = "counted" | "ignored";
@@ -42,6 +50,7 @@ export interface CreationRepository {
   /**
    * Server write path only (MFW-45). Validates with validateNewCreation, then writes the public row and the private
    * ownership row atomically. Returns only the public part. Rejects with CreationRepositoryError.
+   * Unguarded (no zone/collision check): seeding and tests only. The create route uses insertCreationGuarded.
    */
   insertCreation(input: NewCreation): Promise<PublicCreation>;
   /**
@@ -50,4 +59,14 @@ export interface CreationRepository {
    * moderation_status = AUTO_HIDE_MODERATION_STATUS. Rejects invalid_input "creationId" for a non-uuid. Never needs a token.
    */
   reportCreation(creationId: string): Promise<ReportOutcome>;
+  /** Per-zone row counts of `eventId`: every non-expired row, any moderation status; ascending zoneId; zones with rows only. */
+  zoneItemCounts(eventId: FestivalEventId): Promise<readonly ZoneItemCount[]>;
+  /** Every non-expired row of one zone (any moderation status), ordered createdAt then id. Server-only data. */
+  listZoneOccupants(query: ZoneQuery): Promise<readonly ZoneOccupant[]>;
+  /**
+   * Atomic compare-and-insert (owner decisions 4 and 25): writes the public and private rows only if the zone's current
+   * non-expired occupant ids equal `expectedOccupantIds` (as a set) and number fewer than ZONE_ITEM_CAP; otherwise
+   * { status: "zone_changed" } and nothing is written. Validates with validateGuardedNewCreation first.
+   */
+  insertCreationGuarded(input: GuardedNewCreation): Promise<GuardedInsertResult>;
 }

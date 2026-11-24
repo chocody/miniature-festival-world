@@ -29,3 +29,9 @@ function isJsonValueInner(value: unknown, stack: Set<object>): boolean {
 export function isJsonObject(value: unknown): value is JsonObject {
   return isPlainObject(value) && isJsonValueInner(value, new Set());
 }
+
+/** Deep copy of a JSON object, or null if `value` is not one (isJsonObject). Used to store a validated appearance. */
+export function cloneJsonObject(value: unknown): JsonObject | null {
+  if (!isJsonObject(value)) return null;
+  return structuredClone(value) as JsonObject;
+}

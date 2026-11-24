@@ -10,7 +10,7 @@ import {
   makePublicRow,
 } from "./__fixtures__/creations";
 import { CreationRepositoryError } from "./creationRepository";
-import { PUBLIC_CREATION_KEYS } from "./creationTypes";
+import { PUBLIC_CREATION_KEYS, type GuardedNewCreation } from "./creationTypes";
 import { createSupabaseCreationRepository } from "./supabaseCreationRepository";
 
 const KEY = "test-service-key";
@@ -330,5 +330,107 @@ describe("supabase repository: highestVisibleZoneId", () => {
     fetchMock.mockClear();
     await expect(repo.highestVisibleZoneId("nope" as never)).rejects.toMatchObject({ detail: "eventId" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("supabase repository: MFW-45 zone RPCs and guarded insert", () => {
+  const coord = { ...SPLINE_COORD_FIXTURE };
+  const guarded = (over: Partial<GuardedNewCreation> = {}): GuardedNewCreation => ({
+    ...makeNewCreation(),
+    createdAt: new Date("2026-11-24T12:00:00.000Z"),
+    expectedOccupantIds: [uuid(1), uuid(2)],
+    ...over,
+  });
+  const lastCall = (m: ReturnType<typeof make>["fetchMock"]) => m.mock.calls[0] as [RequestInfo | URL, RequestInit];
+
+  it("zone counts request and mapping", async () => {
+    const { fetchMock, repo } = make([{ zone_id: 1, item_count: 80 }, { zone_id: 2, item_count: 3 }]);
+    expect(await repo.zoneItemCounts("loy_krathong")).toEqual([
+      { zoneId: 1, itemCount: 80 },
+      { zoneId: 2, itemCount: 3 },
+    ]);
+    const [input, init] = lastCall(fetchMock);
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_zone_item_counts");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ p_event_id: "loy_krathong" });
+  });
+
+  it("zone counts fail closed on a bad row", async () => {
+    for (const body of [[{ zone_id: 0, item_count: 1 }], [{ zone_id: 1, item_count: 0 }], [{ zone_id: 1, item_count: 1 }, { zone_id: 1, item_count: 2 }], {}]) {
+      const { repo } = make(body);
+      await expect(repo.zoneItemCounts("loy_krathong")).rejects.toMatchObject({
+        code: "invalid_backend_response",
+        detail: "zone",
+      });
+    }
+  });
+
+  it("occupants request and mapping", async () => {
+    const { fetchMock, repo } = make([{ id: uuid(1), coord, created_at: "2026-11-24T12:00:00+00:00" }]);
+    const out = await repo.listZoneOccupants(Z1);
+    expect(out).toEqual([{ id: uuid(1), coord, createdAtMs: Date.parse("2026-11-24T12:00:00.000Z") }]);
+    const [input, init] = lastCall(fetchMock);
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_zone_occupants");
+    expect(JSON.parse(String(init.body))).toEqual({ p_event_id: "loy_krathong", p_zone_id: 1 });
+  });
+
+  it("occupants fail closed on a bad coord or duplicate id", async () => {
+    const good = { id: uuid(1), coord, created_at: "2026-11-24T12:00:00Z" };
+    for (const body of [[{ ...good, coord: { x: 1, y: 2, z: 3 } }], [good, good], "no"]) {
+      const { repo } = make(body);
+      await expect(repo.listZoneOccupants(Z1)).rejects.toMatchObject({ code: "invalid_backend_response", detail: "occupant" });
+    }
+  });
+
+  it("guarded insert request", async () => {
+    const { fetchMock, repo } = make([makePublicRow()]);
+    const result = await repo.insertCreationGuarded(guarded());
+    expect(result.status).toBe("inserted");
+    const [input, init] = lastCall(fetchMock);
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_insert_creation_guarded");
+    const text = String(init.body);
+    const body = JSON.parse(text) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(
+      [
+        "p_appearance",
+        "p_coord",
+        "p_created_at",
+        "p_event_id",
+        "p_expected_occupant_ids",
+        "p_expires_at",
+        "p_owner_token_hash",
+        "p_private_wish_key_id",
+        "p_private_wish_text",
+        "p_public_wish_text",
+        "p_zone_id",
+      ].sort(),
+    );
+    expect(body.p_created_at).toBe("2026-11-24T12:00:00.000Z");
+    expect(body.p_expected_occupant_ids).toEqual([uuid(1), uuid(2)]);
+    expect(body.p_owner_token_hash).toBe(OWNER_HASH_FIXTURE);
+    expect(text).not.toContain("SeCrEt");
+  });
+
+  it("guarded insert result mapping", async () => {
+    expect(await make([]).repo.insertCreationGuarded(guarded())).toEqual({ status: "zone_changed" });
+    await expect(make([makePublicRow(), makePublicRow()]).repo.insertCreationGuarded(guarded())).rejects.toMatchObject({ detail: "insert" });
+    await expect(make({}).repo.insertCreationGuarded(guarded())).rejects.toMatchObject({ detail: "insert" });
+    await expect(make([{ id: "x" }]).repo.insertCreationGuarded(guarded())).rejects.toMatchObject({ detail: "insert" });
+  });
+
+  it("guarded insert with invalid input sends no request", async () => {
+    const { fetchMock, repo } = make([]);
+    await expect(repo.insertCreationGuarded(guarded({ expectedOccupantIds: ["nope"] }))).rejects.toBeInstanceOf(CreationRepositoryError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("never reads the body of an error response", async () => {
+    const res = new Response(JSON.stringify({ hash: OWNER_HASH_FIXTURE }), { status: 409 });
+    const json = vi.spyOn(res, "json");
+    const text = vi.spyOn(res, "text");
+    const repo = createSupabaseCreationRepository({ url: URL_OK, serviceRoleKey: KEY, fetch: async () => res });
+    await expect(repo.insertCreationGuarded(guarded())).rejects.toMatchObject({ code: "backend_request_failed" });
+    expect(json).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
   });
 });
