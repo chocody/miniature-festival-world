@@ -3,7 +3,9 @@ import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
+import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
 import { FlowRoot } from "./FlowRoot";
+import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 
 vi.mock("@/components/canvas3d", async () => {
   const React = await import("react");
@@ -40,6 +42,20 @@ describe("FlowRoot", () => {
     expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows the ownership notice only in WRITE_WISH", () => {
+    render(<FlowRoot />);
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(window.localStorage.getItem(DEVICE_OWNER_TOKEN_STORAGE_KEY)).toBeNull();
   });
 
   it("clicking a Coming Soon festival keeps landing", () => {
