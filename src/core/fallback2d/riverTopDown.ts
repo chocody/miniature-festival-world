@@ -1,9 +1,14 @@
 import {
   type RiverLane,
+  type RiverLaneSet,
+  type RiverPlacementSource,
   type SplineLaneLocation,
   type SplinePathCoord,
+  type SplinePoseOut,
   type WorldXZ,
+  isValidRiverPlacement,
   locateOnLane,
+  splineCoordToPoseInto,
   splineCoordToWorld,
 } from "@/core/coordinates";
 
@@ -107,4 +112,52 @@ export function canvasToSplineLocation(
   projection: TopDownProjection,
 ): SplineLaneLocation {
   return locateOnLane(lane, canvasToWorldXZ(point, projection));
+}
+
+/** Mutable out-parameter for per-frame 2D drawing (MFW-33). Derived, NEVER persisted. */
+export interface CanvasPointOut {
+  x: number;
+  y: number;
+}
+
+export function createCanvasPointOut(): CanvasPointOut {
+  return { x: 0, y: 0 };
+}
+
+/** Allocation-free twin of worldToCanvas; bit-identical (same expression order). */
+export function worldToCanvasInto(point: WorldXZ, projection: TopDownProjection, out: CanvasPointOut): CanvasPointOut {
+  out.x = projection.offsetX + (point.x - projection.bounds.minX) * projection.scale;
+  out.y = projection.offsetY + (point.z - projection.bounds.minZ) * projection.scale;
+  return out;
+}
+
+/** Allocation-free twin of splineCoordToCanvas; bit-identical. `scratchPose` is caller-owned. */
+export function splineCoordToCanvasInto(
+  coord: SplinePathCoord,
+  lane: RiverLane,
+  createdAtMs: number,
+  nowMs: number,
+  projection: TopDownProjection,
+  out: CanvasPointOut,
+  scratchPose: SplinePoseOut,
+): CanvasPointOut {
+  splineCoordToPoseInto(coord, lane, createdAtMs, nowMs, scratchPose);
+  return worldToCanvasInto(scratchPose, projection, out);
+}
+
+/** 2D projection fitted to a whole lane set. */
+export function createLaneSetProjection(lanes: RiverLaneSet, viewport: CanvasViewport): TopDownProjection {
+  return createTopDownProjection(computeLaneBoundsXZ(lanes.lanes), viewport);
+}
+
+/** 2D twin of getRiverItemPositionAt: null for invalid input or an unknown lane. Not per-frame. */
+export function getRiverItemCanvasPositionAt(
+  item: RiverPlacementSource,
+  lanes: RiverLaneSet,
+  nowMs: number,
+  projection: TopDownProjection,
+): CanvasPoint | null {
+  if (!isValidRiverPlacement(item)) return null;
+  const lane = lanes.get(item.coord.laneId);
+  return lane ? splineCoordToCanvas(item.coord, lane, item.createdAtMs, nowMs, projection) : null;
 }

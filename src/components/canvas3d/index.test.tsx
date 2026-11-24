@@ -17,6 +17,7 @@ import {
 import { getPinchZoomFactor, type CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import {
   getSceneRenderSettings,
@@ -443,5 +444,28 @@ describe("customizer view handle and part-change bounce", () => {
     act(() => useDeviceStore.getState().setReducedMotion(false));
     act(() => void useBuilderStore.getState().chooseKrathong({ part: "base", value: "lotus_petal_01" }));
     expect(r3f.bounceStarts.at(-1)?.immediate).toBe(false);
+  });
+});
+
+describe("river flow in the scene", () => {
+  it("renders no river krathongs by default", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(container.querySelector('[name="river-flow"]')).toBeNull();
+  });
+
+  it("passes river items into the world-view group", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const riverItems = [
+      {
+        id: "a",
+        coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+        createdAtMs: 1_700_000_000_000,
+        appearance: DEFAULT_KRATHONG_APPEARANCE,
+      },
+    ];
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={riverItems} />);
+    const worldView = container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!;
+    expect(worldView.querySelector('[name="river-item-a"]')).not.toBeNull();
   });
 });

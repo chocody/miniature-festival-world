@@ -21,13 +21,32 @@ const RIVER_CENTERLINE: readonly WorldVec3[] = [
 /** Visible water channel. Width PLACEHOLDER (spec silent). */
 export const LOY_KRATHONG_RIVER_CHANNEL = { controlPoints: RIVER_CENTERLINE, width: 3.2 } as const;
 
+/** The river's only lane id (spec §4.1 "laneId … เช่น 1"). Lead design (open question 21). */
+export const LOY_KRATHONG_RIVER_LANE_ID = 1;
+
 /**
- * ASSUMED INTERFACE for MFW-24 (river lanes): MFW-24 owns these values and keeps this name/type.
- * Every lane must stay inside LOY_KRATHONG_RIVER_CHANNEL (riverLayout.test.ts). PLACEHOLDER (spec silent): one lane on the centreline.
+ * Width of the single wide lane (world units); lateralOffset ±0.5 ↔ ±width/2. Lead design (open question 21): the widest
+ * centred lane that keeps the pier tip (channel lateral half-width − overWaterLength = 1.25) outside the lane with a margin,
+ * and stays inside LOY_KRATHONG_RIVER_CHANNEL (half-width 1.6).
  */
-export const LOY_KRATHONG_RIVER_LANES: readonly RiverLaneDefinition[] = [
-  { laneId: 0, controlPoints: RIVER_CENTERLINE, width: 2.4 },
-];
+export const LOY_KRATHONG_RIVER_LANE_WIDTH = 2.4;
+
+/**
+ * River lanes (spec §4.1). Owner decision 21: ONE single wide lane; krathongs spread across it by lateralOffset.
+ * Values owned by MFW-24; name/type shared with MFW-27. Follows the channel centreline in xz, at the water surface in y
+ * (the krathong model origin, its base centre, floats on the water). Flow runs from the first control point to the last
+ * (+x): progress 0 = upstream end, 1 = downstream end; the % 1 wrap happens off-screen (open question 22).
+ * Guarded by riverLayout.test.ts (MFW-27) and loyKrathong.river.lanes.test.ts (MFW-24).
+ */
+export const LOY_KRATHONG_RIVER_LANES: readonly RiverLaneDefinition[] = Object.freeze([
+  Object.freeze({
+    laneId: LOY_KRATHONG_RIVER_LANE_ID,
+    width: LOY_KRATHONG_RIVER_LANE_WIDTH,
+    controlPoints: Object.freeze(
+      RIVER_CENTERLINE.map((p) => Object.freeze({ x: p.x, y: RIVER_WATER_SURFACE_Y, z: p.z })),
+    ),
+  }),
+]);
 
 const matte = (color: string, extra: Partial<MatteMaterialSpec> = {}): MatteMaterialSpec => ({
   color,
