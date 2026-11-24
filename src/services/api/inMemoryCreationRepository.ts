@@ -11,8 +11,18 @@ import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
 import type { OwnerTokenHash } from "@/services/auth";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
-import type { AppearanceJson, EncryptedPrivateWish, NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
-import { isFestivalEventId, isZoneId, validateNewCreation } from "./creationValidation";
+import type {
+  AppearanceJson,
+  EncryptedPrivateWish,
+  GuardedInsertResult,
+  GuardedNewCreation,
+  NewCreation,
+  PublicCreation,
+  ZoneItemCount,
+  ZoneOccupant,
+  ZoneQuery,
+} from "./creationTypes";
+import { isFestivalEventId, isZoneId, validateGuardedNewCreation, validateNewCreation } from "./creationValidation";
 
 export interface InMemoryCreationRepositoryOptions {
   /** Epoch ms clock; default Date.now. */
@@ -87,6 +97,16 @@ export function createInMemoryCreationRepository(
     return p !== undefined && p.moderationStatus === "approved" && p.reportCount < AUTO_HIDE_REPORT_THRESHOLD;
   }
 
+  const byCreatedThenId = (a: StoredPublicRow, b: StoredPublicRow): number =>
+    a.createdAtMs - b.createdAtMs || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+  /** Every non-expired row of a zone, any moderation status (occupancy, MFW-45 D2). */
+  function occupantRows(eventId: FestivalEventId, zoneId: number, nowMs: number): StoredPublicRow[] {
+    return [...publicRows.values()]
+      .filter((r) => r.eventId === eventId && r.zoneId === zoneId && r.expiresAtMs > nowMs)
+      .sort(byCreatedThenId);
+  }
+
   return {
     backend: "memory",
 
@@ -116,6 +136,62 @@ export function createInMemoryCreationRepository(
         moderationStatus: DEFAULT_MODERATION_STATUS,
       });
       return toPublic(publicRow);
+    },
+
+    async zoneItemCounts(eventId: FestivalEventId): Promise<readonly ZoneItemCount[]> {
+      if (!isFestivalEventId(eventId)) throw new CreationRepositoryError("invalid_input", "eventId");
+      const nowMs = now();
+      const counts = new Map<number, number>();
+      for (const row of publicRows.values()) {
+        if (row.eventId !== eventId || row.expiresAtMs <= nowMs) continue;
+        counts.set(row.zoneId, (counts.get(row.zoneId) ?? 0) + 1);
+      }
+      return Object.freeze(
+        [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([zoneId, itemCount]) => ({ zoneId, itemCount })),
+      );
+    },
+
+    async listZoneOccupants(query: ZoneQuery): Promise<readonly ZoneOccupant[]> {
+      if (!isFestivalEventId(query.eventId)) throw new CreationRepositoryError("invalid_input", "eventId");
+      if (!isZoneId(query.zoneId)) throw new CreationRepositoryError("invalid_input", "zoneId");
+      return occupantRows(query.eventId, query.zoneId, now()).map((row) => ({
+        id: row.id,
+        coord: structuredClone(row.coord),
+        createdAtMs: row.createdAtMs,
+      }));
+    },
+
+    async insertCreationGuarded(input: GuardedNewCreation): Promise<GuardedInsertResult> {
+      const v = validateGuardedNewCreation(input); // throws before anything is read or stored
+      const nowMs = now();
+      const current = occupantRows(v.eventId, v.zoneId, nowMs).map((r) => r.id).sort();
+      const expected = v.expectedOccupantIds.slice().sort();
+      const same = current.length === expected.length && current.every((id, i) => id === expected[i]);
+      if (!same || current.length >= ZONE_ITEM_CAP) return { status: "zone_changed" };
+      const id = newId();
+      if (!UUID_PATTERN.test(id) || publicRows.has(id)) {
+        throw new CreationRepositoryError("invalid_backend_response", "id");
+      }
+      const publicRow: StoredPublicRow = {
+        id,
+        eventId: v.eventId,
+        zoneId: v.zoneId,
+        appearance: v.appearance,
+        coord: v.coord,
+        publicWishText: v.publicWishText,
+        createdAtMs: v.createdAt.getTime(),
+        expiresAtMs: v.expiresAt.getTime(),
+      };
+      // No await between the comparison above and these two writes: atomic within one JS process.
+      publicRows.set(id, publicRow);
+      privateRows.set(id, {
+        creationId: id,
+        ownerTokenHash: v.ownerTokenHash,
+        privateWish: v.privateWish,
+        reportCount: 0,
+        moderationStatus: DEFAULT_MODERATION_STATUS,
+      });
+      return { status: "inserted", creation: toPublic(publicRow) };
     },
 
     async listPublicZone(query: ZoneQuery): Promise<readonly PublicCreation[]> {

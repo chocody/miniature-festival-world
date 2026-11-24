@@ -1,4 +1,6 @@
 import {
+  DEPLOYMENT_ENV,
+  PRODUCTION_DEPLOYMENT,
   SUPABASE_SERVICE_ROLE_KEY_ENV,
   SUPABASE_URL_ENV,
 } from "@/config/database.config";
@@ -23,4 +25,9 @@ let cached: CreationRepository | null = null;
 export function getCreationRepository(): CreationRepository {
   cached ??= createCreationRepositoryFromEnv(process.env);
   return cached;
+}
+
+/** True on a Vercel production deployment. The create route never writes to the in-memory backend there (D7). */
+export function isProductionDeployment(env: BackendEnv): boolean {
+  return env[DEPLOYMENT_ENV]?.trim() === PRODUCTION_DEPLOYMENT;
 }

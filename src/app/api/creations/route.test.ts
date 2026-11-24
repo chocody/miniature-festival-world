@@ -117,6 +117,9 @@ describe("GET /api/creations", () => {
       insertCreation: () => Promise.reject(new Error("unused")),
       reportCreation: async (): Promise<ReportOutcome> => "ignored",
       highestVisibleZoneId: () => Promise.reject(new Error("unused")),
+      zoneItemCounts: async () => [],
+      listZoneOccupants: async () => [],
+      insertCreationGuarded: async () => ({ status: "zone_changed" as const }),
     };
     const res = await call("event=loy_krathong&zone=1", () => failing);
     expect(res.status).toBe(503);

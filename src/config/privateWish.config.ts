@@ -10,3 +10,22 @@ export const AES_GCM_TAG_BYTES = 16;
 export const PRIVATE_WISH_CIPHERTEXT_PATTERN = /^v1\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22,}$/;
 /** Key id stored next to each ciphertext (lowercase, 1–32 chars). Same regex text is in the SQL check constraint. */
 export const PRIVATE_WISH_KEY_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+/** Server-only env var names (never NEXT_PUBLIC). Key = standard base64 of 32 random bytes ("openssl rand -base64 32"). */
+export const PRIVATE_WISH_KEY_ENV = "PRIVATE_WISH_KEY";
+/** Key id stored next to every ciphertext (owner decision 2); must match PRIVATE_WISH_KEY_ID_PATTERN. */
+export const PRIVATE_WISH_KEY_ID_ENV = "PRIVATE_WISH_KEY_ID";
+/** AES-256 key length. */
+export const AES_256_KEY_BYTES = 32;
+/** GCM tag length in bits (= AES_GCM_TAG_BYTES × 8). */
+export const AES_GCM_TAG_LENGTH_BITS = 128;
+/** Standard base64 (with padding) of exactly 32 bytes. */
+export const PRIVATE_WISH_KEY_BASE64_PATTERN = /^[A-Za-z0-9+/]{43}=$/;
+/** Additional authenticated data = "<label>|<version>|<keyId>|<owner hash>": binds a ciphertext to its key id and owner. */
+export const PRIVATE_WISH_AAD_LABEL = "mfw:private-wish";
+export const PRIVATE_WISH_AAD_SEPARATOR = "|";
+/**
+ * Key id of the per-process random key used ONLY with the in-memory backend when no key env is set (CI, previews).
+ * In-memory rows die with the process, and so does this key. Reserved: the env key id may not use it.
+ */
+export const PRIVATE_WISH_EPHEMERAL_KEY_ID = "ephemeral";

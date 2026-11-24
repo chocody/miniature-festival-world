@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreationRepositoryError } from "./creationRepository";
-import { createCreationRepositoryFromEnv } from "./creationRepositoryFactory";
+import { createCreationRepositoryFromEnv, isProductionDeployment } from "./creationRepositoryFactory";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -53,5 +53,14 @@ describe("getCreationRepository", () => {
     const first = mod.getCreationRepository();
     expect(first.backend).toBe("memory");
     expect(mod.getCreationRepository()).toBe(first);
+  });
+});
+
+describe("isProductionDeployment", () => {
+  it("is true only for VERCEL_ENV=production", () => {
+    expect(isProductionDeployment({ VERCEL_ENV: "production" })).toBe(true);
+    expect(isProductionDeployment({ VERCEL_ENV: "preview" })).toBe(false);
+    expect(isProductionDeployment({ VERCEL_ENV: " " })).toBe(false);
+    expect(isProductionDeployment({})).toBe(false);
   });
 });

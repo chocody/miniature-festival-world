@@ -76,3 +76,28 @@ export interface ZoneDirectoryResponse {
   /** Open zones = highest zone id with a visible creation, at least 1. Zones are 1..zoneCount. */
   readonly zoneCount: number;
 }
+
+/** Rows of one zone, counted for zone assignment. Includes hidden/flagged rows; excludes expired ones. Server-only. */
+export interface ZoneItemCount {
+  readonly zoneId: number; // isZoneId
+  readonly itemCount: number; // safe integer >= 1
+}
+
+/** One stored krathong of a zone, for the collision re-check. Server-only: never sent in any response. */
+export interface ZoneOccupant {
+  readonly id: string; // lowercase uuid
+  readonly coord: PersistableCoord;
+  readonly createdAtMs: number; // epoch ms (open question 6)
+}
+
+/** Write input of the compare-and-insert path (MFW-45). The raw owner token never reaches it. */
+export interface GuardedNewCreation extends NewCreation {
+  /** Server time; stored as created_at and used for the collision check. expiresAt must be later. */
+  readonly createdAt: Date;
+  /** Ids of the zone's occupants the server placed against (unique uuids, fewer than ZONE_ITEM_CAP). */
+  readonly expectedOccupantIds: readonly string[];
+}
+
+export type GuardedInsertResult =
+  | { readonly status: "inserted"; readonly creation: PublicCreation }
+  | { readonly status: "zone_changed" }; // the zone changed or is full: re-read and retry
