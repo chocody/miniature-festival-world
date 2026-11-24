@@ -961,11 +961,12 @@ use `vi.useFakeTimers({ toFake: ["Date"], now: CREATE_NOW_MS })` and `vi.useReal
     stubbing an invalid key and re-importing, `"supabase"` rejects, and a second call retries (not cached). `vi.unstubAllEnvs()` in `afterEach`.
 
 ### `src/services/api/createCreationRequest.test.ts` (node)
-1. `makeCreateBody()` → ok; `wishText` `"  ขอให้ทุกคนมีความสุข  "` → trimmed; private body → `wishVisibility "private"`; result keys equal
+1. `makeCreateBody()` → ok; `wishText` `"  ขอให้ทุกคนมีความสุข  "` is kept as sent (the handler trims through `evaluateWishDraft`); `wishText ""`
+   and `"   "` also parse ok (emptiness is the handler's 400); private body → `wishVisibility "private"`; result keys equal
    `CREATE_CREATION_BODY_KEYS` (sorted).
 2. Field table (`{ ok: false, field }`): `null`, `[]`, `"x"` → body; extra `x`, `zoneId: 1`, `expiresAt`, `createdAt`, `ownerTokenHash` → body;
    raw JSON `{"__proto__":{},...valid keys}` parsed with `JSON.parse` → body; missing each of the six keys → that key; `eventId "nope"`,
-   `"LOY_KRATHONG"` → eventId; coord with `x: 1`, `{ x:1, y:2, z:3 }`, `spawnProgress 1.5`, `mode "CURVE"` → coord; `wishText ""`, `"   "`, `5` → wishText;
+   `"LOY_KRATHONG"` → eventId; coord with `x: 1`, `{ x:1, y:2, z:3 }`, `spawnProgress 1.5`, `mode "CURVE"` → coord; `wishText 5`, `null`, `["x"]` → wishText;
    `wishVisibility "friends"`, `"PUBLIC"` → wishVisibility; `ownerToken "abc"`, `sha256Hex("x")`, `"A".repeat(44)`, `5` → ownerToken.
 3. Order: a body with an extra key AND a bad eventId → `body`.
 
@@ -998,6 +999,9 @@ A fake `PlacementSource` built from tables records calls. `occupantAt(id, progre
 3. Coord not on the lane (`laneId 0`) → 400 `coord`. Appearance with an extra key `glow`, `candleColor "#000000"`, or `[]` → 400 `appearance`.
 4. `content-type: text/plain` → 415; declared `content-length: 20000` → 413; an actual body of `CREATE_CREATION_REQUEST_MAX_BYTES + 1` bytes
    (wish padded) with no declared length → 413; `rawBody "{"` → 400 `body`.
+4b. Wish text (MFW-21 rules on the server): `wishText ""` / `"   "` → 400 `wishText`; `"ก".repeat(WISH_TEXT_MAX_LENGTH + 1)` → 400 `wishText`
+   for both visibilities; `"ก".repeat(WISH_TEXT_MAX_LENGTH)` → 201; `"  " + "ก".repeat(WISH_TEXT_MAX_LENGTH) + "  "` → 201 (measured after trim);
+   a too-long public text containing `"โทร 0812345678"` → 400 `wishText` (length first).
 5. Event closed → 409 `{ error: "event_closed" }`, nothing inserted: `eventId "christmas"`; Loy Krathong with `t = computeCreationExpiresAt("loy_krathong")!.getTime()`;
    `getPlacementStrategy: () => null`.
 6. Bad `ownerToken: "not-a-valid-token-value"` → 400 `{ error: "invalid_body", field: "ownerToken" }`, response text does not contain `"not-a-valid"`.
@@ -1015,7 +1019,10 @@ A fake `PlacementSource` built from tables records calls. `occupantAt(id, progre
     text contains neither the wish, the ciphertext nor `TEST_KEY_ID`.
 11. Private wish with PII/profanity (`"โทร 0812345678"`, `"fuck you"`) → 201 (owner decision 13: not moderated).
 12. Public wish blocked: for `"โทร 0812345678"`, `"somchai@gmail.com"`, `"fuck you"` → 422 and body `toEqual(toModerationBlockedBody(checkPublicWish(text).reasons))`
-    (contains `"phone"` / `"email"` / `"profanity"`); text does not contain the wish; `inserts.length === 0`; `getCipher` spy not called.
+    (contains `"phone"` / `"email"` / `"profanity"`); `moderationReasonsFromServerBody(body)` (MFW-21) returns the same reasons; text does not
+    contain the wish; `inserts.length === 0`; `getCipher` spy not called.
+12b. Same columns as the client: for a public and a private request, the captured `publicWishText` / decrypted private text equal
+    `toWishColumns(evaluateWishDraft({ text, visibility }).wish)` (`publicWishText` / `privateWishPlaintext`).
 13. Public: `inserts[0].privateWish === null`, `publicWishText` is the trimmed text; `getCipher` not called.
 14. `getCipher` rejects (`PrivateWishKeyError("missing")`) on a private wish → 503 `{ error: "unavailable" }`, nothing inserted. A public wish still → 201.
 
@@ -1049,6 +1056,12 @@ at `CREATE_NOW_MS`; `const { GET, POST } = await import("./route")`.
 2. Private body → 201 (ephemeral key) with `publicWishText null`; the text contains none of `PRIVATE_NAMES` and not `"ephemeral"`.
 3. `VERCEL_ENV=production` (fresh module import) → POST 503 `{ error: "unavailable" }`.
 4. `Object.keys(await import("./route")).sort()` equals `["GET", "POST"]`.
+
+### `src/config/creationWrite.config.test.ts` (node)
+1. `CREATE_CREATION_MAX_ATTEMPTS` is a positive integer.
+2. "the body cap fits a maximum-length wish": `JSON.stringify(makeCreateBody({ wishText: "ก".repeat(WISH_TEXT_MAX_LENGTH) }))` encoded as UTF-8 is
+   `<= CREATE_CREATION_REQUEST_MAX_BYTES`, and so is the same JSON with every non-ASCII character written as a `\uXXXX` escape (the worst case a
+   client serializer may send). If the owner raises `WISH_TEXT_MAX_LENGTH` and this fails, raise the cap in the same PR.
 
 ### Modified test files (add cases only)
 - `json.test.ts`: `cloneJsonObject` returns a deep copy (`not.toBe`, nested arrays copied) and `null` for `[]`, `{ a: NaN }`, a class instance.
@@ -1110,6 +1123,9 @@ C — AC2/AC5 cases, route.post, e2e; D — migration test (service_role only, n
 
 ## Do NOT
 
+- Do not define a second wish visibility type, visibility list, length limit or trim rule, and do not edit `src/config/wish.config.ts` or
+  `src/services/api/wishPayload.ts` (MFW-21 owns them). Do not call `checkPublicWish` directly in the handler; use `evaluateWishDraft`.
+
 - Do not build the client submit / fetch helper, the release flow or the bump animation (MFW-23), the WishModal (MFW-21), the ownership-proof or
   private-wish read endpoint and key rotation keyring (MFW-31), report changes (MFW-13), zone UI or pagination (MFW-25), a deletion job, rate limiting,
   idempotency keys or CAPTCHAs.
@@ -1135,7 +1151,7 @@ C — AC2/AC5 cases, route.post, e2e; D — migration test (service_role only, n
   `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium_headless_shell pnpm e2e`. No Supabase, private-wish-key or `VERCEL_ENV` variables in your shell.
 - `pnpm build` lists `ƒ /api/creations`.
 - Delete `playwright-report/` and `test-results/` before committing. Never commit `.next/` or `*.tsbuildinfo`. If `next dev` rewrote `AGENTS.md`, leave it.
-- Branch `feat/MFW-45-create-creation-api-server-write-path` from the latest `main`, **after MFW-13 and MFW-25 are merged**.
+- Branch `feat/MFW-45-create-creation-api-server-write-path` from the latest `main`, **after MFW-25 and MFW-21 are merged** (MFW-13 is on `main`).
 - Conventional commit(s) with the key, e.g. `feat(api): create-creation write path with encryption, moderation and zone placement MFW-45`.
 - PR title = the commit subject. English body: link to MFW-45; each AC as a checklist item with the file/test proving it; Decisions D1–D12; Open questions;
   test plan (five commands and results); every ASSUMED INTERFACE difference found; **owner setup steps**: (1) apply the new migration on staging after the
@@ -1150,7 +1166,7 @@ C — AC2/AC5 cases, route.post, e2e; D — migration test (service_role only, n
 | Export | Path | Signature | Used by |
 |---|---|---|---|
 | `POST /api/creations` | `src/app/api/creations/route.ts` | body `CreateCreationRequestBody` (JSON) → 201 `{ creation: PublicCreation }` · 400 `{ error: "invalid_body", field }` · 409 `{ error: "event_closed" }` · 413 · 415 · 422 `ModerationBlockedBody` · 503 `{ error: "unavailable" }`; `Cache-Control: no-store` | MFW-23 (submit, then `loadZone(creation.zoneId)`; render with the returned coord/createdAt), MFW-30 (store `creation.id`), MFW-21 (parses 422 with `parseModerationBlockedBody`) |
-| `CreateCreationRequestBody`, `CreateCreationResponseBody`, `CreateCreationErrorBody`, `CreateCreationField`, `WishVisibility`, `WISH_VISIBILITIES`, `CREATE_CREATION_BODY_KEYS` | `@/services/api` (client-safe barrel) | Step 11 | MFW-21, MFW-23 |
+| `CreateCreationRequestBody`, `CreateCreationResponseBody`, `CreateCreationErrorBody`, `CreateCreationField`, `CREATE_CREATION_BODY_KEYS` (visibility and wish rules: MFW-21's `wish.config.ts` / `wishPayload.ts`) | `@/services/api` (client-safe barrel) | Step 11 | MFW-21, MFW-23 |
 | `handleCreateCreation`, `CreateCreationDeps`, `getDefaultCreateCreationDeps` | `@/services/api/createCreation` (server) | Step 14 | route; tests |
 | `parseCreateCreationRequest` | `@/services/api/createCreationRequest` | Step 12 | handler |
 | `CreationPlacementStrategy`, `PlacementSource`, `PlacementResult`, `createRiverPlacementStrategy`, `getCreationPlacementStrategy` | `@/services/api/creationPlacement` | Step 13 | Christmas card (register a cylindrical strategy) |
@@ -1161,7 +1177,7 @@ C — AC2/AC5 cases, route.post, e2e; D — migration test (service_role only, n
 | `bytesToBase64Url`, `base64UrlToBytes`, `base64ToBytes` | `@/services/api/base64url` | Step 4 | MFW-31 |
 | `cloneJsonObject` | `@/services/api/json` | `(v: unknown) => JsonObject \| null` | write paths |
 | `isProductionDeployment` | `@/services/api/creationRepositoryFactory` | `(env) => boolean` | other write routes |
-| `CREATE_CREATION_REQUEST_MAX_BYTES`, `CREATE_CREATION_MAX_ATTEMPTS` | `@/config/creationWrite.config` | `16_384`, `3` | — |
+| `CREATE_CREATION_REQUEST_MAX_BYTES`, `CREATE_CREATION_MAX_ATTEMPTS` | `@/config/creationWrite.config` | `4_096`, `3` | — |
 | `PRIVATE_WISH_KEY_ENV`, `PRIVATE_WISH_KEY_ID_ENV`, `AES_256_KEY_BYTES`, `AES_GCM_TAG_LENGTH_BITS`, `PRIVATE_WISH_KEY_BASE64_PATTERN`, `PRIVATE_WISH_AAD_LABEL`, `PRIVATE_WISH_AAD_SEPARATOR`, `PRIVATE_WISH_EPHEMERAL_KEY_ID` | `@/config/privateWish.config` | Step 1 | MFW-31 |
 | DB: `mfw_zone_item_counts(text)`, `mfw_zone_occupants(text, integer)`, `mfw_insert_creation_guarded(…, uuid[])` | `supabase/migrations/20261124020000_mfw45_guarded_creation_insert.sql` | Step 2; service_role only | Supabase repository |
 | Test fixtures (`OWNER_TOKEN_FIXTURE`, `makeCreateBody`, `makeCreateRequest`, `makeTestCipher`, `recordingRepository`, `barrierOnZoneCounts`, `CREATE_NOW_MS`) | `@/services/api/__fixtures__/createCreation` | Step 17 | MFW-23 / MFW-31 tests |
@@ -1173,16 +1189,15 @@ Product decisions only. This card ships the default listed under each one; each 
 1. **Abuse posture of the create endpoint.** Anyone with a valid-looking token (the client makes its own) can create unlimited creations and open zones. Default:
    no rate limit or per-device cap for the private test. Options: (a) default; (b) Vercel firewall / rate-limit rules before Christmas; (c) a per-token-hash
    creation cap (needs an owner number); (d) bot protection on release.
-2. **Maximum wish length** (still open from MFW-12 OQ 2 / MFW-13 OQ 6). Default: no character limit; only the technical 16 KiB body cap (about 5 000 Thai characters).
-   Options: a per-field character cap from the owner, enforced here and in the WishModal (MFW-21).
-3. **Must every creation have a wish?** Default: `wishText` is required and non-blank, for both visibilities. Option: allow a krathong without a wish
-   (both wish columns null; the DB already allows it).
-4. **When do writes close for an event?** Default: open while the feature flag is on **and** before `expires_at` (festival end + 30 days); 409 `event_closed`
+2. **When do writes close for an event?** Default: open while the feature flag is on **and** before `expires_at` (festival end + 30 days); 409 `event_closed`
    otherwise. So Loy Krathong keeps accepting releases after 24 Nov until the owner turns its flag off (OQ 19). Options: (a) default; (b) close at
    `FESTIVAL_ENDS_AT`; (c) a separate write window per event in config.
-5. **Do hidden / flagged krathongs keep their river spot and count toward the 80?** Default: yes (they stay "occupied" until deleted), so restoring one can
+3. **Do hidden / flagged krathongs keep their river spot and count toward the 80?** Default: yes (they stay "occupied" until deleted), so restoring one can
    never overfill a zone or overlap. Visible effect: a zone with hidden items shows fewer than 80 while new releases go to the next zone. Option: free the
    spot and the slot when an item is hidden (then un-hiding needs its own re-check).
+
+Not reopened here: the wish length (`WISH_TEXT_MAX_LENGTH = 280` is a PLACEHOLDER owned by MFW-21 Open question 1; this server enforces whatever value
+that config holds) and "a wish is required" (MFW-21's `text_empty` rule, which this server applies too).
 
 ## Decisions
 
@@ -1201,14 +1216,17 @@ Product decisions only. This card ships the default listed under each one; each 
   vanishing. GET keeps MFW-12's behaviour.
 - **D8 — The client's coord is a desired spot; the server re-reads it at server time.** `spawnProgress`/`lateralOffset` are taken as the spot at the server's
   `createdAt`, the stored `created_at` is that same instant (ms), and `speedFactor` is forced. Client clock skew cannot cause overlap.
-- **D9 — Request rules:** JSON content type (forces a CORS preflight, as in MFW-13), 16 KiB body cap, exact six keys, unknown keys → `field: "body"` without
-  echoing the key, wish trimmed, errors carry only a field name. 409 for closed events, 422 for moderation (MFW-13 contract), 503 for everything internal.
-- **D10 — Validation order** (shape → event open → coord on a lane → appearance → moderation → backend) so cheap static checks run before any I/O, and the
+- **D9 — Request rules:** JSON content type (forces a CORS preflight, as in MFW-13), 4 KiB body cap (a technical bound that a test keeps above a
+  maximum-length, JSON-escaped wish), exact six keys, unknown keys → `field: "body"` without echoing the key, errors carry only a field name. 409 for closed events, 422 for moderation (MFW-13 contract), 503 for everything internal.
+- **D10 — Validation order** (shape → event open → coord on a lane → appearance → wish length → moderation → backend) so cheap static checks run before any I/O, and the
   cipher/hash run only for requests that will be written.
 - **D11 — Per-event placement registry** (`getCreationPlacementStrategy`), like MFW-19's appearance registry. Only Loy Krathong is registered (row 16); an
   unregistered event is closed (409).
 - **D12 — Handler logic lives in `src/services/api/createCreation.ts`; `route.ts` only delegates** (route files may export only handlers; the private-name scanner
   forbids those names in `src/app/api`).
+- **D13 — The wish rules are MFW-21's shared contract, not a second copy.** The server parses only types (`typeof wishText === "string"`,
+  `isWishVisibility`), then calls `evaluateWishDraft` (trim, non-empty, `WISH_TEXT_MAX_LENGTH`, public guard) and `toWishColumns` (exactly one
+  column). The WishModal and the server can therefore never disagree. Empty or too-long text → 400 `wishText` before moderation, `moderation_blocked` → 422.
 
 ## Out of scope
 
@@ -1227,7 +1245,7 @@ migration and setting up staging (OQ 17), Christmas placement (cylindrical) — 
 - **No idempotency:** a client retry after a lost 201 creates a second krathong. Follow-up (needs a contract change: an optional client request id).
 - **Read cost:** each create reads the counts plus the occupants of the first non-full zone (usually one zone, ≤ 79 rows). Fine for the private test.
 - **Ephemeral key in previews** means private wishes there are unreadable after a cold start, like the in-memory rows themselves. Never used with Supabase.
-- **Interface growth:** three new `CreationRepository` members break typed test doubles in MFW-12/13/25 tests (stubs listed in Step 6). MFW-13/25 may land with
+- **Interface growth:** three new `CreationRepository` members break typed test doubles in MFW-12/13/25 tests (stubs listed in Step 6). MFW-25/21 may land with
   different names; adapt and list differences in the PR.
 - **The e2e success test is conditional:** after Loy Krathong writes close (flag off or expiry 2026-12-25) it asserts 409 instead of 201. The success path is
   fully covered by unit tests with an injected clock.
