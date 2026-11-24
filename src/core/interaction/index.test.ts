@@ -1,5 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { createInputSeparator, getInteractionMode, isCameraLocked } from "./index";
+import {
+  CUSTOMIZE_ROTATE_STEP_RADIANS,
+  CUSTOMIZE_ZOOM_STEP_SCALE,
+  PINCH_ZOOM_MAX,
+  PINCH_ZOOM_MIN,
+  ROTATION_RADIANS_PER_PIXEL,
+} from "@/config/interaction.config";
+import {
+  createInputSeparator,
+  getInteractionMode,
+  getRotationAfterDrag,
+  getRotationAfterStep,
+  getZoomFactorAfterStep,
+  isCameraLocked,
+} from "./index";
 
 describe("interaction mode routing", () => {
   it.each([
@@ -64,5 +78,36 @@ describe("interaction mode routing", () => {
     input.pointerDown({ pointerId: 1, x: 0, y: 0, time: 0, target: "water" });
     input.pointerUp({ pointerId: 1, x: 0, y: 0, time: 400, target: "water" });
     expect(actions).not.toHaveBeenCalled();
+  });
+});
+
+describe("customize view steps", () => {
+  it("drag yaw uses the per-pixel formula", () => {
+    expect(getRotationAfterDrag(0, 20)).toBeCloseTo(20 * ROTATION_RADIANS_PER_PIXEL, 9);
+  });
+
+  it("rotate steps add and subtract the step", () => {
+    expect(getRotationAfterStep(0, 1)).toBeCloseTo(CUSTOMIZE_ROTATE_STEP_RADIANS, 9);
+    expect(getRotationAfterStep(1, -1)).toBeCloseTo(1 - CUSTOMIZE_ROTATE_STEP_RADIANS, 9);
+  });
+
+  it("zoom steps multiply and divide by the step scale", () => {
+    expect(getZoomFactorAfterStep(1, 1)).toBeCloseTo(CUSTOMIZE_ZOOM_STEP_SCALE, 9);
+    expect(getZoomFactorAfterStep(1, -1)).toBeCloseTo(1 / CUSTOMIZE_ZOOM_STEP_SCALE, 9);
+  });
+
+  it("zoom steps clamp like pinch", () => {
+    let zoomIn = 1;
+    let zoomOut = 1;
+    for (let i = 0; i < 10; i += 1) {
+      zoomIn = getZoomFactorAfterStep(zoomIn, 1);
+      zoomOut = getZoomFactorAfterStep(zoomOut, -1);
+    }
+    expect(zoomIn).toBe(PINCH_ZOOM_MAX);
+    expect(zoomOut).toBe(PINCH_ZOOM_MIN);
+  });
+
+  it("zoom in then out is the identity inside the bounds", () => {
+    expect(getZoomFactorAfterStep(getZoomFactorAfterStep(1, 1), -1)).toBeCloseTo(1, 9);
   });
 });

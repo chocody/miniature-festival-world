@@ -13,3 +13,8 @@ export const RITUAL_CHIP_MIN_PERCENT = 8;
 export const RITUAL_CHIP_MAX_PERCENT = 92;
 /** px delta / viewport size × PERCENT_SCALE = percent delta. */
 export const PERCENT_SCALE = 100;
+
+/** One tap on หมุนซ้าย / หมุนขวา turns the krathong by this much (CUSTOMIZE). PLACEHOLDER (spec silent): 8 taps = one turn. */
+export const CUSTOMIZE_ROTATE_STEP_RADIANS = Math.PI / 4;
+/** One tap on ซูมเข้า multiplies the zoom factor by this, ซูมออก divides by it; clamped to PINCH_ZOOM_MIN..MAX. PLACEHOLDER (spec silent). */
+export const CUSTOMIZE_ZOOM_STEP_SCALE = 1.25;
