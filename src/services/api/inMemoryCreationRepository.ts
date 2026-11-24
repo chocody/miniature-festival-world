@@ -80,6 +80,13 @@ export function createInMemoryCreationRepository(
   const publicRows = new Map<string, StoredPublicRow>();
   const privateRows = new Map<string, StoredPrivateRow>();
 
+  /** Public-read visibility: not expired, approved and below the auto-hide report threshold. */
+  function isVisible(row: StoredPublicRow, nowMs: number): boolean {
+    if (row.expiresAtMs <= nowMs) return false;
+    const p = privateRows.get(row.id);
+    return p !== undefined && p.moderationStatus === "approved" && p.reportCount < AUTO_HIDE_REPORT_THRESHOLD;
+  }
+
   return {
     backend: "memory",
 
@@ -116,14 +123,21 @@ export function createInMemoryCreationRepository(
       if (!isZoneId(query.zoneId)) throw new CreationRepositoryError("invalid_input", "zoneId");
       const nowMs = now();
       return [...publicRows.values()]
-        .filter((r) => r.eventId === query.eventId && r.zoneId === query.zoneId && r.expiresAtMs > nowMs)
-        .filter((r) => {
-          const p = privateRows.get(r.id);
-          return p !== undefined && p.moderationStatus === "approved" && p.reportCount < AUTO_HIDE_REPORT_THRESHOLD;
-        })
+        .filter((r) => r.eventId === query.eventId && r.zoneId === query.zoneId && isVisible(r, nowMs))
         .sort((a, b) => a.createdAtMs - b.createdAtMs || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         .slice(0, ZONE_ITEM_CAP)
         .map(toPublic);
+    },
+
+    async highestVisibleZoneId(eventId: FestivalEventId): Promise<number | null> {
+      if (!isFestivalEventId(eventId)) throw new CreationRepositoryError("invalid_input", "eventId");
+      const nowMs = now();
+      let highest: number | null = null;
+      for (const row of publicRows.values()) {
+        if (row.eventId !== eventId || !isVisible(row, nowMs)) continue;
+        if (highest === null || row.zoneId > highest) highest = row.zoneId;
+      }
+      return highest;
     },
 
     setModeration(id: string, patch: CreationModerationPatch): boolean {

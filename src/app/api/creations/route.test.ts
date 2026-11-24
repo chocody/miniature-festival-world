@@ -116,6 +116,7 @@ describe("GET /api/creations", () => {
       listPublicZone: () => Promise.reject(new Error(`boom ${OWNER_HASH_FIXTURE}`)),
       insertCreation: () => Promise.reject(new Error("unused")),
       reportCreation: async (): Promise<ReportOutcome> => "ignored",
+      highestVisibleZoneId: () => Promise.reject(new Error("unused")),
     };
     const res = await call("event=loy_krathong&zone=1", () => failing);
     expect(res.status).toBe(503);

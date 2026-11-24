@@ -69,3 +69,10 @@ export type ZoneQueryField = "event" | "zone";
 export type ApiErrorBody =
   | { readonly error: "invalid_query"; readonly field: ZoneQueryField }
   | { readonly error: "unavailable" };
+
+/** Body of GET /api/zones (200). Counts only; never item data. */
+export interface ZoneDirectoryResponse {
+  readonly eventId: FestivalEventId;
+  /** Open zones = highest zone id with a visible creation, at least 1. Zones are 1..zoneCount. */
+  readonly zoneCount: number;
+}

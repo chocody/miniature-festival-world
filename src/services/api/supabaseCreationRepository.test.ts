@@ -285,3 +285,50 @@ describe("supabase repository: report and moderation backstop (MFW-13)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("supabase repository: highestVisibleZoneId", () => {
+  it("sends the explicit-column request", async () => {
+    const { fetchMock, repo } = make([{ zone_id: 4 }]);
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    const url = new URL(String(input));
+    expect(url.pathname).toBe("/rest/v1/creations_public_visible");
+    expect(url.searchParams.get("select")).toBe("zone_id");
+    expect(url.searchParams.get("event_id")).toBe("eq.loy_krathong");
+    expect(url.searchParams.get("order")).toBe("zone_id.desc");
+    expect(url.searchParams.get("limit")).toBe("1");
+    expect(init.method).toBe("GET");
+    expect(init.cache).toBe("no-store");
+    const headers = new Headers(init.headers);
+    expect(headers.get("apikey")).toBe(KEY);
+    expect(headers.get("authorization")).toBe(`Bearer ${KEY}`);
+  });
+  it("maps an empty list to null", async () => {
+    const { repo } = make([]);
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBeNull();
+  });
+  it("rejects unusable rows and bodies", async () => {
+    for (const body of [[{ zone_id: 0 }], [{}]]) {
+      const { repo } = make(body);
+      await expect(repo.highestVisibleZoneId("loy_krathong")).rejects.toMatchObject({
+        code: "invalid_backend_response",
+        detail: "zone",
+      });
+    }
+    const { repo } = make({});
+    await expect(repo.highestVisibleZoneId("loy_krathong")).rejects.toMatchObject({ detail: "list" });
+  });
+  it("does not read a non-2xx body and rejects an unknown event without a request", async () => {
+    const json = vi.fn();
+    const text = vi.fn();
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 400, json, text, body: { cancel: async () => undefined } }) as unknown as Response);
+    const repo = createSupabaseCreationRepository({ url: URL_OK, serviceRoleKey: KEY, fetch: fetchMock });
+    await expect(repo.highestVisibleZoneId("loy_krathong")).rejects.toMatchObject({ code: "backend_request_failed" });
+    expect(json).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+    fetchMock.mockClear();
+    await expect(repo.highestVisibleZoneId("nope" as never)).rejects.toMatchObject({ detail: "eventId" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

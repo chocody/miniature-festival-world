@@ -15,6 +15,7 @@ import {
   TIER_BUDGETS,
   TIER_SETTLE_MS,
 } from "./performance.config";
+import { ZONE_ITEM_CAP } from "./world.config";
 
 describe("performance.config (owner numbers, open question #5)", () => {
   it("has the owner thresholds", () => {
@@ -29,13 +30,26 @@ describe("performance.config (owner numbers, open question #5)", () => {
   });
   it("has the owner budgets, frozen", () => {
     expect(TIER_BUDGETS).toEqual({
-      HIGH: { pixelRatioCap: 2, shadows: true, maxTextureSize: 2048 },
-      MEDIUM: { pixelRatioCap: 1.5, shadows: false, maxTextureSize: 1024 },
-      LOW: { pixelRatioCap: 1, shadows: false, maxTextureSize: 512 },
+      HIGH: { pixelRatioCap: 2, shadows: true, maxTextureSize: 2048, riverItemCap: 80, riverItemCastShadow: true },
+      MEDIUM: { pixelRatioCap: 1.5, shadows: false, maxTextureSize: 1024, riverItemCap: 48, riverItemCastShadow: false },
+      LOW: { pixelRatioCap: 1, shadows: false, maxTextureSize: 512, riverItemCap: 24, riverItemCastShadow: false },
     });
     expect(Object.isFrozen(TIER_BUDGETS)).toBe(true);
     expect(Object.isFrozen(TIER_BUDGETS.HIGH)).toBe(true);
     expect(Object.isFrozen(STEP_DOWN_FPS_THRESHOLD)).toBe(true);
+  });
+  it("river budget (lead PLACEHOLDER, MFW-25)", () => {
+    for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) {
+      const cap = TIER_BUDGETS[tier].riverItemCap;
+      expect(Number.isSafeInteger(cap)).toBe(true);
+      expect(cap).toBeGreaterThanOrEqual(1);
+      expect(cap).toBeLessThanOrEqual(ZONE_ITEM_CAP);
+    }
+    expect(TIER_BUDGETS.HIGH.riverItemCap).toBeGreaterThanOrEqual(TIER_BUDGETS.MEDIUM.riverItemCap);
+    expect(TIER_BUDGETS.MEDIUM.riverItemCap).toBeGreaterThanOrEqual(TIER_BUDGETS.LOW.riverItemCap);
+    expect(TIER_BUDGETS.LOW.riverItemCap).toBeLessThan(ZONE_ITEM_CAP);
+    expect(TIER_BUDGETS.MEDIUM.riverItemCastShadow).toBe(false);
+    expect(TIER_BUDGETS.LOW.riverItemCastShadow).toBe(false);
   });
   it("orders the thresholds", () => {
     expect(FALLBACK_FPS_THRESHOLD).toBeLessThan(STEP_DOWN_FPS_THRESHOLD.MEDIUM!);

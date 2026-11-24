@@ -4,9 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
+import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
+
+const zones = vi.hoisted(() => ({
+  enterWorld: vi.fn(async () => "loaded"),
+  leaveWorld: vi.fn(),
+  loadZone: vi.fn(async () => "loaded"),
+  retry: vi.fn(async () => "loaded"),
+}));
+vi.mock("@/services/api/zonePagination", () => ({ getZonePagination: () => zones, loadZone: zones.loadZone }));
 
 const viewSpies = vi.hoisted(() => ({ rotate: vi.fn(), zoom: vi.fn() }));
 
@@ -34,8 +43,10 @@ beforeEach(() => {
   useUIStore.setState(useUIStore.getInitialState(), true);
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
+  useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
   viewSpies.rotate.mockClear();
   viewSpies.zoom.mockClear();
+  for (const fn of Object.values(zones)) fn.mockClear();
 });
 
 const stateOf = (container: HTMLElement) =>
@@ -154,5 +165,37 @@ describe("FlowRoot", () => {
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
     await act(async () => {});
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
+  });
+
+  it("enters the shared world only at SHARED_WORLD_EXPLORE and leaves on unmount", () => {
+    const { unmount } = render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(zones.enterWorld).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    expect(zones.enterWorld).toHaveBeenCalledTimes(1);
+    expect(zones.enterWorld).toHaveBeenCalledWith("loy_krathong");
+    expect(zones.leaveWorld).not.toHaveBeenCalled();
+    unmount();
+    expect(zones.leaveWorld).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the zone navigator only at SHARED_WORLD_EXPLORE, without buttons in a 1-zone world", () => {
+    render(<FlowRoot />);
+    expect(screen.queryByTestId("zone-navigator")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByTestId("zone-navigator")).toBeNull();
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    expect(screen.getByTestId("zone-navigator")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

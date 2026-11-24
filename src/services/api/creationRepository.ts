@@ -1,3 +1,4 @@
+import type { FestivalEventId } from "@/config/events/types";
 import type { NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
 
 export type CreationBackend = "memory" | "supabase";
@@ -6,7 +7,7 @@ export type CreationRepositoryErrorCode =
   | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name)
   | "backend_misconfigured" // env / options wrong (detail = env var name or option name, never its value)
   | "backend_request_failed" // network error or non-2xx (detail = "network" | "status <n>")
-  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report")
+  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone")
 
 /** counted = report_count was incremented; ignored = unknown, private-only, expired or already hidden/flagged creation. */
 export type ReportOutcome = "counted" | "ignored";
@@ -33,6 +34,11 @@ export interface CreationRepository {
    * expires_at > now; ordered by createdAt then id ascending; at most ZONE_ITEM_CAP. Returns PublicCreation only.
    */
   listPublicZone(query: ZoneQuery): Promise<readonly PublicCreation[]>;
+  /**
+   * Highest zone id that has at least one VISIBLE creation of `eventId` (same filter as listPublicZone), or null.
+   * Rejects with CreationRepositoryError("invalid_input", "eventId") for an unknown event.
+   */
+  highestVisibleZoneId(eventId: FestivalEventId): Promise<number | null>;
   /**
    * Server write path only (MFW-45). Validates with validateNewCreation, then writes the public row and the private
    * ownership row atomically. Returns only the public part. Rejects with CreationRepositoryError.

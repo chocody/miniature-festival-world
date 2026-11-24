@@ -38,13 +38,21 @@ export interface TierBudget {
   readonly shadows: boolean;
   /** Max texture edge in px. */
   readonly maxTextureSize: number;
+  /**
+   * Max river krathongs rendered at once on this tier (≤ ZONE_ITEM_CAP; a zone still loads up to 80 — the rest stay in the
+   * store for Find My). PLACEHOLDER lead values (spec silent, MFW-25 Open question 7) until MFW-34 instancing lands.
+   */
+  readonly riverItemCap: number;
+  /** River krathongs cast shadows (only where `shadows` is on too). PLACEHOLDER (MFW-25 Open question 7). */
+  readonly riverItemCastShadow: boolean;
 }
 
 /** Per-tier render budgets (owner, 2026-11-23, open question #5). FALLBACK_2D has no 3D budget. */
+// riverItemCap / riverItemCastShadow: PLACEHOLDER lead values (MFW-25, MFW-24 perf review), not owner numbers.
 export const TIER_BUDGETS: Readonly<Record<RenderTier, TierBudget>> = Object.freeze({
-  HIGH: Object.freeze({ pixelRatioCap: 2, shadows: true, maxTextureSize: 2048 }),
-  MEDIUM: Object.freeze({ pixelRatioCap: 1.5, shadows: false, maxTextureSize: 1024 }),
-  LOW: Object.freeze({ pixelRatioCap: 1, shadows: false, maxTextureSize: 512 }),
+  HIGH: Object.freeze({ pixelRatioCap: 2, shadows: true, maxTextureSize: 2048, riverItemCap: 80, riverItemCastShadow: true }),
+  MEDIUM: Object.freeze({ pixelRatioCap: 1.5, shadows: false, maxTextureSize: 1024, riverItemCap: 48, riverItemCastShadow: false }),
+  LOW: Object.freeze({ pixelRatioCap: 1, shadows: false, maxTextureSize: 512, riverItemCap: 24, riverItemCastShadow: false }),
 });
 
 // Technical numbers (lead decision, MFW-9)

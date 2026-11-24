@@ -4,11 +4,13 @@ import type { FlowEvent, FlowState } from "@/core/flow";
 import { getInteractionMode, type CustomizeViewControl } from "@/core/interaction";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
-import { lazy, Suspense, useRef } from "react";
+import { getZonePagination } from "@/services/api/zonePagination";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { OwnershipNotice } from "./OwnershipNotice";
+import { ZoneNavigator } from "./ZoneNavigator";
 
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
 const SceneViewport = lazy(() =>
@@ -35,6 +37,13 @@ export function FlowRoot() {
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
 
+  useEffect(() => {
+    if (flowState !== "SHARED_WORLD_EXPLORE" || selectedEventId === null) return;
+    const pagination = getZonePagination();
+    void pagination.enterWorld(selectedEventId);
+    return () => pagination.leaveWorld();
+  }, [flowState, selectedEventId]);
+
   return (
     <div
       data-flow-state={flowState}
@@ -52,6 +61,7 @@ export function FlowRoot() {
           />
         </Suspense>
       )}
+      {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
       {flowState === "WRITE_WISH" && <OwnershipNotice />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
