@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { completeWishStep } from "./helpers/wishStep";
 
 test.use({ hasTouch: true });
 
@@ -34,7 +35,7 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
 
     await page.getByRole("button", { name: "ถัดไป" }).click();
     await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
-    await page.getByRole("button", { name: "ถัดไป" }).click();
+    await completeWishStep(page);
     await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
     await expect(page.locator("canvas")).toHaveCount(1);
 

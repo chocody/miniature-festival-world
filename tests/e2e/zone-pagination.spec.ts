@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
+import { completeWishStep } from "./helpers/wishStep";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -26,7 +27,7 @@ async function routeZones(page: Page, zoneCount: number, sizes: Record<number, n
 async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: /Loy Krathong/ }).click();
   await page.getByRole("button", { name: "ถัดไป" }).click();
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
 }
