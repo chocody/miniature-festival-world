@@ -11,6 +11,7 @@ import {
   LOW_TIER_MAX_DEVICE_MEMORY_GB,
   LOW_TIER_MAX_HARDWARE_CONCURRENCY,
   STEP_DOWN_FPS_THRESHOLD,
+  TIER_ANTIALIAS,
   TIER_BUDGETS,
   TIER_SETTLE_MS,
 } from "./performance.config";
@@ -45,5 +46,9 @@ describe("performance.config (owner numbers, open question #5)", () => {
     expect(FPS_SAMPLE_WINDOW_MS).toBeGreaterThan(0);
     expect(TIER_SETTLE_MS).toBeGreaterThan(0);
     expect(FPS_STALL_GAP_MS).toBeGreaterThan(0);
+  });
+  it("antialias per tier (lead decision, MFW-27)", () => {
+    expect(TIER_ANTIALIAS).toEqual({ HIGH: true, MEDIUM: true, LOW: false });
+    expect(Object.isFrozen(TIER_ANTIALIAS)).toBe(true);
   });
 });

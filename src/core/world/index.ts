@@ -1,2 +1,2 @@
 /** ZoneManager, GrowingWorldScaler, Spawner */
-export {};
+export * from "./riverEnvironment";

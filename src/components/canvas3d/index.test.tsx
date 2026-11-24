@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrthographicCamera, Vector3 } from "three";
-import { TIER_BUDGETS } from "@/config/performance.config";
+import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
 import { getPinchZoomFactor } from "@/core/interaction";
@@ -37,6 +38,7 @@ vi.mock("@react-three/fiber", async () => {
     camera: { zoom: number };
     orthographic?: boolean;
     shadows?: boolean;
+    gl?: { antialias?: boolean };
     dpr: readonly [number, number];
     onCreated?: (state: { camera: OrthographicCamera; invalidate: () => void }) => void;
   }) {
@@ -56,6 +58,7 @@ vi.mock("@react-three/fiber", async () => {
         "data-testid": "r3f-canvas",
         "data-orthographic": String(props.orthographic),
         "data-shadows": String(props.shadows),
+        "data-antialias": String(props.gl?.antialias),
         "data-dpr": props.dpr.join(","),
       },
       props.children,
@@ -115,9 +118,9 @@ afterAll(() => {
 });
 
 const viewport = () => screen.getByRole("region", { name: "Toy-like night river preview" });
-const waterMesh = (c: HTMLElement) => c.querySelector('mesh[name="scene-water"]')!;
-const lampMesh = (c: HTMLElement) => c.querySelector('mesh[name="scene-lamp"]')!;
-const krathongMesh = (c: HTMLElement) => c.querySelector('[name="krathong-model"] mesh[name="base"]')!;
+const waterMesh = (c: HTMLElement) => c.querySelector('[name="scene-water"]')!;
+const lampMesh = (c: HTMLElement) => c.querySelector('[name="scene-lamp-heads"]')!;
+const krathongMesh = (c: HTMLElement) => c.querySelector('[name="scene-krathong"]')!;
 
 afterEach(cleanup);
 
@@ -160,7 +163,34 @@ describe("toy-like night scene", () => {
       dpr: [1, TIER_BUDGETS[tier].pixelRatioCap],
       shadows: TIER_BUDGETS[tier].shadows,
       maxTextureSize: TIER_BUDGETS[tier].maxTextureSize,
+      antialias: TIER_ANTIALIAS[tier],
+      shadowMapSizePx: Math.min(MOON_SHADOW_MAP_SIZE_PX, TIER_BUDGETS[tier].maxTextureSize),
     });
+    const settings = getSceneRenderSettings(tier);
+    expect(settings.shadowMapSizePx).toBeLessThanOrEqual(settings.maxTextureSize);
+  });
+
+  it("lights are not inside the world-view group", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(container.querySelector('[name="scene-world-view"] ambientLight')).toBeNull();
+    expect(container.querySelector('[name="scene-world-view"] directionalLight')).toBeNull();
+    expect(container.querySelector("ambientLight")).not.toBeNull();
+    expect(container.querySelector("directionalLight")).not.toBeNull();
+    expect(container.querySelector('[name="scene-krathong"] pointLight')).not.toBeNull();
+  });
+
+  it("the candle is the only point light", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(container.querySelectorAll("pointLight, spotLight")).toHaveLength(1);
+  });
+
+  it("section background comes from config", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(viewport().style.backgroundColor).toBe("rgb(16, 26, 50)");
+    expect(viewport().className).not.toContain("bg-[");
   });
 
   it("does not create a WebGL canvas before profiling or on the 2D tier", () => {
@@ -200,6 +230,25 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(r3f.cameraProps.length).toBeGreaterThan(before);
     expect(r3f.camera!.zoom).toBe(TOY_SCENE_CAMERA.zoom * 1.5);
     for (const props of r3f.cameraProps) expect(props).toBe(TOY_SCENE_CANVAS_CAMERA);
+  });
+
+  it("antialias follows the tier", () => {
+    useDeviceStore.getState().setQualityTier("MEDIUM");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-antialias", "true");
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerDown(v, { pointerId: 2, clientX: 30, clientY: 10 });
+    fireEvent.pointerMove(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 10, clientY: 10 });
+    const before = r3f.camera;
+    expect(before!.zoom).toBe(TOY_SCENE_CAMERA.zoom * 1.5);
+
+    act(() => useDeviceStore.getState().setQualityTier("LOW"));
+    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-antialias", "false");
+    expect(r3f.camera).not.toBe(before);
+    expect(r3f.camera!.zoom).toBe(TOY_SCENE_CAMERA.zoom * 1.5);
   });
 
   it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("%s taps never select a target or fly the camera", (mode) => {

@@ -3,3 +3,5 @@ export { KrathongModel, type KrathongModelProps } from "./KrathongModel";
 export { KrathongAssetsProvider, useKrathongAssets } from "./KrathongAssetsProvider";
 export { UprightAnchor } from "./UprightAnchor";
 export { createKrathongAssets, type KrathongAssets } from "./krathongAssets";
+export * from "./RiverEnvironment";
+export * from "./riverLayout";

@@ -8,10 +8,17 @@ import type { Group, Mesh, Object3D } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
   CAMERA_FLIGHT_SPRING_CONFIG,
+  HIGHLIGHT_RING_COLOR,
+  HIGHLIGHT_RING_OPACITY,
+  HIGHLIGHT_RING_SEGMENTS,
   HIGHLIGHT_RING_SIZES,
+  SCENE_CAMERA_FAR,
+  SCENE_CAMERA_NEAR,
+  SCENE_CAMERA_ZOOM,
 } from "@/config/camera.config";
 import type { QualityTier, RenderTier } from "@/config/performance.config";
-import { TIER_BUDGETS } from "@/config/performance.config";
+import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
 import { createCameraController, updateHighlightPosition } from "@/core/camera";
 import type { CameraTargetKind } from "@/core/camera";
 import {
@@ -23,18 +30,33 @@ import {
   type InteractionMode,
   type InteractionTarget,
 } from "@/core/interaction";
-import { PAN_WORLD_UNITS_PER_PIXEL, ROTATION_RADIANS_PER_PIXEL } from "@/config/interaction.config";
-import { KrathongAssetsProvider, KrathongModel } from "@/components/models/loyKrathong";
+import {
+  PAN_WORLD_UNITS_PER_PIXEL,
+  PERCENT_SCALE,
+  RITUAL_CHIP_MAX_PERCENT,
+  RITUAL_CHIP_MIN_PERCENT,
+  RITUAL_CHIP_START_PERCENT,
+  ROTATION_RADIANS_PER_PIXEL,
+} from "@/config/interaction.config";
+import {
+  KrathongAssetsProvider,
+  KrathongModel,
+  LOY_KRATHONG_RIVER_LAYOUT,
+  RiverEnvironment,
+} from "@/components/models/loyKrathong";
+import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 
+export { TOY_SCENE_LIGHTING, TOY_MATTE_MATERIALS } from "@/config/scene.config";
+
 export const TOY_SCENE_CAMERA = {
   orthographic: true,
   position: [...CAMERA_FLIGHT_OFFSET] as [number, number, number],
-  zoom: 52,
-  near: 0.1,
-  far: 40,
+  zoom: SCENE_CAMERA_ZOOM,
+  near: SCENE_CAMERA_NEAR,
+  far: SCENE_CAMERA_FAR,
 };
 
 /** Stable `<Canvas camera>` options: one module-level object, so a re-render never re-applies the base zoom over a pinch zoom (MFW-44). */
@@ -45,22 +67,16 @@ export const TOY_SCENE_CANVAS_CAMERA = {
   far: TOY_SCENE_CAMERA.far,
 };
 
-export const TOY_SCENE_LIGHTING = {
-  background: "#101a32",
-  ambient: { color: "#8499c5", intensity: 0.75 },
-  moon: { color: "#bdceff", intensity: 1.15, position: [-4, 7, 3] as [number, number, number] },
-  candle: { color: "#ffb35c", intensity: 14, distance: 7, position: [0.15, 1.25, 0.1] as [number, number, number] },
-};
-
-export const TOY_MATTE_MATERIALS = {
-  water: { color: "#243d65", roughness: 1, metalness: 0 },
-  moon: { color: "#e7d7aa", roughness: 1, metalness: 0 },
-};
+/** Stable `gl` objects: the renderer reads antialias only at creation, and the Canvas key re-creates it when the value flips. */
+const CANVAS_GL_ANTIALIAS_ON = { antialias: true };
+const CANVAS_GL_ANTIALIAS_OFF = { antialias: false };
 
 export interface SceneRenderSettings {
   dpr: [number, number];
   shadows: boolean;
   maxTextureSize: number;
+  antialias: boolean;
+  shadowMapSizePx: number;
 }
 
 export function getSceneRenderSettings(tier: RenderTier): SceneRenderSettings {
@@ -69,6 +85,8 @@ export function getSceneRenderSettings(tier: RenderTier): SceneRenderSettings {
     dpr: [1, budget.pixelRatioCap],
     shadows: budget.shadows,
     maxTextureSize: budget.maxTextureSize,
+    antialias: TIER_ANTIALIAS[tier],
+    shadowMapSizePx: Math.min(MOON_SHADOW_MAP_SIZE_PX, budget.maxTextureSize),
   };
 }
 
@@ -76,23 +94,29 @@ type TargetRef = RefObject<Object3D | null>;
 
 interface ToyNightSceneProps {
   shadows: boolean;
+  shadowMapSizePx: number;
   appearance: KrathongAppearance;
   objectRotation: number;
   worldRotation: number;
   worldOffset: readonly [number, number];
   onTargetSelected: (target: CameraTargetKind) => void;
+  selectedLampIndex: number;
+  onLampSelected: (lampIndex: number) => void;
   waterTargetRef: RefObject<Mesh | null>;
   krathongTargetRef: RefObject<Group | null>;
-  lampTargetRef: RefObject<Mesh | null>;
+  lampTargetRef: RefObject<Group | null>;
 }
 
 function ToyNightScene({
   shadows,
+  shadowMapSizePx,
   appearance,
   objectRotation,
   worldRotation,
   worldOffset,
   onTargetSelected,
+  selectedLampIndex,
+  onLampSelected,
   waterTargetRef,
   krathongTargetRef,
   lampTargetRef,
@@ -100,56 +124,47 @@ function ToyNightScene({
   return (
     <>
       <color attach="background" args={[TOY_SCENE_LIGHTING.background]} />
-      <group position={[worldOffset[0], 0, worldOffset[1]]} rotation={[0, worldRotation, 0]}>
+      {/* World-fixed lights: NOT inside the view-transform group, so pan/rotate never changes the moon direction. */}
       <ambientLight color={TOY_SCENE_LIGHTING.ambient.color} intensity={TOY_SCENE_LIGHTING.ambient.intensity} />
       <directionalLight
         color={TOY_SCENE_LIGHTING.moon.color}
         intensity={TOY_SCENE_LIGHTING.moon.intensity}
         position={TOY_SCENE_LIGHTING.moon.position}
         castShadow={shadows}
+        shadow-mapSize={[shadowMapSizePx, shadowMapSizePx]}
       />
-      <pointLight
-        color={TOY_SCENE_LIGHTING.candle.color}
-        intensity={TOY_SCENE_LIGHTING.candle.intensity}
-        distance={TOY_SCENE_LIGHTING.candle.distance}
-        position={TOY_SCENE_LIGHTING.candle.position}
-      />
-      <mesh
-        name="scene-water"
-        ref={waterTargetRef}
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.24, 0]}
-        receiveShadow={shadows}
-        onClick={(event) => {
-          event.stopPropagation();
-          onTargetSelected("water");
-        }}
-      >
-        <circleGeometry args={[3.1, 48]} />
-        <meshStandardMaterial {...TOY_MATTE_MATERIALS.water} />
-      </mesh>
+      {/* View transform seam: today's legacy pan/rotate. The pan fix (owner decision pending) replaces it with camera movement. */}
       <group
-        ref={krathongTargetRef}
-        rotation={[0, objectRotation, 0]}
-        onClick={(event) => {
-          event.stopPropagation();
-          onTargetSelected("krathong");
-        }}
+        name={SCENE_OBJECT_NAMES.worldView}
+        position={[worldOffset[0], 0, worldOffset[1]]}
+        rotation={[0, worldRotation, 0]}
       >
-        <KrathongModel appearance={appearance} shadows={shadows} />
-      </group>
-      <mesh
-        name="scene-lamp"
-        ref={lampTargetRef}
-        position={[-1.45, 0.1, -1.05]}
-        onClick={(event) => {
-          event.stopPropagation();
-          onTargetSelected("lamp");
-        }}
-      >
-        <sphereGeometry args={[0.22, 20, 16]} />
-        <meshStandardMaterial {...TOY_MATTE_MATERIALS.moon} emissive="#5c4c27" emissiveIntensity={0.2} />
-      </mesh>
+        <RiverEnvironment
+          layout={LOY_KRATHONG_RIVER_LAYOUT}
+          shadows={shadows}
+          waterRef={waterTargetRef}
+          onWaterSelected={() => onTargetSelected("water")}
+          lampFocusRef={lampTargetRef}
+          selectedLampIndex={selectedLampIndex}
+          onLampSelected={onLampSelected}
+        />
+        <group
+          ref={krathongTargetRef}
+          name={SCENE_OBJECT_NAMES.krathong}
+          rotation={[0, objectRotation, 0]}
+          onClick={(event) => {
+            event.stopPropagation();
+            onTargetSelected("krathong");
+          }}
+        >
+          <pointLight
+            color={TOY_SCENE_LIGHTING.candle.color}
+            intensity={TOY_SCENE_LIGHTING.candle.intensity}
+            distance={TOY_SCENE_LIGHTING.candle.distance}
+            position={TOY_SCENE_LIGHTING.candle.position}
+          />
+          <KrathongModel appearance={appearance} shadows={shadows} />
+        </group>
       </group>
     </>
   );
@@ -210,8 +225,8 @@ function TargetHighlight({ targetRef, target }: { targetRef: TargetRef; target: 
 
   return (
     <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[ringSize.innerRadius, ringSize.outerRadius, 32]} />
-      <meshBasicMaterial color="#ffd166" transparent opacity={0.9} toneMapped={false} />
+      <ringGeometry args={[ringSize.innerRadius, ringSize.outerRadius, HIGHLIGHT_RING_SEGMENTS]} />
+      <meshBasicMaterial color={HIGHLIGHT_RING_COLOR} transparent opacity={HIGHLIGHT_RING_OPACITY} toneMapped={false} />
     </mesh>
   );
 }
@@ -249,7 +264,10 @@ export function SceneViewport({
   const [objectRotation, setObjectRotation] = useState(0);
   const [worldRotation, setWorldRotation] = useState(0);
   const [worldOffset, setWorldOffset] = useState<[number, number]>([0, 0]);
-  const [krathongPosition, setKrathongPosition] = useState<[number, number]>([50, 55]);
+  const [krathongPosition, setKrathongPosition] = useState<[number, number]>([
+    RITUAL_CHIP_START_PERCENT.x,
+    RITUAL_CHIP_START_PERCENT.y,
+  ]);
   const [lastInteraction, setLastInteraction] = useState<InteractionTarget | null>(null);
   const zoomRef = useRef(1);
   const cameraRef = useRef<OrthographicCamera | null>(null);
@@ -257,7 +275,8 @@ export function SceneViewport({
   const inputSeparatorRef = useRef<{ mode: InteractionMode; input: InputSeparator } | null>(null);
   const waterTargetRef = useRef<Mesh | null>(null);
   const krathongTargetRef = useRef<Group | null>(null);
-  const lampTargetRef = useRef<Mesh | null>(null);
+  const lampTargetRef = useRef<Group | null>(null);
+  const [selectedLampIndex, setSelectedLampIndex] = useState(0);
   const [selectedTarget, setSelectedTarget] = useState<CameraTargetKind | null>(null);
   const [flyRequestId, setFlyRequestId] = useState(0);
   const [selectionMode, setSelectionMode] = useState(mode);
@@ -269,6 +288,13 @@ export function SceneViewport({
     // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
     if (mode !== "WORLD_EXPLORE") return;
     setSelectedTarget(target);
+    setFlyRequestId((requestId) => requestId + 1);
+  }, [mode]);
+
+  const onLampSelected = useCallback((index: number) => {
+    if (mode !== "WORLD_EXPLORE") return;
+    setSelectedLampIndex(index);
+    setSelectedTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
   }, [mode]);
 
@@ -288,7 +314,7 @@ export function SceneViewport({
       case "PINCH_ZOOM":
         zoomRef.current = getPinchZoomFactor(zoomRef.current, action.scale);
         if (cameraRef.current) {
-          cameraRef.current.zoom = TOY_SCENE_CAMERA.zoom * zoomRef.current;
+          cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
           cameraRef.current.updateProjectionMatrix();
           invalidateRef.current?.();
         }
@@ -297,8 +323,8 @@ export function SceneViewport({
         const rect = viewportRef.current?.getBoundingClientRect();
         if (!rect) break;
         setKrathongPosition(([x, y]) => [
-          Math.max(8, Math.min(92, x + (action.deltaX / rect.width) * 100)),
-          Math.max(8, Math.min(92, y + (action.deltaY / rect.height) * 100)),
+          Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, x + (action.deltaX / rect.width) * PERCENT_SCALE)),
+          Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, y + (action.deltaY / rect.height) * PERCENT_SCALE)),
         ]);
         break;
       }
@@ -306,6 +332,7 @@ export function SceneViewport({
         onGestureRelease?.();
         break;
       case "PAN_RIVER":
+        // Legacy pan/rotate kept as is: the gesture model awaits an owner decision (MFW-27 plan §11 Q1).
         setWorldOffset(([x, y]) => [
           x - action.deltaX * PAN_WORLD_UNITS_PER_PIXEL,
           y - action.deltaY * PAN_WORLD_UNITS_PER_PIXEL,
@@ -365,7 +392,8 @@ export function SceneViewport({
   return (
     <section
       aria-label="Toy-like night river preview"
-      className="relative mb-8 h-64 w-full touch-none select-none overflow-hidden rounded-3xl border border-indigo-950/30 bg-[#101a32] shadow-lg"
+      className="relative mb-8 h-64 w-full touch-none select-none overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
+      style={{ backgroundColor: TOY_SCENE_LIGHTING.background }}
       data-quality-tier={qualityTier}
       data-selected-target={selectedTarget ?? undefined}
       data-interaction-mode={mode ?? undefined}
@@ -379,26 +407,34 @@ export function SceneViewport({
       onPointerCancel={handlePointerCancel}
     >
       <Canvas
+        key={settings.antialias ? "aa-on" : "aa-off"}
         aria-label="Orthographic toy-like night river scene"
         orthographic={TOY_SCENE_CAMERA.orthographic}
         camera={TOY_SCENE_CANVAS_CAMERA}
         dpr={settings.dpr}
-        gl={{ antialias: true }}
+        gl={settings.antialias ? CANVAS_GL_ANTIALIAS_ON : CANVAS_GL_ANTIALIAS_OFF}
         shadows={settings.shadows}
         frameloop="demand"
         onCreated={({ camera, invalidate }) => {
           cameraRef.current = camera instanceof OrthographicCamera ? camera : null;
           invalidateRef.current = invalidate;
+          if (cameraRef.current) {
+            cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
+            cameraRef.current.updateProjectionMatrix();
+          }
         }}
       >
         <KrathongAssetsProvider>
           <ToyNightScene
             shadows={settings.shadows}
+            shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
             objectRotation={objectRotation}
             worldRotation={worldRotation}
             worldOffset={worldOffset}
             onTargetSelected={onTargetSelected}
+            selectedLampIndex={selectedLampIndex}
+            onLampSelected={onLampSelected}
             waterTargetRef={waterTargetRef}
             krathongTargetRef={krathongTargetRef}
             lampTargetRef={lampTargetRef}
