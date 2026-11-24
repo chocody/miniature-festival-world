@@ -1,8 +1,9 @@
 import { create } from "zustand";
+import type { EventAppearance } from "@/core/customization";
 
 /** The creation currently being customized (spec §3: useBuilderStore). */
 export interface BuilderState {
-  appearance: Readonly<Record<string, unknown>> | null;
+  appearance: EventAppearance | null;
 }
 
 export const useBuilderStore = create<BuilderState>()(() => ({
