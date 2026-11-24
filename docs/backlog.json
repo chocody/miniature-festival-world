@@ -163,7 +163,8 @@
             "The server stores only SHA-256(ownerToken) in creations_private_ownership; the raw token is never stored, logged or returned",
             "A private wish is stored only as AES-256-GCM ciphertext with a key id (public_wish_text stays null); a public wish must pass the 2.3 guard on the server (rejected with the reasons otherwise) and private_wish_text stays null",
             "The server assigns zone_id (first zone of the event below the 80-item cap, else a new zone) and expires_at (festival end + 30 days, from config); the client cannot set them",
-            "The response contains only public fields; a test asserts owner_token, owner_token_hash and private_wish_text never appear; the route works with an in-memory repository when Supabase env is absent"
+            "The response contains only public fields; a test asserts owner_token, owner_token_hash and private_wish_text never appear; the route works with an in-memory repository when Supabase env is absent",
+            "No overlap (open question 25): the server re-checks the coord against the krathongs already in the zone and moves it to the nearest free spot (collision radius from config) when two releases race; the response returns the final coord"
           ],
           "labels": ["privacy", "api"],
           "blockedBy": ["2.2", "2.3", "1.2", "4.1"]
@@ -280,7 +281,8 @@
           "ac": [
             "Pier scene previews the user's own krathong before release",
             "Drag into water or press \"ปล่อยกระทง\" → ripple, candle brightens, krathong drifts out into the shared river",
-            "Creation is saved with a SplinePathCoord"
+            "Creation is saved with a SplinePathCoord",
+            "Releasing onto another krathong collides instead of overlapping (open question 25): a short procedural bump plays (instant under reduced motion) and the new krathong settles in the nearest free spot, which is the coord that is saved"
           ],
           "labels": ["loy-krathong", "ritual"],
           "blockedBy": ["3.2", "4.3", "2.4", "5.2", "6.1"]
@@ -289,7 +291,8 @@
           "id": "5.2", "summary": "Deterministic spline river flow",
           "goal": "Every client sees every krathong at the same place at the same time.",
           "ac": [
-            "River lanes as spline curves; krathongs move slowly with procedural bobbing",
+            "River lanes as spline curves (one single wide lane, open question 21); krathongs move slowly with procedural bobbing (bobbing off under reduced motion, drift continues — open question 23)",
+            "Every krathong drifts at the same speed, so krathongs never overlap while drifting (open question 25); at the lane end a krathong reappears at the start off-screen (open question 22)",
             "Position computed only from SplinePathCoord + current time (deterministic across clients and 2D/3D)",
             "Current position queryable for Find My Krathong"
           ],
