@@ -1,8 +1,11 @@
 import type { FlowState } from "@/core/flow";
 import {
+  CUSTOMIZE_ROTATE_STEP_RADIANS,
+  CUSTOMIZE_ZOOM_STEP_SCALE,
   DRAG_START_DISTANCE_PX,
   PINCH_ZOOM_MAX,
   PINCH_ZOOM_MIN,
+  ROTATION_RADIANS_PER_PIXEL,
   TAP_MAX_DURATION_MS,
 } from "@/config/interaction.config";
 
@@ -60,6 +63,30 @@ export function isCameraLocked(mode: InteractionMode): boolean {
 
 export function getPinchZoomFactor(current: number, scale: number): number {
   return Math.max(PINCH_ZOOM_MIN, Math.min(PINCH_ZOOM_MAX, current * scale));
+}
+
+/** -1 = left / out, 1 = right / in. */
+export type ViewStepDirection = -1 | 1;
+
+/** Imperative view commands for the customizer's rotate/zoom buttons; implemented by SceneViewport (CUSTOMIZE only). */
+export interface CustomizeViewControl {
+  rotate(direction: ViewStepDirection): void;
+  zoom(direction: ViewStepDirection): void;
+}
+
+/** Krathong yaw after a CUSTOMIZE drag of deltaX px (the formula SceneViewport used inline). */
+export function getRotationAfterDrag(current: number, deltaX: number): number {
+  return current + deltaX * ROTATION_RADIANS_PER_PIXEL;
+}
+
+/** Krathong yaw after one rotate-button tap. Drag right and หมุนขวา both increase the angle. */
+export function getRotationAfterStep(current: number, direction: ViewStepDirection): number {
+  return current + direction * CUSTOMIZE_ROTATE_STEP_RADIANS;
+}
+
+/** Zoom factor after one zoom-button tap, through the same clamp as pinch. */
+export function getZoomFactorAfterStep(current: number, direction: ViewStepDirection): number {
+  return getPinchZoomFactor(current, direction === 1 ? CUSTOMIZE_ZOOM_STEP_SCALE : 1 / CUSTOMIZE_ZOOM_STEP_SCALE);
 }
 
 const distanceBetween = (a: PointerSample, b: PointerSample) => Math.hypot(a.x - b.x, a.y - b.y);

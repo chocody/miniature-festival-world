@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const files = [
-  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "appearanceRegistry", "index"].map(
+  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "appearanceRegistry", "krathongChoices", "partChangeBounce", "index"].map(
     (name) => `src/core/customization/${name}.ts`,
   ),
   "src/config/events/loyKrathong.config.ts",
   "src/config/krathongModel.config.ts",
+  "src/config/customizer.config.ts",
 ];
 
 describe("server-usable customization modules", () => {
@@ -19,5 +20,8 @@ describe("server-usable customization modules", () => {
   });
   it("keeps the three.js helper out of the barrel", () => {
     expect(readFileSync(join(root, "src/core/customization/index.ts"), "utf8")).not.toContain("uprightConstraint");
+  });
+  it("keeps the part-change bounce controller out of the barrel", () => {
+    expect(readFileSync(join(root, "src/core/customization/index.ts"), "utf8")).not.toContain("partChangeBounce");
   });
 });

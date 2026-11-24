@@ -2,7 +2,16 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useSpring } from "@react-spring/three";
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type PointerEvent,
+  type Ref,
+  type RefObject,
+} from "react";
 import { OrthographicCamera, Vector3 } from "three";
 import type { Group, Mesh, Object3D } from "three";
 import {
@@ -24,7 +33,11 @@ import type { CameraTargetKind } from "@/core/camera";
 import {
   createInputSeparator,
   getPinchZoomFactor,
+  getRotationAfterDrag,
+  getRotationAfterStep,
+  getZoomFactorAfterStep,
   isCameraLocked,
+  type CustomizeViewControl,
   type InputSeparator,
   type InteractionAction,
   type InteractionMode,
@@ -44,6 +57,7 @@ import {
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
+import { PartChangeBounce } from "./PartChangeBounce";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -96,6 +110,7 @@ interface ToyNightSceneProps {
   shadows: boolean;
   shadowMapSizePx: number;
   appearance: KrathongAppearance;
+  reducedMotion: boolean;
   objectRotation: number;
   worldRotation: number;
   worldOffset: readonly [number, number];
@@ -111,6 +126,7 @@ function ToyNightScene({
   shadows,
   shadowMapSizePx,
   appearance,
+  reducedMotion,
   objectRotation,
   worldRotation,
   worldOffset,
@@ -163,7 +179,9 @@ function ToyNightScene({
             distance={TOY_SCENE_LIGHTING.candle.distance}
             position={TOY_SCENE_LIGHTING.candle.position}
           />
-          <KrathongModel appearance={appearance} shadows={shadows} />
+          <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
+            <KrathongModel appearance={appearance} shadows={shadows} />
+          </PartChangeBounce>
         </group>
       </group>
     </>
@@ -251,9 +269,11 @@ function pointSample(event: PointerEvent<HTMLElement>, target: InteractionTarget
 export function SceneViewport({
   mode = null,
   onGestureRelease,
+  viewControlRef,
 }: {
   mode?: InteractionMode | null;
   onGestureRelease?: () => void;
+  viewControlRef?: Ref<CustomizeViewControl>;
 }) {
   const profiled = useDeviceStore((state) => state.profiled);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
@@ -306,18 +326,22 @@ export function SceneViewport({
         ? lampTargetRef
         : null;
 
+  const applyZoomFactor = useCallback((factor: number) => {
+    zoomRef.current = factor;
+    if (cameraRef.current) {
+      cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
+      cameraRef.current.updateProjectionMatrix();
+      invalidateRef.current?.();
+    }
+  }, []);
+
   const onAction = useCallback((action: InteractionAction) => {
     switch (action.type) {
       case "ROTATE_KRATHONG":
-        setObjectRotation((value) => value + action.deltaX * ROTATION_RADIANS_PER_PIXEL);
+        setObjectRotation((value) => getRotationAfterDrag(value, action.deltaX));
         break;
       case "PINCH_ZOOM":
-        zoomRef.current = getPinchZoomFactor(zoomRef.current, action.scale);
-        if (cameraRef.current) {
-          cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
-          cameraRef.current.updateProjectionMatrix();
-          invalidateRef.current?.();
-        }
+        applyZoomFactor(getPinchZoomFactor(zoomRef.current, action.scale));
         break;
       case "DRAG_KRATHONG": {
         const rect = viewportRef.current?.getBoundingClientRect();
@@ -343,7 +367,18 @@ export function SceneViewport({
         setLastInteraction(action.target);
         break;
     }
-  }, [onGestureRelease]);
+  }, [applyZoomFactor, onGestureRelease]);
+
+  useImperativeHandle(viewControlRef, () => ({
+    rotate(direction) {
+      if (mode !== "CUSTOMIZE") return;
+      setObjectRotation((value) => getRotationAfterStep(value, direction));
+    },
+    zoom(direction) {
+      if (mode !== "CUSTOMIZE") return;
+      applyZoomFactor(getZoomFactorAfterStep(zoomRef.current, direction));
+    },
+  }), [mode, applyZoomFactor]);
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
     if (!mode) return;
@@ -429,6 +464,7 @@ export function SceneViewport({
             shadows={settings.shadows}
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
+            reducedMotion={reducedMotion}
             objectRotation={objectRotation}
             worldRotation={worldRotation}
             worldOffset={worldOffset}
