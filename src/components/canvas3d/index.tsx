@@ -24,6 +24,9 @@ import {
   type InteractionTarget,
 } from "@/core/interaction";
 import { PAN_WORLD_UNITS_PER_PIXEL, ROTATION_RADIANS_PER_PIXEL } from "@/config/interaction.config";
+import { KrathongAssetsProvider, KrathongModel } from "@/components/models/loyKrathong";
+import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
+import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 
 export const TOY_SCENE_CAMERA = {
@@ -51,8 +54,6 @@ export const TOY_SCENE_LIGHTING = {
 
 export const TOY_MATTE_MATERIALS = {
   water: { color: "#243d65", roughness: 1, metalness: 0 },
-  island: { color: "#536e74", roughness: 1, metalness: 0 },
-  pebble: { color: "#91a88f", roughness: 1, metalness: 0 },
   moon: { color: "#e7d7aa", roughness: 1, metalness: 0 },
 };
 
@@ -75,6 +76,7 @@ type TargetRef = RefObject<Object3D | null>;
 
 interface ToyNightSceneProps {
   shadows: boolean;
+  appearance: KrathongAppearance;
   objectRotation: number;
   worldRotation: number;
   worldOffset: readonly [number, number];
@@ -86,6 +88,7 @@ interface ToyNightSceneProps {
 
 function ToyNightScene({
   shadows,
+  appearance,
   objectRotation,
   worldRotation,
   worldOffset,
@@ -112,6 +115,7 @@ function ToyNightScene({
         position={TOY_SCENE_LIGHTING.candle.position}
       />
       <mesh
+        name="scene-water"
         ref={waterTargetRef}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.24, 0]}
@@ -132,24 +136,10 @@ function ToyNightScene({
           onTargetSelected("krathong");
         }}
       >
-        <mesh position={[0, 0.02, 0]} castShadow={shadows} receiveShadow={shadows}>
-          <cylinderGeometry args={[1.18, 1.32, 0.42, 12]} />
-          <meshStandardMaterial {...TOY_MATTE_MATERIALS.island} />
-        </mesh>
-        <mesh position={[0, 0.34, 0]} castShadow={shadows}>
-          <sphereGeometry args={[0.32, 16, 12]} />
-          <meshStandardMaterial {...TOY_MATTE_MATERIALS.pebble} />
-        </mesh>
-        <mesh position={[-0.66, 0.28, 0.2]} castShadow={shadows}>
-          <sphereGeometry args={[0.22, 12, 10]} />
-          <meshStandardMaterial {...TOY_MATTE_MATERIALS.pebble} />
-        </mesh>
-        <mesh position={[0.55, 0.27, -0.3]} castShadow={shadows}>
-          <sphereGeometry args={[0.18, 12, 10]} />
-          <meshStandardMaterial {...TOY_MATTE_MATERIALS.pebble} />
-        </mesh>
+        <KrathongModel appearance={appearance} shadows={shadows} />
       </group>
       <mesh
+        name="scene-lamp"
         ref={lampTargetRef}
         position={[-1.45, 0.1, -1.05]}
         onClick={(event) => {
@@ -253,6 +243,8 @@ export function SceneViewport({
   const profiled = useDeviceStore((state) => state.profiled);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
   const reducedMotion = useDeviceStore((state) => state.reducedMotion);
+  const builderAppearance = useBuilderStore((state) => state.appearance);
+  const appearance = builderAppearance ?? DEFAULT_KRATHONG_APPEARANCE;
   const viewportRef = useRef<HTMLElement>(null);
   const [objectRotation, setObjectRotation] = useState(0);
   const [worldRotation, setWorldRotation] = useState(0);
@@ -399,26 +391,29 @@ export function SceneViewport({
           invalidateRef.current = invalidate;
         }}
       >
-        <ToyNightScene
-          shadows={settings.shadows}
-          objectRotation={objectRotation}
-          worldRotation={worldRotation}
-          worldOffset={worldOffset}
-          onTargetSelected={onTargetSelected}
-          waterTargetRef={waterTargetRef}
-          krathongTargetRef={krathongTargetRef}
-          lampTargetRef={lampTargetRef}
-        />
-        {activeTargetRef && selectedTarget && (
-          <>
-            <CameraFlightController
-              targetRef={activeTargetRef}
-              requestId={flyRequestId}
-              reducedMotion={reducedMotion}
-            />
-            <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />
-          </>
-        )}
+        <KrathongAssetsProvider>
+          <ToyNightScene
+            shadows={settings.shadows}
+            appearance={appearance}
+            objectRotation={objectRotation}
+            worldRotation={worldRotation}
+            worldOffset={worldOffset}
+            onTargetSelected={onTargetSelected}
+            waterTargetRef={waterTargetRef}
+            krathongTargetRef={krathongTargetRef}
+            lampTargetRef={lampTargetRef}
+          />
+          {activeTargetRef && selectedTarget && (
+            <>
+              <CameraFlightController
+                targetRef={activeTargetRef}
+                requestId={flyRequestId}
+                reducedMotion={reducedMotion}
+              />
+              <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />
+            </>
+          )}
+        </KrathongAssetsProvider>
       </Canvas>
       {mode === "RITUAL_RELEASE" && (
         <div

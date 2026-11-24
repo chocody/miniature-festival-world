@@ -1,8 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrthographicCamera, Vector3 } from "three";
 import { TIER_BUDGETS } from "@/config/performance.config";
+import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
+import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
 import { getPinchZoomFactor } from "@/core/interaction";
+import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import {
   getSceneRenderSettings,
@@ -112,14 +115,15 @@ afterAll(() => {
 });
 
 const viewport = () => screen.getByRole("region", { name: "Toy-like night river preview" });
-const waterMesh = (c: HTMLElement) => c.querySelector("mesh")!;
-const lampMesh = (c: HTMLElement) => c.querySelectorAll("mesh")[5]!;
-const krathongMesh = (c: HTMLElement) => c.querySelectorAll("mesh")[1]!;
+const waterMesh = (c: HTMLElement) => c.querySelector('mesh[name="scene-water"]')!;
+const lampMesh = (c: HTMLElement) => c.querySelector('mesh[name="scene-lamp"]')!;
+const krathongMesh = (c: HTMLElement) => c.querySelector('[name="krathong-model"] mesh[name="base"]')!;
 
 afterEach(cleanup);
 
 beforeEach(() => {
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   r3f.cameraProps.length = 0;
   r3f.camera = null;
   r3f.flightStarts.length = 0;
@@ -139,6 +143,16 @@ describe("toy-like night scene", () => {
       expect(material.roughness).toBe(1);
       expect(material.metalness).toBe(0);
     }
+  });
+
+  it("renders the builder appearance, default when null", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(container.querySelectorAll('mesh[name^="flower_"]')).toHaveLength(RIM_SOCKET_COUNT);
+    act(() => {
+      useBuilderStore.setState({ appearance: { ...DEFAULT_KRATHONG_APPEARANCE, flowers: ["lotus"] } });
+    });
+    expect(container.querySelectorAll('mesh[name^="flower_"]')).toHaveLength(1);
   });
 
   it.each(["HIGH", "MEDIUM", "LOW"] as const)("uses the %s render budget", (tier) => {
