@@ -7,6 +7,7 @@ import { useUIStore } from "@/store/useUIStore";
 import { lazy, Suspense } from "react";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
+import { OwnershipNotice } from "./OwnershipNotice";
 
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
 const SceneViewport = lazy(() =>
@@ -46,6 +47,7 @@ export function FlowRoot() {
           />
         </Suspense>
       )}
+      {flowState === "WRITE_WISH" && <OwnershipNotice />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
       ) : (
