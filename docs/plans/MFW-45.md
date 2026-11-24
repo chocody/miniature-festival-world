@@ -1099,6 +1099,9 @@ Read `supabase/migrations/20261124020000_mfw45_guarded_creation_insert.sql` as `
 3. The string literals `"PRIVATE_WISH_KEY"` / `"PRIVATE_WISH_KEY_ID"` (`/["']PRIVATE_WISH_KEY(_ID)?["']/`) appear only in `src/config/privateWish.config.ts`
    (non-test `src` files); nothing in `src` contains `NEXT_PUBLIC_PRIVATE_WISH`; `"VERCEL_ENV"` only in `src/config/database.config.ts`.
 4. `privateWishCipher.ts` contains `"AES-GCM"`, contains none of `AES-CBC`, `AES-CTR`, `node:crypto`, `createCipheriv`.
+4b. "wish columns only from an evaluated wish" (MFW-21 privacy audit): in `src/services/api/createCreation.ts`, `evaluateWishDraft(` appears, every
+   `toWishColumns(` call is exactly `toWishColumns(evaluation.wish)` (`/toWishColumns\((?!evaluation\.wish\))/` does not match), the first
+   `evaluateWishDraft(` comes before the first `toWishColumns(`, and `toWishRequestFields` is not used (it is the client's body builder).
 5. Self-check that patterns 2 and 3 match sample strings.
 
 ### `tests/e2e/fixtures/createCreationFixtures.ts` (new; **no imports**) and `tests/unit/create-creation-e2e-fixtures.test.ts`
@@ -1224,7 +1227,10 @@ that config holds) and "a wish is required" (MFW-21's `text_empty` rule, which t
   unregistered event is closed (409).
 - **D12 — Handler logic lives in `src/services/api/createCreation.ts`; `route.ts` only delegates** (route files may export only handlers; the private-name scanner
   forbids those names in `src/app/api`).
-- **D13 — The wish rules are MFW-21's shared contract, not a second copy.** The server parses only types (`typeof wishText === "string"`,
+- **D13 — The wish rules are MFW-21's shared contract, not a second copy** (covers the MFW-21 privacy-audit notes: `toWishColumns` /
+  `toWishRequestFields` trust any `ComposedWish`-shaped object, so the route type-checks the body, calls `evaluateWishDraft`, and only passes
+  `evaluation.wish` to `toWishColumns`; MFW-21 has no server-side length cap, so this route enforces `WISH_TEXT_MAX_LENGTH` for both
+  visibilities; MFW-13's `validateNewCreation` stays the backstop). The server parses only types (`typeof wishText === "string"`,
   `isWishVisibility`), then calls `evaluateWishDraft` (trim, non-empty, `WISH_TEXT_MAX_LENGTH`, public guard) and `toWishColumns` (exactly one
   column). The WishModal and the server can therefore never disagree. Empty or too-long text → 400 `wishText` before moderation, `moderation_blocked` → 422.
 
