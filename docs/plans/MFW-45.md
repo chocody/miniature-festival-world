@@ -22,11 +22,11 @@ Without Supabase env (CI, previews) the route runs on the in-memory repository, 
 
 ## Prerequisites
 
-The backlog blocks this card on 2.2, 2.3, 1.2 and 4.1. The no-overlap and zone AC also need 5.2 and 5.3. Cut the branch
-from the latest `main` only after **MFW-13 (2.3) and MFW-25 (5.3) are merged**. If one is missing, stop and report it. Do not
-copy their code into this branch.
+The backlog blocks this card on 2.2, 2.3, 1.2 and 4.1. The no-overlap and zone AC also need 5.2 and 5.3, and the wish rules are
+shared with 4.3. Cut the branch from the latest `main` only after **MFW-25 (5.3) and MFW-21 (4.3) are merged** (MFW-13 already is).
+If one is missing, stop and report it. Do not copy their code into this branch.
 
-| Card | State (2026-11-24, `main` = 604d6fa) | What this card uses |
+| Card | State (2026-11-24, `main` = adda547) | What this card uses |
 |---|---|---|
 | MFW-8 [1.2] coordinates | merged | `parsePersistableCoord` (`@/core/coordinates/validateCoord`), `PersistableCoord` (`@/core/coordinates/types`), `SplinePathCoord` (`@/core/coordinates/SplinePathCoord`) |
 | MFW-11 [2.1] owner token | merged | `isDeviceOwnerToken`, `type DeviceOwnerToken`, `hashOwnerToken(token): Promise<OwnerTokenHash>`, `isOwnerTokenHash`, `type OwnerTokenHash` from `@/services/auth` |
@@ -34,16 +34,34 @@ copy their code into this branch.
 | MFW-12 [2.2] API & DB | merged | `CreationRepository`, `CreationRepositoryError`, `CreationBackend` (`creationRepository.ts`); `NewCreation`, `PublicCreation`, `EncryptedPrivateWish`, `PrivateWishCiphertext`, `AppearanceJson`, `ZoneQuery`, `PUBLIC_CREATION_KEYS` (`creationTypes.ts`); `validateNewCreation`, `isFestivalEventId`, `isZoneId`, `toIsoTimestamp` (`creationValidation.ts`); `pickPublicCreation`, `publicRowToCreation` (`publicCreation.ts`); `createInMemoryCreationRepository` (with `setModeration`); `createSupabaseCreationRepository` (closure helpers `send(target, method, body?)`, `restBase`, `now`); `getCreationRepository`, `createCreationRepositoryFromEnv`, `BackendEnv` (`creationRepositoryFactory.ts`); `computeCreationExpiresAt(eventId): Date \| null` (`retention.ts`); `isJsonObject`, `isPlainObject`, `JsonObject` (`json.ts`); fixtures in `src/services/api/__fixtures__/creations.ts`; config `ZONE_ITEM_CAP = 80`, `ZONE_ID_MIN = 1`, `UUID_PATTERN`, `PRIVATE_WISH_CIPHERTEXT_PATTERN`, `PRIVATE_WISH_KEY_ID_PATTERN`, `PRIVATE_WISH_ENVELOPE_VERSION = "v1"`, `AES_GCM_IV_BYTES = 12`, `AES_GCM_TAG_BYTES = 16`; SQL function `public.mfw_insert_creation` |
 | MFW-24 [5.2] river flow | merged (a6ce8f3) | `findNearestFreeSpot(candidate, existing, lanes, nowMs): RiverSpot \| null`, `isSpotFree`, `riverCoordFromSpot(spot, createdAtMs): SplinePathCoord`, `riverSpotOf`, `riverSpotDistance`, `type RiverSpot` from `@/core/world/riverCollision`; `getLoyKrathongRiverLanes(): RiverLaneSet` from `@/core/world/riverLanes`; `type RiverLaneSet`, `type RiverPlacementSource` from `@/core/coordinates/riverLaneSet`; `RIVER_DRIFT_SPEED_FACTOR = 0.008`, `RIVER_MIN_CENTER_SPACING` (= 2 × `RIVER_COLLISION_RADIUS` × 1.1) from `@/config/riverFlow.config`; `LOY_KRATHONG_RIVER_LANE_ID = 1` from `@/config/events/loyKrathong.river.config` |
 | MFW-7 / feature flags | merged | `isEventEnabled(id)` from `@/config/featureFlags.config`; `FESTIVAL_EVENT_IDS`, `FestivalEventId` |
-| **MFW-13 [2.3] PII guard & report** | **NOT merged** (plan `docs/plans/MFW-13.md`) | see list A |
+| MFW-13 [2.3] PII guard & report | merged (adda547) | see list A (real code) |
 | **MFW-25 [5.3] zones** | **NOT merged** (plan `docs/plans/MFW-25.md`) | see list B |
+| **MFW-21 [4.3] WishModal** | **NOT merged** (plan `docs/plans/MFW-21.md`, branch `docs/card-specs-wave4`; implemented next) | see list C |
 
-**A. ASSUMED INTERFACE (from MFW-13 plan).** Check each item against `main`; if a name differs, use the real one and list it in the PR.
-- `@/services/moderation` exports `checkPublicWish(text: string): WishGuardResult` (`{ ok: true } | { ok: false; reasons: readonly ModerationReason[] }`),
-  `toModerationBlockedBody(reasons): ModerationBlockedBody` (`{ error: "moderation_blocked"; reasons }`) and `type ModerationBlockedBody`.
-  The barrel is pure and client-safe.
-- `validateNewCreation` (MFW-12 file) gained a backstop: a public wish that fails `checkPublicWish` throws `invalid_input` / `publicWishText`.
-- `CreationRepository` gained `reportCreation(creationId): Promise<ReportOutcome>`; `InMemoryCreationRepository` gained `getModerationState(id)`.
+**A. MFW-13 on `main` (checked with `git show origin/main:…`).**
+- `@/services/moderation` (pure, client-safe barrel) exports `checkPublicWish(text: string): WishGuardResult`
+  (`{ ok: true } | { ok: false; reasons: readonly ModerationReason[] }`), `toModerationBlockedBody(reasons): ModerationBlockedBody`
+  (`{ error: "moderation_blocked"; reasons }`), `parseModerationBlockedBody`, and the types `ModerationBlockedBody`, `WishGuardResult`,
+  `ModerationReason`.
+- `validateNewCreation` has the backstop: a public wish that is blank or fails `checkPublicWish` throws `invalid_input` / `publicWishText`.
+- `CreationRepository` has `reportCreation(creationId): Promise<ReportOutcome>` (`ReportOutcome = "counted" | "ignored"`, exported from
+  `creationRepository.ts`); `InMemoryCreationRepository` has `getModerationState(id)`. The failing double in
+  `src/app/api/creations/route.test.ts` already has `reportCreation: async (): Promise<ReportOutcome> => "ignored"`.
 - Test inputs reused from MFW-13's tables: `"โทร 0812345678"` → `phone`, `"somchai@gmail.com"` → `email`, `"fuck you"` → `profanity`.
+
+**C. ASSUMED INTERFACE (from MFW-21 plan): the shared wish contract. Reuse it; do not define a second visibility type or length limit.**
+- `@/config/wish.config` exports `WISH_VISIBILITIES = ["private", "public"]`, `type WishVisibility`, `WISH_DRAFT_ISSUES`
+  (`text_empty`, `text_too_long`, `visibility_missing`, `moderation_blocked`), `type WishDraftIssue`, and `WISH_TEXT_MAX_LENGTH = 280`
+  (UTF-16 code units after trimming; **PLACEHOLDER**, MFW-21 Open question 1).
+- `@/services/api/wishPayload` (pure, isomorphic; imports only `wish.config` and `@/services/moderation`) exports
+  `isWishVisibility(value): value is WishVisibility`, `normalizeWishText(text)` (trim),
+  `evaluateWishDraft({ text, visibility }): { ok: true; wish: ComposedWish } | { ok: false; issues; moderationReasons }` (throws `TypeError`
+  for a non-string text or an unknown visibility; trims; enforces `WISH_TEXT_MAX_LENGTH`; runs `checkPublicWish` only when public and non-empty;
+  issues come in `WISH_DRAFT_ISSUES` order), `toWishColumns(wish): { publicWishText; privateWishPlaintext }` (exactly one non-null),
+  `toWishRequestFields(wish): { wishText; wishVisibility }`, `moderationReasonsFromServerBody(body)`, and the types `ComposedWish`,
+  `WishColumns`, `WishRequestFields`, `WishDraftEvaluation`.
+- MFW-21's barrel (`src/services/api/index.ts`) already exports `type WishVisibility` and the wishPayload functions. This card must **not**
+  export a second `WishVisibility` or `WISH_VISIBILITIES` from the barrel.
 
 **B. ASSUMED INTERFACE (from MFW-25 plan).**
 - `@/core/world/zoneManager` (import **by path**; pure, imports only `@/config/world.config`) exports
@@ -97,8 +115,10 @@ AC text is verbatim from `docs/backlog.json` story 2.4.
    - Private: captured input has `publicWishText: null`, `privateWish.keyId` = the configured key id, a ciphertext matching
      `PRIVATE_WISH_CIPHERTEXT_PATTERN` that decrypts (with the key and the owner hash as additional data) to the trimmed wish and does not
      contain it. Cipher correctness against `node:crypto` `aes-256-gcm`: `src/services/api/privateWishCipher.test.ts`.
-   - Public: `checkPublicWish` runs on the server before any repository call; on failure → 422 `toModerationBlockedBody(reasons)` and nothing is
-     stored, the cipher is never called. On success the captured input has `privateWish: null`. Tests: `createCreation.test.ts` → "AC3" cases.
+   - Public: MFW-21's `evaluateWishDraft` (which runs MFW-13's `checkPublicWish`) runs on the server before any repository call. A
+     `moderation_blocked` result → 422 `toModerationBlockedBody(evaluation.moderationReasons)`, nothing is stored, the cipher is never called.
+     `toWishColumns` puts the text in exactly one column. On success the captured input has `privateWish: null`. The server also enforces
+     `WISH_TEXT_MAX_LENGTH` (400 field `wishText`). Tests: `createCreation.test.ts` → "AC3" cases.
 4. **"The server assigns zone_id (first zone of the event below the 80-item cap, else a new zone) and expires_at (festival end + 30 days, from
    config); the client cannot set them"**
    - `expiresAt` = `computeCreationExpiresAt(eventId)`; `createdAt` = server `now`. Zone: `createRiverPlacementStrategy` feeds
@@ -138,7 +158,8 @@ Quoted from `docs/spec/open-questions.md`. Do not reopen them. No row names MFW-
 - **Row 6:** speedFactor is progress per second; `createdAt` / `now` are epoch ms. → The server's `createdAtMs` is both the stored `created_at`
   and the collision time.
 - **Row 10:** "expires_at = 30 days after the festival ends". → `computeCreationExpiresAt` (MFW-12). No deletion job here.
-- **Row 13:** "profanity is blocked from public_wish_text…; the private wish may keep it". → Only the public wish is moderated.
+- **Row 13:** "profanity is blocked from public_wish_text…; the private wish may keep it". → Only the public wish is moderated
+  (`evaluateWishDraft` already follows this).
 - **Row 16 / launch plan:** engine pieces are generic. → The handler is event-agnostic; per-event parts are the appearance registry (MFW-19) and a
   placement-strategy registry (this card; only Loy Krathong registered).
 - **Row 17:** no Supabase project or staging yet. → The migration is a repo file the owner applies; CI never needs a database.
@@ -151,6 +172,7 @@ Quoted from `docs/spec/open-questions.md`. Do not reopen them. No row names MFW-
 |---|---|---|
 | `supabase/migrations/20261124020000_mfw45_guarded_creation_insert.sql` | new | `mfw_zone_item_counts`, `mfw_zone_occupants`, `mfw_insert_creation_guarded` (service_role only) |
 | `src/config/creationWrite.config.ts` | new | `CREATE_CREATION_REQUEST_MAX_BYTES`, `CREATE_CREATION_MAX_ATTEMPTS` |
+| `src/config/creationWrite.config.test.ts` | new | The body cap fits a maximum-length wish (also JSON-escaped) |
 | `src/config/privateWish.config.ts` | modify (append) | Key env names, key size/format, tag bits, additional-data label, ephemeral key id |
 | `src/config/database.config.ts` | modify (append) | Three RPC paths, deployment env name/value |
 | `src/services/api/json.ts` | modify (append) | `cloneJsonObject` |
@@ -162,7 +184,7 @@ Quoted from `docs/spec/open-questions.md`. Do not reopen them. No row names MFW-
 | `src/services/api/inMemoryCreationRepository.ts` | modify | Implement the three methods |
 | `src/services/api/supabaseCreationRepository.ts` | modify | Implement the three methods via RPC |
 | `src/services/api/creationRepositoryFactory.ts` | modify (append) | `isProductionDeployment(env)` |
-| `src/services/api/createCreationTypes.ts` | new (client-safe) | Request/response/error body types, `CREATE_CREATION_BODY_KEYS`, `WISH_VISIBILITIES` |
+| `src/services/api/createCreationTypes.ts` | new (client-safe) | Request/response/error body types, `CREATE_CREATION_BODY_KEYS` (visibility type reused from MFW-21) |
 | `src/services/api/createCreationRequest.ts` | new | `parseCreateCreationRequest` |
 | `src/services/api/creationPlacement.ts` | new | `CreationPlacementStrategy`, `createRiverPlacementStrategy`, `getCreationPlacementStrategy` |
 | `src/services/api/createCreation.ts` | new | `handleCreateCreation(request, deps)`, `getDefaultCreateCreationDeps()` |
@@ -194,10 +216,12 @@ numbers. **Never write the snake_case private column names (`owner_token…`, `p
 `src/config/creationWrite.config.ts` (new):
 ```ts
 /**
- * Max bytes of a POST /api/creations body (UTF-8). A valid body without a wish is about 450 bytes. Technical DoS bound,
- * lead decision MFW-45; it is NOT the product wish-length limit (open question, see docs/plans/MFW-45.md).
+ * Max bytes of a POST /api/creations body (UTF-8). A valid body without a wish is about 450 bytes; a wish of
+ * WISH_TEXT_MAX_LENGTH (MFW-21) adds at most 6 bytes per UTF-16 unit when JSON-escaped. Technical DoS bound, lead decision
+ * MFW-45. It is NOT the product wish-length limit (that is WISH_TEXT_MAX_LENGTH in wish.config.ts); creationWrite.config.test.ts
+ * fails if a raised wish limit no longer fits.
  */
-export const CREATE_CREATION_REQUEST_MAX_BYTES = 16_384;
+export const CREATE_CREATION_REQUEST_MAX_BYTES = 4_096;
 /** Compare-and-insert attempts when a concurrent release changed the zone (owner decision 25). Lead decision MFW-45. */
 export const CREATE_CREATION_MAX_ATTEMPTS = 3;
 ```
@@ -239,7 +263,8 @@ Constant table:
 
 | Constant | Value | File | Source |
 |---|---|---|---|
-| `CREATE_CREATION_REQUEST_MAX_BYTES` | `16_384` | `creationWrite.config.ts` | lead (D9), technical bound |
+| `CREATE_CREATION_REQUEST_MAX_BYTES` | `4_096` | `creationWrite.config.ts` | lead (D9), technical bound ≥ a max-length wish |
+| reused: `WISH_TEXT_MAX_LENGTH` | `280` (PLACEHOLDER, MFW-21 OQ 1) | `src/config/wish.config.ts` (MFW-21) | not redefined here |
 | `CREATE_CREATION_MAX_ATTEMPTS` | `3` | `creationWrite.config.ts` | lead (D6) |
 | `AES_256_KEY_BYTES` / `AES_GCM_TAG_LENGTH_BITS` | `32` / `128` | `privateWish.config.ts` | AES-256-GCM standard (owner decision 2) |
 | `PRIVATE_WISH_KEY_ENV` / `PRIVATE_WISH_KEY_ID_ENV` | `"PRIVATE_WISH_KEY"` / `"PRIVATE_WISH_KEY_ID"` | `privateWish.config.ts` | lead (D3) |
@@ -603,13 +628,11 @@ Do not change `createCreationRepositoryFromEnv` / `getCreationRepository` (GET k
 
 ```ts
 import type { FestivalEventId } from "@/config/events/types";
+import type { WishVisibility } from "@/config/wish.config"; // ASSUMED INTERFACE (from MFW-21 plan); never redefine it
 import type { PersistableCoord } from "@/core/coordinates/types";
 import type { ModerationBlockedBody } from "@/services/moderation";
 import type { PublicCreation } from "./creationTypes";
 import type { JsonObject } from "./json";
-
-export const WISH_VISIBILITIES = Object.freeze(["private", "public"] as const);
-export type WishVisibility = (typeof WISH_VISIBILITIES)[number];
 
 /** Exactly these keys; anything else is rejected (backlog 2.4). */
 export const CREATE_CREATION_BODY_KEYS = Object.freeze(
@@ -622,7 +645,7 @@ export interface CreateCreationRequestBody {
   readonly eventId: FestivalEventId;
   readonly appearance: JsonObject;   // the event's appearance (Loy Krathong: serializeKrathongAppearance)
   readonly coord: PersistableCoord;  // desired spot; the server may move it (owner decision 25)
-  readonly wishText: string;         // non-blank
+  readonly wishText: string;         // non-blank after trim, at most WISH_TEXT_MAX_LENGTH (MFW-21 toWishRequestFields builds both wish keys)
   readonly wishVisibility: WishVisibility;
   readonly ownerToken: string;
 }
@@ -668,8 +691,8 @@ export interface ParsedCreateCreationRequest {
   readonly eventId: FestivalEventId;
   readonly appearance: unknown;        // validated later by parseEventAppearance
   readonly coord: PersistableCoord;    // parsePersistableCoord's fresh copy
-  readonly wishText: string;           // trimmed, non-empty
-  readonly wishVisibility: WishVisibility;
+  readonly wishText: string;           // as sent (type-checked only); evaluateWishDraft trims and checks it in the handler
+  readonly wishVisibility: WishVisibility; // isWishVisibility (MFW-21)
   readonly ownerToken: DeviceOwnerToken;
 }
 export type CreateCreationParseResult =
@@ -684,8 +707,9 @@ Checks in this order; the first failure returns `{ ok: false, field }`:
 3. `eventId`: `isFestivalEventId` → else `"eventId"`.
 4. `appearance`: `Object.prototype.hasOwnProperty.call(value, "appearance")` → else `"appearance"`.
 5. `coord`: `parsePersistableCoord(value.coord)` ok → else `"coord"`.
-6. `wishText`: `typeof === "string"` and `.trim() !== ""` → else `"wishText"`. Keep the trimmed text.
-7. `wishVisibility`: in `WISH_VISIBILITIES` → else `"wishVisibility"`.
+6. `wishText`: `typeof === "string"` → else `"wishText"`. Emptiness and length are checked by `evaluateWishDraft` in the handler
+   (one rule set with the WishModal), not here.
+7. `wishVisibility`: `isWishVisibility` (MFW-21) → else `"wishVisibility"`.
 8. `ownerToken`: `isDeviceOwnerToken` → else `"ownerToken"`.
 Return the object built field by field (no spread). Missing keys fail at their own step.
 
@@ -809,16 +833,27 @@ Module constants: `HTTP_CREATED = 201`, `HTTP_BAD_REQUEST = 400`, `HTTP_CONFLICT
 5. `!strategy.acceptsCoord(coord)` → 400 field `"coord"`.
 6. `const parsedAppearance = parseEventAppearance(eventId, request.appearance)`; not ok → 400 `"appearance"`.
    `const appearance = cloneJsonObject(parsedAppearance.appearance)`; null → 400 `"appearance"`.
-7. If `wishVisibility === "public"`: `const guard = checkPublicWish(wishText)`; `!guard.ok` → 422 `toModerationBlockedBody(guard.reasons)`.
-   The private wish is not moderated (owner decision 13).
+7. Wish (MFW-21 contract, the same rules as the WishModal):
+   ```ts
+   const evaluation = evaluateWishDraft({ text: request.wishText, visibility: request.wishVisibility });
+   if (!evaluation.ok) {
+     if (evaluation.issues.includes("text_empty") || evaluation.issues.includes("text_too_long")) return invalidBody("wishText");
+     if (evaluation.issues.includes("moderation_blocked")) {
+       return respond(HTTP_UNPROCESSABLE, toModerationBlockedBody(evaluation.moderationReasons));
+     }
+     return invalidBody("wishVisibility"); // visibility_missing cannot happen after parsing; fail closed
+   }
+   const { publicWishText, privateWishPlaintext } = toWishColumns(evaluation.wish); // exactly one is non-null
+   ```
+   A too-long public wish with PII gets 400 `wishText` (length first). The private wish is not moderated (owner decision 13). Do not call
+   `checkPublicWish` directly; `evaluateWishDraft` does, and MFW-13's backstop in `validateNewCreation` repeats it.
 8. `let repository; try { repository = deps.getRepository(); } catch { → 503 }`. If `repository.backend === "memory" && deps.isProduction` → 503.
 9. Everything below runs in one `try { … } catch { return 503 { error: "unavailable" } }`:
    ```ts
    const ownerTokenHash = await hashOwnerToken(request.ownerToken); // the raw token is not used after this line
-   const privateWish = wishVisibility === "private"
-     ? await (await deps.getCipher(repository.backend)).encrypt(wishText, ownerTokenHash)
-     : null;
-   const publicWishText = wishVisibility === "public" ? wishText : null;
+   const privateWish = privateWishPlaintext === null
+     ? null
+     : await (await deps.getCipher(repository.backend)).encrypt(privateWishPlaintext, ownerTokenHash);
    const source: PlacementSource = {
      zoneItemCounts: () => repository.zoneItemCounts(eventId),
      listZoneOccupants: (zoneId) => repository.listZoneOccupants({ eventId, zoneId }),
@@ -852,16 +887,14 @@ Export only `GET` and `POST`. `route.ts` must not contain `process.env`, `ownerT
 
 ### Step 16 — `src/services/api/index.ts` (modify)
 
-Add to the client-safe barrel:
+Add to the client-safe barrel (keep MFW-12, MFW-13, MFW-21 and MFW-25 exports; `WishVisibility` already comes from `./wishPayload`):
 ```ts
 export {
   CREATE_CREATION_BODY_KEYS,
-  WISH_VISIBILITIES,
   type CreateCreationErrorBody,
   type CreateCreationField,
   type CreateCreationRequestBody,
   type CreateCreationResponseBody,
-  type WishVisibility,
 } from "./createCreationTypes";
 ```
 Never export `createCreation`, `createCreationRequest`, `creationPlacement` or `privateWishCipher` from the barrel.
