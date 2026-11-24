@@ -24,7 +24,10 @@ describe("zustand stores", () => {
     expect(builder.appearance).toBeNull();
     expect(Object.keys(builder).sort()).toEqual(["appearance", "chooseKrathong"]);
     expect(typeof builder.chooseKrathong).toBe("function");
-    expect(useWorldStore.getState()).toEqual({ currentZoneId: null, participantCount: null });
+    expect(useWorldStore.getState()).toEqual({
+      currentZoneId: null, participantCount: null, eventId: null, zoneCount: null,
+      zoneStatus: "idle", zoneItems: [], focusedCreationId: null,
+    });
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,
       qualityTier: DEFAULT_QUALITY_TIER,

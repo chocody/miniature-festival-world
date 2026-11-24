@@ -1,10 +1,13 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { Euler, Vector3 } from "three";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import type { SplinePathCoord } from "@/core/coordinates";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { bobbingPhaseFromId, createBobbingOut, getLoyKrathongRiverLanes, getRiverItemPositionAt, writeBobbingAt } from "@/core/world";
+import { TIER_BUDGETS } from "@/config/performance.config";
+import { prepareRiverItems, selectVisibleRiverItems } from "@/core/world";
+import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 
 const r3f = vi.hoisted(() => ({ frame: null as null | (() => void), invalidate: vi.fn() }));
@@ -141,5 +144,90 @@ describe("RiverFlow", () => {
     expect(view.container.querySelector("mesh")!.getAttribute("data-shadows")).toBe("false");
     view.unmount();
     expect(() => r3f.frame!()).not.toThrow();
+  });
+});
+
+describe("river render budget (MFW-25)", () => {
+  afterEach(() => useDeviceStore.setState(useDeviceStore.getInitialState(), true));
+  const many = (n: number): RiverFlowItem[] =>
+    Array.from({ length: n }, (_, k) => mk(`m-${String(k).padStart(3, "0")}`, 1, k / n));
+  const groupIds = (c: HTMLElement) =>
+    [...c.querySelectorAll('[name^="river-item-"]')].map((g) => g.getAttribute("name")!.replace("river-item-", "")).sort();
+  const expectedIds = (list: RiverFlowItem[], cap: number) =>
+    selectVisibleRiverItems(prepareRiverItems(list, lanes), cap).map((i) => i.id).sort();
+
+  it("never renders more than ZONE_ITEM_CAP", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(ui({ items: many(85) }));
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(80);
+    expect(container.querySelector('[name="river-flow"]')!.getAttribute("data-visible-cap")).toBe("80");
+  });
+
+  it("LOW renders at most its tier cap", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const list = many(80);
+    const { container } = render(ui({ items: list }));
+    expect(groupIds(container)).toHaveLength(TIER_BUDGETS.LOW.riverItemCap);
+    expect(groupIds(container)).toEqual(expectedIds(list, TIER_BUDGETS.LOW.riverItemCap));
+  });
+
+  it("MEDIUM uses its cap", () => {
+    useDeviceStore.getState().setQualityTier("MEDIUM");
+    const { container } = render(ui({ items: many(80) }));
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(TIER_BUDGETS.MEDIUM.riverItemCap);
+  });
+
+  it("river shadows follow the tier", () => {
+    for (const [tier, expected] of [["HIGH", "true"], ["MEDIUM", "false"], ["LOW", "false"]] as const) {
+      useDeviceStore.getState().setQualityTier(tier);
+      const { container, unmount } = render(ui({ shadows: true }));
+      const meshes = container.querySelectorAll("mesh");
+      expect(meshes.length).toBeGreaterThan(0);
+      for (const m of meshes) expect(m.getAttribute("data-shadows")).toBe(expected);
+      unmount();
+    }
+  });
+
+  it("tier step-down re-selects", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const list = many(80);
+    const { container } = render(ui({ items: list }));
+    expect(groupIds(container)).toHaveLength(80);
+    act(() => useDeviceStore.getState().setQualityTier("LOW"));
+    expect(groupIds(container)).toHaveLength(TIER_BUDGETS.LOW.riverItemCap);
+    expect(groupIds(container)).toEqual(expectedIds(list, TIER_BUDGETS.LOW.riverItemCap));
+    expect(() => r3f.frame!()).not.toThrow();
+  });
+
+  it("pinned id survives the cap", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const list = many(80);
+    const shown = new Set(expectedIds(list, TIER_BUDGETS.LOW.riverItemCap));
+    const hidden = list.find((i) => !shown.has(i.id))!;
+    const { container } = render(
+      <RiverFlow items={list} lanes={lanes} shadows reducedMotion={false} now={() => NOW} pinnedIds={[hidden.id]} />,
+    );
+    expect(container.querySelector(`[name="river-item-${hidden.id}"]`)).not.toBeNull();
+    expect(groupIds(container)).toHaveLength(TIER_BUDGETS.LOW.riverItemCap);
+  });
+
+  it("frame loop moves only rendered items", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const list = many(80);
+    const { container } = render(ui({ items: list }));
+    expect(() => r3f.frame!()).not.toThrow();
+    for (const id of groupIds(container)) {
+      const item = list.find((i) => i.id === id)!;
+      const p = getRiverItemPositionAt(item, lanes, NOW)!;
+      const node = el(container, id);
+      expect(node.position.x).toBe(p.world.x);
+      expect(node.position.z).toBe(p.world.z);
+    }
+  });
+
+  it("FALLBACK_2D renders nothing", () => {
+    useDeviceStore.getState().setQualityTier("FALLBACK_2D");
+    const { container } = render(ui({ items: many(5) }));
+    expect(container.querySelector('[name="river-flow"]')).toBeNull();
   });
 });

@@ -14,3 +14,5 @@ export {
   type ReportErrorBody,
   type ReportRequestBody,
 } from "./reportTypes";
+export { CREATIONS_API_PATH, ZONES_API_PATH, ZONE_API_QUERY_PARAMS } from "./apiPaths";
+export type { ZoneDirectoryResponse } from "./creationTypes";

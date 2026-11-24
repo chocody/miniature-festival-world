@@ -1,5 +1,6 @@
 import {
   CREATIONS_PUBLIC_VISIBLE_VIEW,
+  HIGHEST_ZONE_ORDER,
   INSERT_CREATION_RPC_PATH,
   LOCAL_SUPABASE_HOSTNAMES,
   PUBLIC_CREATION_COLUMNS,
@@ -8,12 +9,16 @@ import {
   SUPABASE_REQUEST_TIMEOUT_MS,
   SUPABASE_REST_PATH,
   UUID_PATTERN,
+  ZONE_DIRECTORY_COLUMNS,
+  ZONE_DIRECTORY_LIMIT,
 } from "@/config/database.config";
+import type { FestivalEventId } from "@/config/events/types";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type { AppearanceJson, NewCreation, PublicCreation, ZoneQuery } from "./creationTypes";
 import { isFestivalEventId, isZoneId, validateNewCreation } from "./creationValidation";
+import { isPlainObject } from "./json";
 import { publicRowToCreation } from "./publicCreation";
 
 export interface SupabaseCreationRepositoryOptions {
@@ -112,6 +117,22 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
         if (c !== null && c.eventId === query.eventId && c.zoneId === query.zoneId) kept.push(c);
       }
       return kept;
+    },
+
+    async highestVisibleZoneId(eventId: FestivalEventId): Promise<number | null> {
+      if (!isFestivalEventId(eventId)) throw new CreationRepositoryError("invalid_input", "eventId");
+      const target = new URL(CREATIONS_PUBLIC_VISIBLE_VIEW, restBase);
+      target.searchParams.set("select", ZONE_DIRECTORY_COLUMNS.join(","));
+      target.searchParams.set("event_id", `eq.${eventId}`);
+      target.searchParams.set("order", HIGHEST_ZONE_ORDER);
+      target.searchParams.set("limit", String(ZONE_DIRECTORY_LIMIT));
+      const data = await send(target, "GET");
+      if (!Array.isArray(data)) throw new CreationRepositoryError("invalid_backend_response", "list");
+      if (data.length === 0) return null;
+      const row: unknown = data[0];
+      const zone = isPlainObject(row) ? row.zone_id : undefined;
+      if (!isZoneId(zone)) throw new CreationRepositoryError("invalid_backend_response", "zone");
+      return zone;
     },
 
     async insertCreation(input: NewCreation): Promise<PublicCreation> {

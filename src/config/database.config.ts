@@ -31,3 +31,9 @@ export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 
 /** Atomic report increment (relative to SUPABASE_REST_PATH). MFW-13. */
 export const REPORT_CREATION_RPC_PATH = "rpc/mfw_report_creation";
+/** Zone directory read (MFW-25): explicit column allowlist, never "*". */
+export const ZONE_DIRECTORY_COLUMNS = Object.freeze(["zone_id"] as const);
+/** Highest visible zone first. */
+export const HIGHEST_ZONE_ORDER = "zone_id.desc";
+/** One row is enough to know the highest zone id. */
+export const ZONE_DIRECTORY_LIMIT = 1;

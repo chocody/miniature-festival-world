@@ -4,3 +4,7 @@ export * from "./bobbing";
 export * from "./riverLanes";
 export * from "./riverFlow";
 export * from "./riverCollision";
+export * from "./zoneManager";
+export * from "./growingWorldScaler";
+export * from "./zoneRiverItems";
+export * from "./riverVisibility";

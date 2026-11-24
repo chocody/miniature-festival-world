@@ -210,3 +210,37 @@ describe("in-memory creation repository: moderation (MFW-13)", () => {
     expect(repo.getModerationState(c.id)?.reportCount).toBe(0);
   });
 });
+
+describe("in-memory creation repository: highestVisibleZoneId", () => {
+  it("is null when empty", async () => {
+    const { repo } = setup();
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBeNull();
+  });
+  it("returns the highest zone with a visible creation", async () => {
+    const { repo } = setup();
+    await repo.insertCreation(makeNewCreation({ zoneId: 1 }));
+    await repo.insertCreation(makeNewCreation({ zoneId: 3 }));
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBe(3);
+  });
+  it("ignores other events, hidden, flagged and expired rows", async () => {
+    const { repo, tick } = setup();
+    await repo.insertCreation(makeNewCreation({ zoneId: 1 }));
+    await repo.insertCreation(makeNewCreation({ eventId: "christmas", zoneId: 9 }));
+    const hidden = await repo.insertCreation(makeNewCreation({ zoneId: 4 }));
+    repo.setModeration(hidden.id, { moderationStatus: "hidden" });
+    const flagged = await repo.insertCreation(makeNewCreation({ zoneId: 5 }));
+    repo.setModeration(flagged.id, { reportCount: AUTO_HIDE_REPORT_THRESHOLD });
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBe(1);
+    await repo.insertCreation(makeNewCreation({ zoneId: 6, expiresAt: new Date(START + STEP) }));
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBe(6);
+    tick();
+    expect(await repo.highestVisibleZoneId("loy_krathong")).toBe(1);
+  });
+  it("rejects an unknown event", async () => {
+    const { repo } = setup();
+    await expect(repo.highestVisibleZoneId("nope" as never)).rejects.toMatchObject({
+      code: "invalid_input",
+      detail: "eventId",
+    });
+  });
+});
