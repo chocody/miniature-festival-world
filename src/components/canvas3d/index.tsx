@@ -57,7 +57,9 @@ import {
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
+import { getLoyKrathongRiverLanes } from "@/core/world";
 import { PartChangeBounce } from "./PartChangeBounce";
+import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -104,6 +106,9 @@ export function getSceneRenderSettings(tier: RenderTier): SceneRenderSettings {
   };
 }
 
+/** Default: no river krathongs until a zone data source exists (MFW-25). */
+export const NO_RIVER_ITEMS: readonly RiverFlowItem[] = Object.freeze([]);
+
 type TargetRef = RefObject<Object3D | null>;
 
 interface ToyNightSceneProps {
@@ -111,6 +116,7 @@ interface ToyNightSceneProps {
   shadowMapSizePx: number;
   appearance: KrathongAppearance;
   reducedMotion: boolean;
+  riverItems: readonly RiverFlowItem[];
   objectRotation: number;
   worldRotation: number;
   worldOffset: readonly [number, number];
@@ -127,6 +133,7 @@ function ToyNightScene({
   shadowMapSizePx,
   appearance,
   reducedMotion,
+  riverItems,
   objectRotation,
   worldRotation,
   worldOffset,
@@ -183,6 +190,12 @@ function ToyNightScene({
             <KrathongModel appearance={appearance} shadows={shadows} />
           </PartChangeBounce>
         </group>
+        <RiverFlow
+          items={riverItems}
+          lanes={getLoyKrathongRiverLanes()}
+          shadows={shadows}
+          reducedMotion={reducedMotion}
+        />
       </group>
     </>
   );
@@ -270,10 +283,12 @@ export function SceneViewport({
   mode = null,
   onGestureRelease,
   viewControlRef,
+  riverItems = NO_RIVER_ITEMS,
 }: {
   mode?: InteractionMode | null;
   onGestureRelease?: () => void;
   viewControlRef?: Ref<CustomizeViewControl>;
+  riverItems?: readonly RiverFlowItem[];
 }) {
   const profiled = useDeviceStore((state) => state.profiled);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
@@ -465,6 +480,7 @@ export function SceneViewport({
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
             reducedMotion={reducedMotion}
+            riverItems={riverItems}
             objectRotation={objectRotation}
             worldRotation={worldRotation}
             worldOffset={worldOffset}
