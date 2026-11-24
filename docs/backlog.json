@@ -154,6 +154,19 @@
           ],
           "labels": ["privacy", "moderation"],
           "blockedBy": ["2.2"]
+        },
+        {
+          "id": "2.4", "summary": "Create-creation API (server write path)",
+          "goal": "One server endpoint owns every write of a creation, so hashing, encryption, moderation and coordinate validation cannot be skipped.",
+          "ac": [
+            "POST /api/creations takes eventId, appearance, coord, wishText, wishVisibility (private | public) and ownerToken in the JSON body; coord must pass parsePersistableCoord and appearance the event's appearance validator; unknown fields are rejected",
+            "The server stores only SHA-256(ownerToken) in creations_private_ownership; the raw token is never stored, logged or returned",
+            "A private wish is stored only as AES-256-GCM ciphertext with a key id (public_wish_text stays null); a public wish must pass the 2.3 guard on the server (rejected with the reasons otherwise) and private_wish_text stays null",
+            "The server assigns zone_id (first zone of the event below the 80-item cap, else a new zone) and expires_at (festival end + 30 days, from config); the client cannot set them",
+            "The response contains only public fields; a test asserts owner_token, owner_token_hash and private_wish_text never appear; the route works with an in-memory repository when Supabase env is absent"
+          ],
+          "labels": ["privacy", "api"],
+          "blockedBy": ["2.2", "2.3", "1.2", "4.1"]
         }
       ]
     },
@@ -270,7 +283,7 @@
             "Creation is saved with a SplinePathCoord"
           ],
           "labels": ["loy-krathong", "ritual"],
-          "blockedBy": ["3.2", "4.3", "2.2"]
+          "blockedBy": ["3.2", "4.3", "2.4", "5.2", "6.1"]
         },
         {
           "id": "5.2", "summary": "Deterministic spline river flow",
@@ -281,13 +294,13 @@
             "Current position queryable for Find My Krathong"
           ],
           "labels": ["loy-krathong", "coordinates"],
-          "blockedBy": ["1.2", "5.1"]
+          "blockedBy": ["1.2", "3.1", "4.1"]
         },
         {
           "id": "5.3", "summary": "Growing river world & zone pagination",
           "goal": "The world grows instead of overcrowding one scene.",
           "ac": [
-            "Max ~80 krathongs rendered per river-bend zone",
+            "Max 80 krathongs rendered per river-bend zone (owner decision, open question 4)",
             "New zones (Zone 2, 3, …) open along the river as participation grows (ZoneManager / GrowingWorldScaler)",
             "Only the visible zone is loaded"
           ],
@@ -322,7 +335,7 @@
             "Tap a krathong → gentle bounce + InspectPopup with appearance and anonymous public wish + Report button"
           ],
           "labels": ["loy-krathong", "interaction", "perf"],
-          "blockedBy": ["3.2", "6.1", "2.3"]
+          "blockedBy": ["3.2", "6.1", "2.3", "5.2"]
         }
       ]
     },
@@ -341,7 +354,7 @@
             "Works when the krathong is in a different zone from the current view"
           ],
           "labels": ["loy-krathong", "tracking"],
-          "blockedBy": ["2.1", "3.3", "5.3"]
+          "blockedBy": ["2.1", "3.3", "5.1", "5.3"]
         },
         {
           "id": "7.2", "summary": "Anonymous wish reader & owner private view",
@@ -352,7 +365,7 @@
             "Test: private text is never returned without a matching owner token"
           ],
           "labels": ["loy-krathong", "privacy"],
-          "blockedBy": ["2.2", "6.2"]
+          "blockedBy": ["2.2", "2.4", "6.2"]
         }
       ]
     },
@@ -371,7 +384,7 @@
             "core/fallback2d includes NormalizedCylindricalCoord → 4-quadrant 2D view converter (prepared for Christmas / CNY)"
           ],
           "labels": ["fallback2d"],
-          "blockedBy": ["1.2", "1.3", "5.2"]
+          "blockedBy": ["1.2", "1.3", "4.1", "5.2", "7.1"]
         },
         {
           "id": "8.2", "summary": "Instanced rendering & memory cleanup audit",
