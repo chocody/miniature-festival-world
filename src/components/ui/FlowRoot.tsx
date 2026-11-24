@@ -9,7 +9,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
-import { OwnershipNotice } from "./OwnershipNotice";
+import { WishModal } from "./WishModal";
 import { ZoneNavigator } from "./ZoneNavigator";
 
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
@@ -20,7 +20,6 @@ const SceneViewport = lazy(() =>
 /** Event that advances each placeholder step; LANDING and the terminal step have none. */
 const NEXT_EVENT: Partial<Record<FlowState, FlowEvent>> = {
   CUSTOMIZE_OBJECT: { type: "FINISH_CUSTOMIZE" },
-  WRITE_WISH: { type: "SUBMIT_WISH" },
   RITUAL_RELEASE: { type: "FINISH_RITUAL" },
 };
 
@@ -62,7 +61,6 @@ export function FlowRoot() {
         </Suspense>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
-      {flowState === "WRITE_WISH" && <OwnershipNotice />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
       ) : flowState === "CUSTOMIZE_OBJECT" ? (
@@ -71,6 +69,8 @@ export function FlowRoot() {
           onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
           viewControlRef={show3D ? viewControlRef : null}
         />
+      ) : flowState === "WRITE_WISH" ? (
+        <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
       ) : (
         <FlowStepPlaceholder
           step={flowState}

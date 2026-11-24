@@ -5,6 +5,7 @@ import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
+import { WISH_COPY } from "@/config/wish.config";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
@@ -49,6 +50,12 @@ beforeEach(() => {
   for (const fn of Object.values(zones)) fn.mockClear();
 });
 
+const completeWish = (text = "ขอให้ทุกคนมีความสุข") => {
+  fireEvent.change(screen.getByRole("textbox", { name: WISH_COPY.textLabel }), { target: { value: text } });
+  fireEvent.click(screen.getByRole("radio", { name: WISH_COPY.options.private.label }));
+  fireEvent.click(screen.getByRole("button", { name: WISH_COPY.submit }));
+};
+
 const stateOf = (container: HTMLElement) =>
   container.querySelector("[data-flow-state]")?.getAttribute("data-flow-state");
 
@@ -62,7 +69,7 @@ describe("FlowRoot", () => {
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
@@ -78,7 +85,7 @@ describe("FlowRoot", () => {
     expect(screen.queryByRole("note")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
     expect(screen.queryByRole("note")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     expect(screen.queryByRole("note")).toBeNull();
@@ -147,7 +154,7 @@ describe("FlowRoot", () => {
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
     const marker = await screen.findByTestId("scene-viewport");
     expect(marker).toHaveAttribute("data-mode", "RITUAL_RELEASE");
 
@@ -171,7 +178,7 @@ describe("FlowRoot", () => {
     const { unmount } = render(<FlowRoot />);
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
     expect(zones.enterWorld).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     expect(zones.enterWorld).toHaveBeenCalledTimes(1);
@@ -186,7 +193,7 @@ describe("FlowRoot", () => {
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
     act(() => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
@@ -197,5 +204,35 @@ describe("FlowRoot", () => {
     });
     expect(screen.getByTestId("zone-navigator")).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("WRITE_WISH renders the wish modal; SUBMIT_WISH needs a valid wish", () => {
+    const { container } = render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(stateOf(container)).toBe("WRITE_WISH");
+    expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: WISH_COPY.submit });
+    expect(next).toBeDisabled();
+    fireEvent.click(next);
+    expect(stateOf(container)).toBe("WRITE_WISH");
+    completeWish();
+    expect(stateOf(container)).toBe("RITUAL_RELEASE");
+    expect(screen.queryByRole("dialog", { name: WISH_COPY.title })).toBeNull();
+    expect(useBuilderStore.getState().wish).toEqual({ text: "ขอให้ทุกคนมีความสุข", visibility: "private" });
+  });
+
+  it("FALLBACK_2D: the wish modal works and no scene mounts", async () => {
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    const { container } = render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(stateOf(container)).toBe("WRITE_WISH");
+    expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
+    completeWish();
+    await act(async () => {});
+    expect(stateOf(container)).toBe("RITUAL_RELEASE");
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 });
