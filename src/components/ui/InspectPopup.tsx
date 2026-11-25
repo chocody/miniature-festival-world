@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { getReportSession, type ReportSession } from "@/services/api/reportClient";
 import type { InspectedCreation } from "./inspectedCreation";
@@ -11,6 +11,8 @@ export interface InspectPopupProps {
   readonly onClose: () => void;
   /** Default getReportSession(). Injectable for tests. */
   readonly reportSession?: ReportSession;
+  /** Owner-only block (MFW-31); the popup itself never touches the token. */
+  readonly ownerSection?: ReactNode;
 }
 
 type ReportUiState = "idle" | "confirming" | "sending" | "received" | "failed";
@@ -18,7 +20,7 @@ type ReportUiState = "idle" | "confirming" | "sending" | "received" | "failed";
 const BUTTON_CLASS = "min-h-11 min-w-11 rounded-full border border-current px-3";
 
 /** Anonymous card for a tapped river krathong: appearance, public wish, Report. No id, name or time is ever shown. */
-export function InspectPopup({ creation, onClose, reportSession }: InspectPopupProps) {
+export function InspectPopup({ creation, onClose, reportSession, ownerSection }: InspectPopupProps) {
   const session = reportSession ?? getReportSession();
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
@@ -78,6 +80,7 @@ export function InspectPopup({ creation, onClose, reportSession }: InspectPopupP
       </dl>
       <h3 className="mt-2 font-semibold">{copy.wishHeading}</h3>
       <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{creation.publicWishText ?? copy.noPublicWish}</p>
+      {ownerSection}
       {creation.publicWishText !== null && (
         <div className="mt-2">
           {state === "idle" && (

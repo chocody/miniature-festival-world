@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INSPECT_POPUP_COPY as COPY } from "@/config/inspect.config";
+import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import type { ReportSession, ReportSubmitOutcome } from "@/services/api/reportClient";
 import { InspectPopup } from "./InspectPopup";
@@ -110,5 +111,25 @@ describe("InspectPopup", () => {
       expect(b.className).toContain("min-w-11");
     }
     for (const el of container.querySelectorAll("*")) expect(el.className.toString()).not.toMatch(/\banimate-|\btransition\b/);
+  });
+});
+
+describe("InspectPopup owner section (MFW-31)", () => {
+  it("AC1: no owner section by default", () => {
+    const { session } = fakeSession();
+    render(<InspectPopup creation={creation(null)} onClose={vi.fn()} reportSession={session} />);
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([COPY.close]);
+    expect(dialog).not.toHaveTextContent(OWNER_WISH_COPY.heading);
+  });
+
+  it("renders the owner section inside the dialog after the wish", () => {
+    const { session } = fakeSession();
+    render(<InspectPopup creation={creation(null)} onClose={vi.fn()} reportSession={session} ownerSection={<p>owner-slot</p>} />);
+    const dialog = screen.getByRole("dialog");
+    const slot = screen.getByText("owner-slot");
+    const wish = screen.getByText(COPY.noPublicWish);
+    expect(dialog).toContainElement(slot);
+    expect(wish.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

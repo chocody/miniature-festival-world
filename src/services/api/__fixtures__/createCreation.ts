@@ -82,6 +82,7 @@ export function recordingRepository(inner: CreationRepository): { repo: Creation
     highestVisibleZoneId: (e) => inner.highestVisibleZoneId(e),
     insertCreation: (i) => inner.insertCreation(i),
     reportCreation: (id) => inner.reportCreation(id),
+    readOwnership: (id) => inner.readOwnership(id),
     zoneItemCounts: (e) => inner.zoneItemCounts(e),
     listZoneOccupants: (q) => inner.listZoneOccupants(q),
     insertCreationGuarded: (input) => {
@@ -105,6 +106,7 @@ export function barrierOnZoneCounts(inner: CreationRepository, parties: number):
     highestVisibleZoneId: (e) => inner.highestVisibleZoneId(e),
     insertCreation: (i) => inner.insertCreation(i),
     reportCreation: (id) => inner.reportCreation(id),
+    readOwnership: (id) => inner.readOwnership(id),
     listZoneOccupants: (q) => inner.listZoneOccupants(q),
     insertCreationGuarded: (input) => inner.insertCreationGuarded(input),
     zoneItemCounts: async (e) => {

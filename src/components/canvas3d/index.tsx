@@ -32,6 +32,7 @@ import { EFFECT_POOL_CAPS, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/perform
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
 import { InspectPopup } from "@/components/ui/InspectPopup";
+import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
@@ -739,7 +740,14 @@ export function SceneViewport({
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>
     </section>
-    {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} />}
+    {inspected && (
+      <InspectPopup
+        key={inspected.id}
+        creation={inspected}
+        onClose={() => setInspectedId(null)}
+        ownerSection={<OwnerWishSection creation={inspected} />}
+      />
+    )}
     </>
   );
 }

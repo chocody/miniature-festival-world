@@ -12,6 +12,10 @@ import {
   PRIVATE_WISH_KEY_ENV,
   PRIVATE_WISH_KEY_ID_ENV,
   PRIVATE_WISH_KEY_ID_PATTERN,
+  PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR,
+  PRIVATE_WISH_RETIRED_KEYS_ENV,
+  PRIVATE_WISH_RETIRED_KEYS_MAX,
+  PRIVATE_WISH_RETIRED_KEYS_SEPARATOR,
 } from "@/config/privateWish.config";
 import { isOwnerTokenHash, type OwnerTokenHash } from "@/services/auth";
 import { base64ToBytes, base64UrlToBytes, bytesToBase64Url } from "./base64url";
@@ -25,6 +29,8 @@ export interface PrivateWishCipher {
   readonly keyId: string;
   /** AES-256-GCM with a fresh random 12-byte IV; additional data binds key id and owner hash. Rejects TypeError on bad input. */
   encrypt(plaintext: string, ownerTokenHash: OwnerTokenHash): Promise<EncryptedPrivateWish>;
+  /** Decrypts with THIS cipher's key only (wish.keyId must equal keyId); null on any failure, never throws. */
+  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash): Promise<string | null>;
 }
 
 export type PrivateWishKeyLookup = (keyId: string) => CryptoKey | undefined;
@@ -88,6 +94,8 @@ export function createPrivateWishCipher(options: {
       if (!PRIVATE_WISH_CIPHERTEXT_PATTERN.test(envelope)) throw new Error("envelope format"); // defensive
       return { ciphertext: envelope as PrivateWishCiphertext, keyId };
     },
+    decrypt: (wish, ownerTokenHash) =>
+      decryptPrivateWish(wish, ownerTokenHash, (id) => (id === keyId ? key : undefined)),
   };
 }
 
@@ -167,4 +175,86 @@ export function getPrivateWishCipher(backend: CreationBackend): Promise<PrivateW
     });
   }
   return cached;
+}
+
+export interface RetiredPrivateWishKey {
+  readonly keyId: string;
+  readonly rawKey: Uint8Array<ArrayBuffer>;
+}
+export type RetiredPrivateWishKeysResult =
+  | { readonly ok: true; readonly keys: readonly RetiredPrivateWishKey[] }
+  | { readonly ok: false };
+
+/** Parses PRIVATE_WISH_RETIRED_KEYS. Unset/blank → ok with []. Any malformed entry, duplicate id, the ephemeral id or > MAX entries → { ok: false }. */
+export function readRetiredPrivateWishKeysEnv(env: BackendEnv): RetiredPrivateWishKeysResult {
+  const raw = env[PRIVATE_WISH_RETIRED_KEYS_ENV]?.trim() ?? "";
+  if (raw === "") return { ok: true, keys: [] };
+  const entries = raw.split(PRIVATE_WISH_RETIRED_KEYS_SEPARATOR);
+  if (entries.length > PRIVATE_WISH_RETIRED_KEYS_MAX) return { ok: false };
+  const seen = new Set<string>();
+  const keys: RetiredPrivateWishKey[] = [];
+  for (const entry of entries) {
+    const parts = entry.trim().split(PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR);
+    if (parts.length !== 2) return { ok: false };
+    const keyId = parts[0] ?? "";
+    const rawKey = base64ToBytes(parts[1] ?? "", PRIVATE_WISH_KEY_BASE64_PATTERN);
+    if (!PRIVATE_WISH_KEY_ID_PATTERN.test(keyId) || keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID || seen.has(keyId)) return { ok: false };
+    if (rawKey === null || rawKey.byteLength !== AES_256_KEY_BYTES) return { ok: false };
+    seen.add(keyId);
+    keys.push({ keyId, rawKey });
+  }
+  return { ok: true, keys };
+}
+
+export interface PrivateWishReader {
+  /** null on ANY failure (unknown key id, wrong owner hash, tampering, the ephemeral id outside the memory backend); never throws. */
+  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash): Promise<string | null>;
+}
+
+/**
+ * Keyring for the owner read path (MFW-31).
+ * - Current env key set and valid → current key + retired keys; the ephemeral id is never looked up.
+ * - Retired list invalid, current key half-set/invalid, retired keys without a current key, or a retired id equal to the current id → PrivateWishKeyError("invalid").
+ * - No key env at all: memory backend → decrypts only with the process's ephemeral write cipher (getWriteCipher("memory")); supabase → PrivateWishKeyError("missing").
+ */
+export async function createPrivateWishReaderFromEnv(
+  env: BackendEnv,
+  backend: CreationBackend,
+  getWriteCipher: (backend: CreationBackend) => Promise<PrivateWishCipher>,
+): Promise<PrivateWishReader> {
+  const current = readPrivateWishKeyEnv(env);
+  const retired = readRetiredPrivateWishKeysEnv(env);
+  if (!retired.ok) throw new PrivateWishKeyError("invalid");
+  if (current.ok) {
+    const keys = new Map<string, CryptoKey>();
+    keys.set(current.keyId, await importPrivateWishKey(current.rawKey));
+    for (const r of retired.keys) {
+      if (keys.has(r.keyId)) throw new PrivateWishKeyError("invalid");
+      keys.set(r.keyId, await importPrivateWishKey(r.rawKey));
+    }
+    const lookup: PrivateWishKeyLookup = (keyId) => (keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID ? undefined : keys.get(keyId));
+    return { decrypt: (wish, ownerTokenHash) => decryptPrivateWish(wish, ownerTokenHash, lookup) };
+  }
+  if (current.reason === "invalid" || retired.keys.length > 0) throw new PrivateWishKeyError("invalid");
+  if (backend !== "memory") throw new PrivateWishKeyError("missing");
+  const cipher = await getWriteCipher("memory");
+  if (cipher.keyId !== PRIVATE_WISH_EPHEMERAL_KEY_ID) throw new PrivateWishKeyError("invalid"); // defensive
+  return {
+    decrypt: (wish, ownerTokenHash) =>
+      wish.keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID ? cipher.decrypt(wish, ownerTokenHash) : Promise.resolve(null),
+  };
+}
+
+let cachedReader: Promise<PrivateWishReader> | null = null;
+
+/** Process singleton for the owner read route; reads process.env only here. A failure is not cached. */
+export function getPrivateWishReader(backend: CreationBackend): Promise<PrivateWishReader> {
+  if (cachedReader === null) {
+    const pending = createPrivateWishReaderFromEnv(process.env, backend, getPrivateWishCipher);
+    cachedReader = pending;
+    pending.catch(() => {
+      if (cachedReader === pending) cachedReader = null;
+    });
+  }
+  return cachedReader;
 }
