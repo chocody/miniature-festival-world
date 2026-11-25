@@ -24,8 +24,14 @@ const CAMERA_REST_TIMEOUT_MS = 5_000;
 const CAMERA_REST_EPSILON = 1e-4;
 /** Frames watched per rest check: a flight started by a tap begins a few frames later, so two frames can look at rest. */
 const CAMERA_REST_FRAMES = 8;
-/** Krathongs drift about 5 px/s, so two reads under load differ by a few px; a camera flight moves them by far more. */
+/** Krathongs drift about 5–10 px/s, so two reads differ by a few px; a camera flight moves them by far more. */
 const STABLE_TARGET_TOLERANCE_PX = 4;
+/**
+ * The tolerance above holds for reads up to this far apart. Reads are separated by rendered frames, and a slower frame
+ * (a heavier scene or a slower runner) lets the drift add up, so the allowance scales with the measured time between the
+ * reads: the same 16 px/s drift bound, far below a camera flight (hundreds of px/s).
+ */
+const STABLE_TARGET_TOLERANCE_WINDOW_MS = 250;
 
 export interface ScreenPoint {
   readonly x: number;
@@ -229,14 +235,35 @@ export async function waitForCameraRest(page: Page): Promise<void> {
     .toBe(true);
 }
 
-/** Polls until the located target is the same screen point on two back-to-back reads (it is not mid-flight), then returns it. */
+/** Max screen distance for two reads `elapsedMs` apart: the fixed tolerance, scaled up only when the reads are slower. */
+export function stableTargetAllowancePx(elapsedMs: number): number {
+  return STABLE_TARGET_TOLERANCE_PX * Math.max(1, elapsedMs / STABLE_TARGET_TOLERANCE_WINDOW_MS);
+}
+
+/** One read of the targets, time-stamped at the middle of the read. */
+async function timedTargets(page: Page): Promise<{ targets: SceneTargets; atMs: number }> {
+  const start = Date.now();
+  const targets = await locateSceneTargets(page);
+  return { targets, atMs: (start + Date.now()) / 2 };
+}
+
+/**
+ * Polls until the located target is the same object at the same screen point (within the drift allowance for the time
+ * between the two back-to-back reads) — it is not mid-flight — then returns it.
+ */
 export async function locateStableTarget<K extends keyof SceneTargets>(page: Page, key: K): Promise<NonNullable<SceneTargets[K]>> {
   let found: NonNullable<SceneTargets[K]> | null = null;
   await expect
     .poll(async () => {
-      const a = (await locateSceneTargets(page))[key] as ScreenPoint | null;
-      const b = (await locateSceneTargets(page))[key] as ScreenPoint | null;
-      const stable = a !== null && b !== null && Math.hypot(a.x - b.x, a.y - b.y) <= STABLE_TARGET_TOLERANCE_PX;
+      const first = await timedTargets(page);
+      const second = await timedTargets(page);
+      const a = first.targets[key] as (ScreenPoint & { name?: string }) | null;
+      const b = second.targets[key] as (ScreenPoint & { name?: string }) | null;
+      const stable =
+        a !== null &&
+        b !== null &&
+        a.name === b.name &&
+        Math.hypot(a.x - b.x, a.y - b.y) <= stableTargetAllowancePx(second.atMs - first.atMs);
       found = stable ? (b as NonNullable<SceneTargets[K]>) : null;
       return found !== null;
     })
