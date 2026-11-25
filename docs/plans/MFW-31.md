@@ -15,15 +15,15 @@ proves that with tests and adds the owner path. The device sends its raw DeviceO
 service_role-only SQL function. It compares the two hashes in constant time and only on a match decrypts the AES-256-GCM private wish.
 Every well-formed request that does not end in a decrypted wish gets the same `200 { "wishText": null }`, so the endpoint cannot tell
 whether an id exists or who owns it. On the client, a `PrivateWishReveal` block in the popup of a krathong the device lists as its own
-("อ่านคำอธิษฐานส่วนตัว") shows the text only in component state. The device list itself is MFW-30's (owner decision 12). This card provides
-the hook it plugs into. Decryption also gets a small keyring (current key + retired keys), so a key rotation (owner decision 2) does not
+("อ่านคำอธิษฐานส่วนตัว") shows the text only in component state. The device list itself is MFW-30's (owner decision 12). This card plugs it in
+when MFW-30 is merged (Step 18), and otherwise provides the hook for it. Decryption also gets a small keyring (current key + retired keys), so a key rotation (owner decision 2) does not
 lock owners out. MFW-45 left that keyring to this card.
 
 ## Prerequisites
 
 The backlog blocks this card on 2.2, 2.4 and 6.2. All three are merged on `main` = `66bbc69` (checked with `git show origin/main:…`).
-Cut the branch from the latest `main`. This card uses **no** interface from MFW-23, MFW-30, MFW-33 or MFW-34. If any of them merged before
-you start, rebase onto it and keep its behaviour. Expect a small conflict in `src/components/canvas3d/index.tsx` at the
+Cut the branch from the latest `main`. This card uses **no** interface from MFW-23, MFW-33 or MFW-34, and MFW-30's only in Step 18 Branch A. If any of them
+merged before you start, rebase onto it and keep its behaviour. Expect a small conflict in `src/components/canvas3d/index.tsx` at the
 `<InspectPopup …/>` line (Step 17).
 
 | Card | State | What this card uses (real code on `main`) |
@@ -33,7 +33,7 @@ you start, rebase onto it and keep its behaviour. Expect a small conflict in `sr
 | MFW-13 [2.3] moderation & report | merged | Pattern only: `reportHandler.ts` (415 / 413 / 400 / 503, `Cache-Control: no-store`, no echo), `tests/unit/report-migration.test.ts` (static SQL checks). |
 | MFW-45 [2.4] create API | merged | `privateWishCipher.ts`: `PrivateWishCipher { keyId; encrypt(plaintext, ownerTokenHash) }`, `createPrivateWishCipher({ keyId, key, fillRandom? })`, `importPrivateWishKey(raw)`, `decryptPrivateWish(wish, ownerTokenHash, lookup): Promise<string \| null>` (never throws), `PrivateWishKeyLookup = (keyId) => CryptoKey \| undefined`, `readPrivateWishKeyEnv(env)` (rejects the id `ephemeral`), `createPrivateWishCipherFromEnv(env, backend)` (ephemeral per-process key only for `memory` + no env), `getPrivateWishCipher(backend)` (process singleton), `PrivateWishKeyError("missing" \| "invalid")`. `base64ToBytes(text, pattern)` (`base64url.ts`). `isProductionDeployment(env)` (`creationRepositoryFactory.ts`). `POST /api/creations` (the e2e and the route test create private wishes through it). Config: `PRIVATE_WISH_EPHEMERAL_KEY_ID = "ephemeral"`, `PRIVATE_WISH_KEY_BASE64_PATTERN`, `AES_256_KEY_BYTES = 32`. Fixtures (`__fixtures__/createCreation.ts`): `OWNER_TOKEN_FIXTURE`, `CREATE_NOW_MS`, `makeTestCipher()` → `{ cipher, lookup }`, `TEST_KEY_ID`, `TEST_KEY_BYTES()`, `makeCreateBody`, `makeCreateRequest`, `recordingRepository`, `barrierOnZoneCounts`. e2e fixtures `tests/e2e/fixtures/createCreationFixtures.ts`: `e2eCreateBody`, `e2eOwnerToken`. |
 | MFW-28 [6.2] gimmicks & InspectPopup | merged (66bbc69) | `src/components/ui/InspectPopup.tsx` (`InspectPopupProps { creation; onClose; reportSession? }`), `inspectedCreation.ts` (`InspectedCreation { id; appearance; publicWishText }`, `pickInspectedCreation`, `findInspectedCreation`), `INSPECT_POPUP_COPY` (`src/config/inspect.config.ts`), the popup render in `src/components/canvas3d/index.tsx` (`{inspected && <InspectPopup key={inspected.id} … />}`), `tests/unit/inspect-boundary.test.ts` (the popup files must not import `@/services/auth`). |
-| MFW-30 [7.1] My Creations | **not merged, no plan yet** | Nothing. This card provides `registerOwnedCreationPredicate` for MFW-30's LocalStorage creation-id list (Step 5) and `PrivateWishReveal` for its drawer. See Step 18 for what to do if MFW-30 lands first. |
+| MFW-30 [7.1] My Creations | **not merged** (plan `docs/plans/MFW-30.md`, written in parallel) | Only in Step 18 Branch A: **ASSUMED INTERFACE (from MFW-30 plan)** `getMyCreationsVault().list(eventId, nowMs)` (`@/services/auth/myCreationsVault`) and `MyCreationsDrawer`'s `renderEntryExtra` prop. Without MFW-30 (Branch B) this card provides `registerOwnedCreationPredicate` (Step 3) and `PrivateWishReveal` for MFW-30 to wire. |
 
 Facts the lead checked (2026-11-25, scratch copy of `main` 66bbc69, no database):
 - `next build` + `next start` (Turbopack, Next 16.4.6): a probe route in another folder (`/api/probe31`) saw the krathong that `POST /api/creations`
@@ -141,6 +141,7 @@ Quoted from `docs/spec/open-questions.md`. Do not reopen them. No row names MFW-
 | `src/components/ui/OwnerWishSection.tsx` (+ `.test.tsx`) | new | `shouldOfferOwnerWishReveal`, `OwnerWishSection` |
 | `src/components/ui/InspectPopup.tsx` (+ test) | modify | Optional `ownerSection` slot |
 | `src/components/canvas3d/index.tsx` (+ test) | modify (one import, one prop) | Pass `<OwnerWishSection creation={inspected} />` |
+| `src/components/ui/deviceOwnedCreations.ts` (+ `.test.tsx`), `src/components/ui/FlowRoot.tsx` (+ test) | new / modify — **only in Step 18 Branch A** | Register MFW-30's device list as the hint; reveal in the drawer |
 | `tests/unit/owner-wish-boundary.test.ts` | new | Route exports, server/client import boundary, client transport flags, AC1 identity fields, no animation |
 | `tests/e2e/owner-wish-api.spec.ts` | new | Production build, no env: create privately → reveal / refuse |
 
@@ -924,16 +925,62 @@ block. Change nothing else. The file must still import nothing from `@/services/
 Nothing else changes in this file (no new hooks, no `useFrame`, no 3D objects, no new numbers). If MFW-23/MFW-34 already changed the surrounding code, keep their version
 and only add the import and the `ownerSection` prop.
 
-### Step 18 — MFW-30 hook (conditional)
+### Step 18 — MFW-30 wiring (branch on what `main` has)
 
-- **MFW-30 is not merged when you start (expected):** do nothing more. The default predicate owns nothing, so the reveal stays hidden in the popup until
-  MFW-30 calls `registerOwnedCreationPredicate((id) => <its stored id list>.includes(id))` once on the client. List this in the PR under "Follow-ups for MFW-30".
-  The endpoint, the client and `PrivateWishReveal` are complete and tested without it.
-- **MFW-30 is merged when you start:** read its "Interfaces this card provides" section in `docs/plans/MFW-30.md` on `main`. If it exports a synchronous
-  reader of the device's creation ids, add one client module `src/components/ui/registerDeviceOwnedCreations.ts` that calls
-  `registerOwnedCreationPredicate((id) => reader().includes(id))` (adapt to its real signature) and import it for its side effect from
-  `OwnerWishSection.tsx`. Add a test that an id in MFW-30's list makes `isOwnedCreation` true. If its drawer renders per-creation entries, do **not** edit
-  the drawer. Note in the PR that MFW-30 can render `<PrivateWishReveal creationId={id} />` there. If its interface does not fit, do nothing and note it.
+MFW-30's plan (`docs/plans/MFW-30.md`, written in parallel, not merged on 66bbc69) provides the device list. Everything below marked
+**ASSUMED INTERFACE (from MFW-30 plan)** must be checked against the merged code. Adapt names if they differ and list the differences in the PR.
+- `@/services/auth/myCreationsVault` (by path): `getMyCreationsVault(): MyCreationsVault` (browser singleton; **throws on the server**), and
+  `MyCreationsVault.list(eventId: FestivalEventId, nowMs: number): readonly MyCreationEntry[]` (unexpired entries; never throws, never writes), where
+  `MyCreationEntry = { id; eventId; zoneId; createdAt; expiresAt }`.
+- `@/components/ui/MyCreationsDrawer`: prop `renderEntryExtra?: (entry: MyCreationEntry) => ReactNode` (rendered inside each list item). FlowRoot renders
+  `{flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer />}`.
+
+**Branch A — MFW-30 is merged when you start (expected; check `git show origin/main:src/services/auth/myCreationsVault.ts`):**
+1. New `src/components/ui/deviceOwnedCreations.ts` (client; imports only `@/config/events/types`, `@/services/auth/myCreationsVault` and
+   `@/services/auth/ownedCreationHint`):
+   ```ts
+   import { FESTIVAL_EVENT_IDS } from "@/config/events/types";
+   import { getMyCreationsVault, type MyCreationsVault } from "@/services/auth/myCreationsVault";
+   import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
+
+   /** true when this device's creation list (owner decision 12) holds `creationId` for any event. Never throws. */
+   export function deviceListsCreation(
+     creationId: string,
+     vault: Pick<MyCreationsVault, "list"> | null = null,
+     nowMs: number = Date.now(),
+   ): boolean {
+     try {
+       const source = vault ?? getMyCreationsVault(); // lazy: getMyCreationsVault throws on the server
+       return FESTIVAL_EVENT_IDS.some((eventId) => source.list(eventId, nowMs).some((entry) => entry.id === creationId));
+     } catch {
+       return false;
+     }
+   }
+
+   let installed = false;
+   /** Registers deviceListsCreation as the owned-creation hint once per page. Safe on the server (the predicate is lazy). */
+   export function installDeviceOwnedCreationHint(): void {
+     if (installed) return;
+     installed = true;
+     registerOwnedCreationPredicate((creationId) => deviceListsCreation(creationId));
+   }
+   ```
+   In `OwnerWishSection.tsx`, call `installDeviceOwnedCreationHint();` once at **module top level**, right after the imports, not inside the component.
+   This is safe during SSR because the predicate is lazy. Doing it at import time means a test that later calls `registerOwnedCreationPredicate(...)` overrides it,
+   and the test's unregister then leaves "nothing owned". Tests never depend on the device list unless they write it.
+2. `src/components/ui/FlowRoot.tsx`: render `<MyCreationsDrawer renderEntryExtra={(entry) => <PrivateWishReveal creationId={entry.id} />} />` instead of
+   `<MyCreationsDrawer />`, and import `PrivateWishReveal`. Every drawer entry is the device's own by definition. A public-wish entry answers "none" (Open question 2).
+   Do not edit `MyCreationsDrawer.tsx`. Check that MFW-30's `tests/unit/find-my-boundary.test.ts` and MFW-23's `landing-import-graph.test.ts` still pass:
+   `PrivateWishReveal` is three-free, and FlowRoot is not in MFW-30's import allowlist. If a boundary test does reject it, stop and report instead of
+   weakening the test.
+3. Tests: `src/components/ui/deviceOwnedCreations.test.tsx`. A fake vault whose `list` returns `[{ id: ID, … }]` for `loy_krathong` and `[]` otherwise → true for `ID`, false
+   for another id. A `list` that throws → false. `installDeviceOwnedCreationHint()` twice registers once (spy). After install, `isOwnedCreation(ID)` follows the
+   default vault: write MFW-30's storage key with one entry in jsdom `localStorage` in MFW-30's stored format, using its exported helpers. Add to
+   `src/components/ui/FlowRoot.test.tsx`: in `SHARED_WORLD_EXPLORE` with one stored entry, opening the drawer shows a button named `OWNER_WISH_COPY.reveal`.
+
+**Branch B — MFW-30 is not merged when you start:** do nothing more. The default predicate owns nothing, so the popup never offers the reveal until MFW-30
+calls `registerOwnedCreationPredicate` and passes `PrivateWishReveal` to `renderEntryExtra`. Write both as "Follow-ups for MFW-30" in the PR, with
+the code of Branch A. The endpoint, the client and the components are complete and tested without it.
 
 ## Tests
 
@@ -1113,8 +1160,8 @@ only taps water), and the UI path is covered by the component tests above (D12).
 
 ## Do NOT
 
-- Do not build MFW-30's LocalStorage creation-id list, the "ค้นหาของฉัน" drawer, fly-to or highlight. Do not edit MFW-30 files if they exist (Step 18 only adds a registration
-  module). Do not build the 2D fallback (MFW-33), instancing (MFW-34) or release changes (MFW-23).
+- Do not build MFW-30's LocalStorage creation-id list, the "ค้นหาของฉัน" drawer, fly-to or highlight. Do not edit MFW-30's files (`MyCreationsDrawer.tsx`, `myCreationsVault.ts`, their tests and boundary tests). Step 18 Branch A adds only
+  `deviceOwnedCreations.ts` and one prop in `FlowRoot.tsx`. Do not build the 2D fallback (MFW-33), instancing (MFW-34) or release changes (MFW-23).
 - Do not add an endpoint that lists creations by token or hash (owner decision 12). Do not add an "is this mine?" endpoint. Do not return any field other than
   `wishText`. Do not use different status codes or bodies for not-found / not-owner / public / expired / undecryptable.
 - Never put the token, its hash or the creation id + token in a URL, query string, header, cookie, `data-*` attribute, store, LocalStorage key, log or error message.
@@ -1143,7 +1190,7 @@ only taps water), and the UI path is covered by the component tests above (D12).
   test plan (five commands and their results); any difference from this spec. **Owner setup steps:** (1) apply
   `20261125000000_mfw31_creation_ownership_read.sql` on staging after the MFW-12, MFW-13 and MFW-45 migrations (OQ 17), and check that with the anon key
   `rpc/mfw_creation_ownership` is denied. With the service-role key it returns `[]` for an unknown id. (2) When rotating `PRIVATE_WISH_KEY`, move the old
-  `id:key` into the server-only `PRIVATE_WISH_RETIRED_KEYS`. **Follow-ups:** MFW-30 registers its list with `registerOwnedCreationPredicate` (unless Step 18 did it).
+  `id:key` into the server-only `PRIVATE_WISH_RETIRED_KEYS`. **Follow-ups:** if Step 18 took Branch B, MFW-30 registers its list and passes `PrivateWishReveal` to `renderEntryExtra`.
   The other handlers could adopt `readRequestTextWithLimit`. Rate limiting (Open question 1).
 - Leave the PR open. Label `privacy` plus a migration → the owner merges after reviewer + qa + privacy-auditor + r3f-perf-reviewer pass.
 
@@ -1158,6 +1205,7 @@ only taps water), and the UI path is covered by the component tests above (D12).
 | `OwnerWishSection({ creation, isOwned?, revealer? })`, `shouldOfferOwnerWishReveal(creation, isOwned?)` | `@/components/ui/OwnerWishSection` | Step 17b | MFW-33 (2D popup) |
 | `InspectPopupProps.ownerSection?: ReactNode` | `@/components/ui/InspectPopup` | Step 17c | MFW-33 |
 | `registerOwnedCreationPredicate(p): () => void`, `isOwnedCreation(id): boolean`, `OwnedCreationPredicate` | `@/services/auth/ownedCreationHint` (client; import by path) | Step 3 | **MFW-30** must call `registerOwnedCreationPredicate` with its LocalStorage id list |
+| `deviceListsCreation(id, vault?, nowMs?)`, `installDeviceOwnedCreationHint()` (Branch A only) | `@/components/ui/deviceOwnedCreations` | Step 18 | MFW-33 (2D popup) |
 | `ownerTokenHashesMatch(presented, stored \| null): boolean` | `@/services/auth/ownerProof` (server; by path) | Step 2 | any future ownership endpoint (edit/delete) |
 | `CreationRepository.readOwnership(id): Promise<CreationOwnershipRecord \| null>`, `CreationOwnershipRecord` | `@/services/api/creationRepository`, `@/services/api/creationTypes` | Step 8 | future owner endpoints |
 | `PrivateWishCipher.decrypt`, `PrivateWishReader`, `createPrivateWishReaderFromEnv`, `getPrivateWishReader`, `readRetiredPrivateWishKeysEnv`, `RetiredPrivateWishKey(s)Result` | `@/services/api/privateWishCipher` (server) | Step 5 | owner endpoints |
@@ -1236,7 +1284,8 @@ question 1); refactoring other handlers to the streaming body cap; applying the 
   null; nothing leaks). Listed in the owner setup steps.
 - **HTTPS is the platform's job:** the client uses a relative URL on the page's origin. Vercel serves HTTPS with HSTS on `*.vercel.app`. A custom domain must keep the
   HTTPS redirect and HSTS on, or a first plain-HTTP POST could carry the token.
-- **The UI reveal is unreachable until MFW-30 registers its list** (default predicate owns nothing). The endpoint and the components are complete. The PR says so.
+- **Without MFW-30 (Step 18 Branch B) the UI reveal is unreachable** (default predicate owns nothing). The endpoint and components are complete; the PR says so.
+  Branch A relies on MFW-30's plan names (ASSUMED INTERFACE); a renamed export means adapting `deviceOwnedCreations.ts` only.
 - **Merge conflicts** in `src/components/canvas3d/index.tsx` with MFW-23 / MFW-30 / MFW-34 (all touch it). This card's change there is one import and one prop.
 - **Interface growth:** `readOwnership` breaks typed test doubles. Typecheck finds them, and only stubs are added. MFW-23/30/34 branches may add more doubles. Rebase, then stub them.
 - **Reviewer grep noise:** the snake_case names in `supabaseCreationRepository.ts` and the migration, and `ownerToken` in request types, client and tests, belong to the
