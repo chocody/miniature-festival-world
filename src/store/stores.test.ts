@@ -37,7 +37,7 @@ describe("zustand stores", () => {
     }
     expect(useWorldStore.getState()).toEqual({
       currentZoneId: null, participantCount: null, eventId: null, zoneCount: null,
-      zoneStatus: "idle", zoneItems: [], focusedCreationId: null,
+      zoneStatus: "idle", zoneItems: [], focusedCreationId: null, focusRequestId: 0,
     });
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,

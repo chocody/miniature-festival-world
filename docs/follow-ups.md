@@ -10,7 +10,6 @@ real device. Newest first. Remove an item when its fix is merged.
 | MFW-45 | Medium (before Christmas) | No abuse protection on `POST /api/creations` (rate limit / per-device cap). | fix later · owner decision |
 | MFW-45 | Low | Body size cap applies after a chunked body is read (also `/api/reports`); production detection relies on `VERCEL_ENV` only; a token in the query string is ignored rather than rejected. | fix later |
 | MFW-28 | Low | Report fetch uses `credentials: "same-origin"` (no cookies exist today; `"omit"` would make it structural); possible one-time shader hitch on the first tap on LOW; tap radius / latency with 80 krathongs to check on a phone. | fix later · re-test on device |
-| MFW-25 | Medium | Pinning a Find My target reshuffles most of the tier-visible subset (hitch on LOW) — keep unpinned picks stable (do in MFW-30). | fix later |
 | MFW-25 | Medium (gate) | Tier caps still ~480 / 960 / 1,600 draw calls (LOW / MEDIUM / HIGH); a full 80-item zone on HIGH stepped SwiftShader down to FALLBACK_2D. MFW-34 instancing before Christmas; re-tune `riverItemCap` on a device. | fix later · re-test on device |
 | MFW-25 | Low | Two try/catch tests in `zoneManager.test.ts` can pass vacuously; blank line lost in `database.config.ts`. | fix later |
 | MFW-13 | Medium (before Christmas) | Report abuse: any 3 anonymous `POST /api/reports` hide any public wish (ids are public; ~240 requests empty a zone; no restore path). Options: dedupe per device/IP, rate limit, distinct-reporter minimum, review/restore flow. | fix later · owner decision |

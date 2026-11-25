@@ -68,5 +68,6 @@ describe("landing import graph (MFW-44)", () => {
     // The walk really covers the release path (guards against a resolver that silently stops).
     expect(seen.has(path.join(ROOT, "src/services/api/releaseCreation.ts"))).toBe(true);
     expect(seen.has(path.join(ROOT, "src/core/ritual/index.ts"))).toBe(true);
+    expect(seen.has(path.join(ROOT, "src/components/ui/MyCreationsDrawer.tsx"))).toBe(true);
   });
 });

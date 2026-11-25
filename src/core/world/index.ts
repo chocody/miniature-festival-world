@@ -9,3 +9,4 @@ export * from "./growingWorldScaler";
 export * from "./zoneRiverItems";
 export * from "./riverVisibility";
 export * from "./releaseSpot";
+export * from "./findMyFocus";

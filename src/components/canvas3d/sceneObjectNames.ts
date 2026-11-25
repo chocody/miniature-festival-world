@@ -18,4 +18,5 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   pierPiles: "scene-pier-piles",
   ripples: "scene-ripples",
   lampGlows: "scene-lamp-glows",
+  findMyAnchor: "scene-find-my-anchor",
 });
