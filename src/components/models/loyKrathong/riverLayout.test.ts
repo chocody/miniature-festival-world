@@ -16,7 +16,6 @@ import {
 import { PINCH_ZOOM_MIN } from "@/config/interaction.config";
 import { KRATHONG_FLAME_MODEL } from "@/config/krathongModel.config";
 import {
-  LAMP_LIGHT_POOL_LOOK,
   LIGHT_PRESET_IDS,
   LIGHT_PRESETS,
   LOOK_MIN_ALBEDO_LUMINANCE,
@@ -252,12 +251,7 @@ describe("river layout", () => {
             (m.emissive ? relativeLuminance(m.emissive) * runtimeEmissive(m, id) : 0),
         ),
       );
-      // The additive lamp light pool adds its light on top of the lit grass at NIGHT.
-      const pool = VILLAGE_LIGHTS[id].lampLightPools
-        ? estimateLitLuminance(RIVER_BANK_MATERIAL.color, LIGHT_PRESETS[id], UP) +
-          relativeLuminance(LAMP_LIGHT_POOL_LOOK.color) * LAMP_LIGHT_POOL_LOOK.opacity
-        : 0;
-      expect(flame, id).toBeGreaterThan(Math.max(brightest, pool));
+      expect(flame, id).toBeGreaterThan(brightest);
     }
   });
 
@@ -423,9 +417,8 @@ describe("river layout", () => {
   });
 
   it("R9: the village is lit at NIGHT and off at DAY", () => {
-    expect(VILLAGE_LIGHTS.DAY).toEqual({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0, lampLightPools: false });
+    expect(VILLAGE_LIGHTS.DAY).toEqual({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0 });
     expect(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity).toBeGreaterThan(0);
     expect(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity).toBeGreaterThan(0);
-    expect(VILLAGE_LIGHTS.NIGHT.lampLightPools).toBe(true);
   });
 });

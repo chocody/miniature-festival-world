@@ -104,6 +104,14 @@ describe("instancing audit (backlog 8.2)", () => {
     expect(doc.slice(start, end)).not.toContain("TBD");
   });
 
+  it("the mark cue allocates nothing per frame (MFW-67)", () => {
+    expect(useFrameBody(read("src/components/canvas3d/OwnKrathong.tsx"))).not.toMatch(ALLOCATION);
+    const curves = read("src/core/effects/gimmickCurves.ts");
+    expect(functionSource(curves, "writeMarkCueAt")).not.toMatch(ALLOCATION);
+    expect(functionSource(curves, "trackMarkCue")).not.toMatch(ALLOCATION);
+    expect(functionSource(read("src/components/canvas3d/ownKrathongPose.ts"), "writeMarkCueScale")).not.toMatch(ALLOCATION);
+  });
+
   it("the flame flicker allocates nothing per frame (MFW-48)", () => {
     expect(functionSource(read("src/core/customization/flameFlicker.ts"), "writeFlameFlickerAt")).not.toMatch(ALLOCATION);
     expect(useFrameBody(read("src/components/models/loyKrathong/FlameFlicker.tsx"))).not.toMatch(ALLOCATION);

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { BufferGeometry, Euler, Matrix4, Quaternion, Vector3 } from "three";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { GIMMICK_BOUNCE } from "@/config/gimmicks.config";
+import { GIMMICK_BOUNCE, KRATHONG_MARK_CUE } from "@/config/gimmicks.config";
 import { createBounceFrame, writeBounceAt } from "@/core/effects";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import type { SplinePathCoord } from "@/core/coordinates";
@@ -145,8 +145,24 @@ const mk = (id: string, laneId = 1, spawnProgress = 0.2): RiverFlowItem => ({
 const itemA = mk("a");
 const items = [itemA, mk("b", 1, 0.6), mk("bad", 99)];
 const el = (c: HTMLElement, id: string) => c.querySelector(`[name="river-item-${id}"]`) as unknown as { position: Vector3; rotation: Euler };
-const ui = (props: { items?: readonly RiverFlowItem[]; reducedMotion?: boolean; shadows?: boolean; onItemTapped?: (id: string) => void } = {}) => (
-  <RiverFlow items={props.items ?? items} lanes={lanes} shadows={props.shadows ?? true} reducedMotion={props.reducedMotion ?? false} now={() => NOW} onItemTapped={props.onItemTapped} />
+const ui = (
+  props: {
+    items?: readonly RiverFlowItem[];
+    reducedMotion?: boolean;
+    shadows?: boolean;
+    onItemTapped?: (id: string) => void;
+    markedId?: string | null;
+  } = {},
+) => (
+  <RiverFlow
+    items={props.items ?? items}
+    lanes={lanes}
+    shadows={props.shadows ?? true}
+    reducedMotion={props.reducedMotion ?? false}
+    now={() => NOW}
+    onItemTapped={props.onItemTapped}
+    markedId={props.markedId}
+  />
 );
 
 beforeEach(() => {
@@ -634,5 +650,78 @@ describe("krathong ripples (MFW-49 AC4)", () => {
     render(withRipples([]));
     r3f.frame!();
     expect(fanMesh(SCENE_OBJECT_NAMES.krathongRipples)!.count).toBe(0);
+  });
+});
+
+describe("mark cue reaches the batch (MFW-67)", () => {
+  const three = [mk("a"), mk("b", 1, 0.5), mk("c", 1, 0.8)];
+  const P = GIMMICK_BOUNCE.periodMs;
+  const cue = KRATHONG_MARK_CUE.scale;
+  const bounceAt = (t: number) => writeBounceAt(t, false, createBounceFrame()).scale;
+  const matrixOf = (c: HTMLElement, id: string) => (c.querySelector(`[name="river-item-${id}"]`) as unknown as { matrix: Matrix4 }).matrix;
+  const byIndex = (i: number) => batch.writeItem.mock.calls.filter((call) => call[0] === i).at(-1)![1] as Matrix4;
+  const factorOf = (c: HTMLElement, i: number, id: string) => byIndex(i).elements[0] / matrixOf(c, id).elements[0];
+
+  it("(a) marks only the Find My krathong, (b) follows it while it drifts, (e) unmark restores it", () => {
+    const { container, rerender } = render(ui({ items: three, markedId: "b" }));
+    r3f.frame!();
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    expect(byIndex(1).elements[0]).toBeCloseTo(matrixOf(container, "b").elements[0] * cue, 9);
+    expect(byIndex(0)).toBe(matrixOf(container, "a"));
+    expect(byIndex(2)).toBe(matrixOf(container, "c"));
+    const before = [12, 13, 14].map((k) => byIndex(1).elements[k]);
+    NOW += 10_000;
+    r3f.frame!();
+    const node = matrixOf(container, "b");
+    for (const k of [12, 13, 14]) expect(byIndex(1).elements[k]).toBeCloseTo(node.elements[k], 9);
+    expect([12, 13, 14].map((k) => byIndex(1).elements[k])).not.toEqual(before);
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue, 9);
+    rerender(ui({ items: three, markedId: null }));
+    r3f.frame!();
+    expect(byIndex(1)).toBe(matrixOf(container, "b"));
+  });
+
+  it("(c) motion on: one bounce on top of the cue", () => {
+    const { container } = render(ui({ items: three, markedId: "b" }));
+    r3f.frame!();
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue, 9);
+    NOW += P / 4;
+    r3f.frame!();
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue * bounceAt(P / 4), 9);
+    expect(factorOf(container, 1, "b")).toBeGreaterThan(cue);
+  });
+
+  it("(d) reduced motion: the steady size-up only", () => {
+    const { container } = render(ui({ items: three, markedId: "b", reducedMotion: true }));
+    r3f.frame!();
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue, 12);
+    NOW += P / 4;
+    r3f.frame!();
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue, 12);
+  });
+
+  it("(f) a tap on the marked krathong multiplies bounce and cue", () => {
+    const { container } = render(ui({ items: three, markedId: "b", onItemTapped: vi.fn() }));
+    r3f.frame!();
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    fireEvent.click(container.querySelector('[name="river-hit-b"]')!);
+    NOW += P / 4;
+    r3f.frame!();
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue * bounceAt(P / 4), 9);
+  });
+
+  it("(g) a new Find My target restarts the bounce", () => {
+    const { container, rerender } = render(ui({ items: three, markedId: "a" }));
+    r3f.frame!();
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    rerender(ui({ items: three, markedId: "b" }));
+    r3f.frame!();
+    NOW += P / 4;
+    r3f.frame!();
+    expect(byIndex(0)).toBe(matrixOf(container, "a"));
+    expect(factorOf(container, 1, "b")).toBeCloseTo(cue * bounceAt(P / 4), 9);
   });
 });

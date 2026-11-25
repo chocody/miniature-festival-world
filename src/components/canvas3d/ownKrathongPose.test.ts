@@ -13,7 +13,20 @@ import {
   getLoyKrathongRiverLanes,
   prepareRiverItems,
 } from "@/core/world";
-import { createOwnPoseScratch, ritualTouchdownXZ, writeOwnKrathongPose, type OwnPoseFrame } from "./ownKrathongPose";
+import { GIMMICK_BOUNCE, KRATHONG_MARK_CUE } from "@/config/gimmicks.config";
+import { TOY_SCENE_LIGHTING } from "@/config/scene.config";
+import { createBounceFrame, createMarkCueState, writeBounceAt } from "@/core/effects";
+import type { OwnKrathongPoseKind } from "@/core/ritual";
+import {
+  candleLightDistance,
+  candleLightIntensity,
+  createOwnPoseScratch,
+  ownKrathongPoseScale,
+  ritualTouchdownXZ,
+  writeMarkCueScale,
+  writeOwnKrathongPose,
+  type OwnPoseFrame,
+} from "./ownKrathongPose";
 import { getLoyKrathongRitualSite } from "./ritualSite";
 
 const counter = vi.hoisted(() => ({ vectors: 0 }));
@@ -125,6 +138,63 @@ describe("writeOwnKrathongPose", () => {
     writeOwnKrathongPose(g, f, scratch); // warm-up
     counter.vectors = 0;
     for (let i = 0; i < 1000; i++) writeOwnKrathongPose(g, { ...f, nowMs: NOW + i }, scratch);
+    expect(counter.vectors).toBe(0);
+  });
+});
+
+describe("pose scale and candle light (MFW-67)", () => {
+  it("1 at ORIGIN, the river scale everywhere else", () => {
+    expect(ownKrathongPoseScale("ORIGIN")).toBe(1);
+    for (const kind of ["PIER", "DRAG", "RELEASING", "RIVER", "HIDDEN"] as const) {
+      expect(ownKrathongPoseScale(kind)).toBe(RIVER_KRATHONG_SCALE);
+    }
+  });
+
+  it("equals the scale writeOwnKrathongPose gives each drawn pose", () => {
+    for (const kind of ["ORIGIN", "PIER", "DRAG", "RELEASING", "RIVER"] as OwnKrathongPoseKind[]) {
+      expect(ownKrathongPoseScale(kind), kind).toBe(write({ kind, own }).scale.x);
+    }
+  });
+
+  it("distance × s, intensity × s²", () => {
+    expect(candleLightDistance(0.22)).toBe(TOY_SCENE_LIGHTING.candle.distance * 0.22);
+    expect(candleLightIntensity(2, 0.5, 0.22)).toBe(2 * 0.5 * 0.22 * 0.22);
+  });
+});
+
+describe("writeMarkCueScale (MFW-67)", () => {
+  const P = GIMMICK_BOUNCE.periodMs;
+  const cue = KRATHONG_MARK_CUE.scale;
+
+  it("bounces once, rests at the cue, unmark restores the size", () => {
+    const g = new Group();
+    const state = createMarkCueState();
+    const out = createBounceFrame();
+    expect(writeMarkCueScale(g, null, NOW, false, state, out)).toBe(false);
+    expect(g.scale.x).toBe(1);
+    expect(writeMarkCueScale(g, "own", NOW, false, state, out)).toBe(true);
+    expect(g.scale.x).toBe(cue);
+    expect(writeMarkCueScale(g, "own", NOW + P / 4, false, state, out)).toBe(true);
+    expect(g.scale.x).toBe(cue * writeBounceAt(P / 4, false, createBounceFrame()).scale);
+    expect(writeMarkCueScale(g, "own", NOW + GIMMICK_BOUNCE.durationMs, false, state, out)).toBe(false);
+    expect(g.scale.x).toBe(cue);
+    expect(g.scale.y).toBe(cue);
+    expect(writeMarkCueScale(g, null, NOW + GIMMICK_BOUNCE.durationMs + 1, false, state, out)).toBe(false);
+    expect(g.scale.x).toBe(1);
+  });
+
+  it("reduced motion: the steady size-up at once", () => {
+    const g = new Group();
+    expect(writeMarkCueScale(g, "own", NOW, true, createMarkCueState(), createBounceFrame())).toBe(false);
+    expect(g.scale.x).toBe(cue);
+  });
+
+  it("allocates no Vector3 per frame", () => {
+    const g = new Group();
+    const state = createMarkCueState();
+    const out = createBounceFrame();
+    counter.vectors = 0;
+    for (let i = 0; i < 100; i++) writeMarkCueScale(g, i < 50 ? "own" : null, NOW + i, false, state, out);
     expect(counter.vectors).toBe(0);
   });
 });

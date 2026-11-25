@@ -11,7 +11,7 @@ import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { RiverLaneSet, SplinePathCoord } from "@/core/coordinates";
 import type { KrathongAppearance } from "@/core/customization";
-import { createBounceFrame, writeBounceAt } from "@/core/effects";
+import { createBounceFrame, createMarkCueState, trackMarkCue, writeBounceAt, writeMarkCueAt } from "@/core/effects";
 import {
   applyRiverItemTransform,
   createRiverFrameScratch,
@@ -51,6 +51,8 @@ export interface RiverFlowProps {
   readonly onItemTapped?: (id: string) => void;
   /** World y of the water: when set, a soft blob shadow follows every krathong (MFW-47, one draw call). Undefined = no blobs. */
   readonly shadowSurfaceY?: number;
+  /** Find My target to mark (MFW-67): one bounce, then a steady size-up while set. Default null. */
+  readonly markedId?: string | null;
 }
 
 /**
@@ -68,6 +70,7 @@ export const RiverFlow = memo(function RiverFlow({
   pinnedIds = NO_PINNED_RIVER_IDS,
   onItemTapped,
   shadowSurfaceY,
+  markedId = null,
 }: RiverFlowProps) {
   const invalidate = useThree((state) => state.invalidate);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
@@ -99,6 +102,8 @@ export const RiverFlow = memo(function RiverFlow({
   /** One bouncing krathong at a time (the latest tap). resetId: the previous one, set back to scale 1 on the next frame. */
   const bounce = useRef<{ id: string | null; startMs: number; resetId: string | null }>({ id: null, startMs: 0, resetId: null });
   const bounceOut = useRef(createBounceFrame());
+  const markState = useRef(createMarkCueState());
+  const markOut = useRef(createBounceFrame());
   const tappable = onItemTapped !== undefined;
   const hitProxy = useMemo(() => (tappable ? createRiverTapProxy() : null), [tappable]);
   useEffect(() => () => hitProxy?.dispose(), [hitProxy]);
@@ -129,6 +134,9 @@ export const RiverFlow = memo(function RiverFlow({
       bounceFactor = f.scale;
       if (f.done || !node) b.id = null;
     }
+    trackMarkCue(markState.current, markedId, nowMs);
+    const markFactor =
+      markedId === null ? 1 : writeMarkCueAt(nowMs - markState.current.startedAtMs, reducedMotion, markOut.current).scale;
     const target = batch.current;
     for (let i = 0; i < rendered.length; i++) {
       const item = rendered[i];
@@ -147,9 +155,10 @@ export const RiverFlow = memo(function RiverFlow({
         krathongRippleScale(i, nowMs, reducedMotion, RIVER_WATER_HIGHLIGHTS.ripple),
       );
       group.updateMatrix(); // position · rotation (YXZ) · RIVER_KRATHONG_SCALE → group.matrix
-      if (item.id === bouncingId) {
-        // The bounce scales the model about the anchor origin: M · S(f), exactly what the bounce child group did.
-        bounceMatrix.current.copy(group.matrix).scale(bounceScale.current.setScalar(bounceFactor));
+      if (item.id === bouncingId || item.id === markedId) {
+        // Tap bounce and mark cue scale the model about the anchor origin: M · S(f).
+        const factor = (item.id === bouncingId ? bounceFactor : 1) * (item.id === markedId ? markFactor : 1);
+        bounceMatrix.current.copy(group.matrix).scale(bounceScale.current.setScalar(factor));
         target?.writeItem(i, bounceMatrix.current, group.quaternion);
       } else {
         target?.writeItem(i, group.matrix, group.quaternion);

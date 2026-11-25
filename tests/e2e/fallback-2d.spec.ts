@@ -176,5 +176,9 @@ test("Find My scrolls to my krathong", async ({ page }) => {
       }, E2E_FLAT_RIVER_PROBED_HEIGHT_PX),
     )
     .toBeLessThanOrEqual(FIND_MY_TOLERANCE_PX);
-  await expect(page.locator('[data-testid="flat-focus-ring"]')).toHaveAttribute("visibility", "visible");
+  // MFW-67: the focused krathong is marked by a steady size-up, no ring.
+  const own = page.locator('[data-testid="flat-river-item"][data-own="true"]');
+  await expect(own).toHaveAttribute("data-marked", "true");
+  await expect(own).toHaveAttribute("transform", /\bscale\(/);
+  await expect(page.locator('[data-testid="flat-focus-ring"]')).toHaveCount(0);
 });

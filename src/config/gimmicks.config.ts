@@ -20,11 +20,11 @@ export const RIPPLE_LOOK = Object.freeze({
   surfaceOffsetY: 0.01, // above the water surface (no z-fighting)
 });
 
-/** Lamp light-up: an unlit additive shell over the lamp head; attack → hold (flicker) → release. No light source (MFW-27 D5). */
+/** Lamp light-up: an unlit additive skin just over the lamp head (no halo, MFW-67); attack → hold (flicker) → release. No light source (MFW-27 D5). */
 export const LAMP_GLOW_LOOK = Object.freeze({
   color: "#ffc46b",
   peakIntensity: 1,
-  shellScale: 1.35, // × lamp head size; encloses the head
+  shellScale: 1.1, // × lamp head size: a thin additive skin, the head lights up without a halo (MFW-67, DRAFT)
   durationMs: 1_600,
   attackMs: 120,
   releaseMs: 500,
@@ -38,6 +38,14 @@ export const GIMMICK_BOUNCE = Object.freeze({ amplitude: 0.12, periodMs: 280, de
 
 /** Lead decision: the residual bounce at durationMs is below this, so ending at exactly 1 is not a visible snap. */
 export const BOUNCE_SETTLE_EPSILON = 0.005;
+
+/**
+ * Selection / Find My cue on a krathong (MFW-67, replaces the highlight ring; owner decision, open question 40): the marked krathong
+ * plays one GIMMICK_BOUNCE, then stays `scale` × its size while it is marked. The steady size-up is the cue under reduced motion and
+ * does not rely on colour. DRAFT (owner reviews it from the PR screenshots). 1.2 = the largest steady size that still clears a
+ * neighbour at RIVER_MIN_CENTER_SPACING (gimmicks.config.test.ts).
+ */
+export const KRATHONG_MARK_CUE = Object.freeze({ scale: 1.2 });
 
 /** Inradius / circumradius of a regular icosahedron: the detail-0 tap-proxy shape (riverTapProxy.ts). Geometry, not a product number. */
 export const TAP_PROXY_INRADIUS_RATIO = Math.sqrt((5 + 2 * Math.sqrt(5)) / 15); // ≈ 0.7947

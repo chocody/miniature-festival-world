@@ -1,6 +1,6 @@
-import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_COLOR, HIGHLIGHT_RING_OPACITY, HIGHLIGHT_RING_SIZES } from "./camera.config";
+import { CAMERA_FLIGHT_OFFSET } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
-import { MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
+import { KRATHONG_MARK_CUE, MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 import { LIGHT_PRESETS } from "./look.config";
 import { TOY_MATTE_MATERIALS } from "./scene.config";
@@ -42,13 +42,8 @@ export const FLAT_RIVER_TAP_RADIUS = RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_
 
 /** Minimum on-screen radius of a 2D krathong hit circle (CSS px; the river SVG is drawn 1:1). */
 export const FLAT_MIN_TAP_RADIUS_PX = MIN_TOUCH_TARGET_PX / 2;
-/** Find My ring around a river krathong, world units (MFW-17 krathong ring × river scale) and look. */
-export const FLAT_RIVER_HIGHLIGHT = Object.freeze({
-  innerRadius: HIGHLIGHT_RING_SIZES.krathong.innerRadius * RIVER_KRATHONG_SCALE,
-  outerRadius: HIGHLIGHT_RING_SIZES.krathong.outerRadius * RIVER_KRATHONG_SCALE,
-  color: HIGHLIGHT_RING_COLOR,
-  opacity: HIGHLIGHT_RING_OPACITY,
-});
+/** Find My cue in 2D = the 3D mark's steady size-up (MFW-67: no ring; same cue in both views). */
+export const FLAT_RIVER_MARK_SCALE = KRATHONG_MARK_CUE.scale;
 /** Prop footprints, world units (from the 3D part specs). */
 export const FLAT_RIVER_PROP_SIZES = Object.freeze({
   houseHalfWidth: RIVER_ENVIRONMENT_PARTS.houseBody.geometry.width / 2,

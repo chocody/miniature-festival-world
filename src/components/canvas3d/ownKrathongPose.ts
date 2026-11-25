@@ -1,7 +1,9 @@
 import type { Object3D } from "three";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { RELEASE_BUMP } from "@/config/ritual.config";
+import { TOY_SCENE_LIGHTING } from "@/config/scene.config";
 import { createSplinePoseOut, splineCoordToPoseInto, type SplinePoseOut, type WorldXZ } from "@/core/coordinates";
+import { trackMarkCue, writeMarkCueAt, type BounceFrame, type MarkCueState } from "@/core/effects";
 import type { OwnKrathongPoseKind } from "@/core/ritual";
 import {
   applyRiverItemTransform,
@@ -106,4 +108,41 @@ export function writeOwnKrathongPose(target: Object3D, frame: OwnPoseFrame, scra
       target.visible = false;
       return;
   }
+}
+
+/** Uniform scale writeOwnKrathongPose gives `kind`: 1 at ORIGIN (CUSTOMIZE), RIVER_KRATHONG_SCALE everywhere else (HIDDEN included). */
+export function ownKrathongPoseScale(kind: OwnKrathongPoseKind): number {
+  return kind === "ORIGIN" ? UNIT_SCALE : RIVER_KRATHONG_SCALE;
+}
+
+/** Candle point-light distance (world units) at pose scale `poseScale`. */
+export function candleLightDistance(poseScale: number): number {
+  return TOY_SCENE_LIGHTING.candle.distance * poseScale;
+}
+
+/** Candle point-light intensity: spring value × preset scale × poseScale² (inverse-square: same look at every pose scale). */
+export function candleLightIntensity(springValue: number, presetScale: number, poseScale: number): number {
+  return springValue * presetScale * poseScale * poseScale;
+}
+
+/**
+ * Per frame, allocation-free: tracks the mark (`markedId` null = unmarked) and sets `target.scale` to the mark cue (1 when unmarked).
+ * Returns true while the cue still animates (the caller keeps the demand loop alive).
+ */
+export function writeMarkCueScale(
+  target: Object3D,
+  markedId: string | null,
+  nowMs: number,
+  reducedMotion: boolean,
+  state: MarkCueState,
+  out: BounceFrame,
+): boolean {
+  trackMarkCue(state, markedId, nowMs);
+  if (markedId === null) {
+    target.scale.setScalar(UNIT_SCALE);
+    return false;
+  }
+  writeMarkCueAt(nowMs - state.startedAtMs, reducedMotion, out);
+  target.scale.setScalar(out.scale);
+  return !out.done;
 }

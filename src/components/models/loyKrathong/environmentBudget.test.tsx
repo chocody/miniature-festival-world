@@ -12,9 +12,9 @@ import {
   createRibbonGeometry,
 } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
-import { LampLightPools, ShoreHighlights, WaterGlints } from "@/components/canvas3d/WaterHighlights";
+import { ShoreHighlights, WaterGlints } from "@/components/canvas3d/WaterHighlights";
 import { RIVER_ENVIRONMENT_PARTS, RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config";
-import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, LIGHT_PRESET_IDS, VILLAGE_LIGHTS, type LightPresetId } from "@/config/look.config";
+import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, LIGHT_PRESET_IDS } from "@/config/look.config";
 import {
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
@@ -50,7 +50,8 @@ function tris(geometry: BufferGeometry): number {
  * Environment main pass, no river krathongs, exactly as MFW-49 plan §5 lists it: one draw call per non-empty mesh, triangles =
  * instances × geometry triangles. Uses the real builders and factories.
  */
-function summarize(l: RiverEnvironmentLayout, tier: RenderTier, preset: LightPresetId): Summary {
+/** Since MFW-67 (no lamp light pools) both presets draw the same environment. */
+function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
   let drawCalls = 0;
   let triangles = 0;
   const add = (instances: number, t: number) => {
@@ -80,9 +81,8 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier, preset: LightPre
   add(1, tris(new BoxGeometry(l.pier.width, l.pier.thickness, l.pier.length))); // 16 pier deck
   part(parts.pierPile, l.pier.piles); // 17
   add(l.houses.length + l.trees.length + l.lamps.length, fan()); // 18 environment blobs
-  if (VILLAGE_LIGHTS[preset].lampLightPools) add(l.lamps.length, fan()); // 19 lamp light pools
-  add(1, tris(createVertexAlphaGeometry(buildShoreHighlightData(l.channel, RIVER_WATER_HIGHLIGHTS.shore.bandWidth, l.ribbonSegments)))); // 20
-  add(WATER_EFFECT_TIERS[tier].glintCount, fan()); // 21 glints
+  add(1, tris(createVertexAlphaGeometry(buildShoreHighlightData(l.channel, RIVER_WATER_HIGHLIGHTS.shore.bandWidth, l.ribbonSegments)))); // 19
+  add(WATER_EFFECT_TIERS[tier].glintCount, fan()); // 20 glints
   return { drawCalls, triangles };
 }
 
@@ -90,21 +90,15 @@ beforeEach(() => useDeviceStore.setState(useDeviceStore.getInitialState(), true)
 afterEach(cleanup);
 
 describe("environment render budget per tier (MFW-49 AC5, lead regression guard)", () => {
+  // Both presets draw the same environment since MFW-67 (no NIGHT lamp light pools); the render test below checks each preset.
   it.each(TIERS)("%s: draw calls and triangles stay within ENVIRONMENT_RENDER_BUDGETS in both presets", (tier) => {
-    const day = summarize(layout, tier, "DAY");
-    const night = summarize(layout, tier, "NIGHT");
-    for (const s of [day, night]) {
-      expect(s.drawCalls).toBeLessThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[tier].maxDrawCalls);
-      expect(s.triangles).toBeLessThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[tier].maxTriangles);
-    }
-    expect(night.drawCalls).toBeGreaterThanOrEqual(day.drawCalls);
-    expect(night.triangles).toBeGreaterThanOrEqual(day.triangles);
+    const s = summarize(layout, tier);
+    expect(s.drawCalls).toBeLessThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[tier].maxDrawCalls);
+    expect(s.triangles).toBeLessThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[tier].maxTriangles);
   });
 
   it("LOW is never heavier than HIGH", () => {
-    for (const preset of LIGHT_PRESET_IDS) {
-      expect(summarize(layout, "LOW", preset).triangles).toBeLessThanOrEqual(summarize(layout, "HIGH", preset).triangles);
-    }
+    expect(summarize(layout, "LOW").triangles).toBeLessThanOrEqual(summarize(layout, "HIGH").triangles);
   });
 
   it("one krathong ripple ring stays within KRATHONG_RIPPLE_MAX_TRIANGLES", () => {
@@ -132,14 +126,13 @@ describe("environment render budget per tier (MFW-49 AC5, lead regression guard)
           <EnvironmentBlobShadows layout={layout} />
           <ShoreHighlights layout={layout} />
           <WaterGlints layout={layout} now={() => 0} />
-          <LampLightPools layout={layout} lightPreset={preset} />
         </>,
       );
       const meshes = [...container.querySelectorAll("mesh")].filter(
         (el) => !(el.getAttribute("name") ?? "").startsWith(SCENE_OBJECT_NAMES.lampTapPrefix), // invisible tap proxies draw nothing
       );
       const drawn = meshes.length + container.querySelectorAll("instancedMesh").length + container.querySelectorAll("primitive").length;
-      expect(drawn).toBe(summarize(layout, tier, preset).drawCalls);
+      expect(drawn).toBe(summarize(layout, tier).drawCalls);
     },
   );
 });

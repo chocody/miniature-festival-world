@@ -12,6 +12,7 @@ import {
   E2E_TAP_HINT_SEEN_VALUE,
   E2E_TAP_HINT_STORAGE_KEY,
   installSceneProbe,
+  listRingAndHaloMeshes,
   locateStableTarget,
   waitForCameraRest,
   type ScreenPoint,
@@ -127,6 +128,8 @@ function defineTierTests(pointer: Pointer) {
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "lamp-glow");
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
       await expect(scene(page)).toHaveAttribute("data-selected-target", "lamp");
+      // MFW-67: the lamp lights up without a highlight ring or any other halo.
+      await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
 
       // River krathong
       await waitForCameraRest(page);

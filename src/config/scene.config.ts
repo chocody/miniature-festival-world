@@ -1,13 +1,24 @@
 import { LOOK_PALETTE } from "./look.config";
+import { KRATHONG_MODEL_FOOTPRINT_RADIUS } from "./riverFlow.config";
 
 /** Generic toy-scene look shared by festival scenes (MFW-15 values moved here in MFW-27; spec §2.1, backlog 3.1). */
 
 /**
- * Own-krathong candle point light (MFW-15 values). Background, ambient and key (moon/sun) lights moved to the DAY/NIGHT
- * LIGHT_PRESETS in look.config.ts (MFW-47); candle.intensity is the NIGHT base, scaled by LIGHT_PRESETS[p].candle.
+ * Own-krathong candle point light in krathong MODEL units (pose scale 1). OwnKrathong multiplies distance by the pose scale and
+ * intensity by its square, so the glow looks the same on the 0.22-scaled river krathong as in CUSTOMIZE (MFW-67).
+ * intensity: NIGHT base (× LIGHT_PRESETS[p].candle.intensityScale), DRAFT 1.0 (was 14: it clipped into a yellow disc), kept below
+ * CANDLE_MAX_PEAK_RADIANCE by look.config.test.ts; distance: 2 × the footprint radius, so the warm light fades out smoothly just past
+ * the krathong; decay 2 = physical inverse square (three's default, stated so the guard's formula holds).
+ * Background, ambient and key (moon/sun) lights live in the DAY/NIGHT LIGHT_PRESETS in look.config.ts (MFW-47).
  */
 export const TOY_SCENE_LIGHTING = {
-  candle: { color: "#ffb35c", intensity: 14, distance: 7, position: [0.15, 1.25, 0.1] as [number, number, number] },
+  candle: {
+    color: "#ffb35c",
+    intensity: 1.0,
+    distance: 2 * KRATHONG_MODEL_FOOTPRINT_RADIUS,
+    decay: 2,
+    position: [0.15, 1.25, 0.1] as [number, number, number],
+  },
 };
 
 /** Matte, non-glossy (backlog 3.1 AC2). */
