@@ -17,6 +17,10 @@ import {
 import { getPinchZoomFactor, type CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { useUIStore } from "@/store/useUIStore";
+import { INITIAL_RITUAL_STATE, buildReleaseCoord, type RitualState, type SavedRelease } from "@/core/ritual";
+import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes } from "@/core/world";
@@ -58,6 +62,46 @@ vi.mock("./effects/tapPoint", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./effects/tapPoint")>()),
   tapPointInParentSpace: () => tapStub.value,
 }));
+
+const release = vi.hoisted(() => ({
+  starts: [] as { name: string; immediate: boolean; from?: { value: number }; onRest?: () => void }[],
+}));
+
+/** Wrap the real release choreography so the test sees what reaches each spring api (and can finish a lowering by hand). */
+vi.mock("@/core/ritual/releaseMotion", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/ritual/releaseMotion")>();
+  return {
+    ...actual,
+    createReleaseMotion: (apis: Parameters<typeof actual.createReleaseMotion>[0], reduced: boolean, base: number) => {
+      const wrap = (name: keyof typeof apis) => ({
+        start: (o: Parameters<(typeof apis)["lower"]["start"]>[0]) => {
+          release.starts.push({ name, immediate: o.immediate, from: o.from, onRest: o.onRest });
+          apis[name].start(o);
+        },
+      });
+      return actual.createReleaseMotion(
+        { lower: wrap("lower"), settle: wrap("settle"), bump: wrap("bump"), candle: wrap("candle") },
+        reduced,
+        base,
+      );
+    },
+  };
+});
+
+const riverRenders = vi.hoisted(() => ({ count: 0 }));
+
+/** Counts how often the scene re-renders RiverFlow (memoised: a drag must not do it per pointer-move). */
+vi.mock("./RiverFlow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./RiverFlow")>();
+  const React = await import("react");
+  return {
+    ...actual,
+    RiverFlow: (props: React.ComponentProps<typeof actual.RiverFlow>) => {
+      riverRenders.count += 1;
+      return React.createElement(actual.RiverFlow, props);
+    },
+  };
+});
 
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
@@ -185,6 +229,9 @@ beforeEach(() => {
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
+  useUIStore.setState(useUIStore.getInitialState(), true);
+  release.starts.length = 0;
+  riverRenders.count = 0;
   assets.created = 0;
   assets.disposed = 0;
   r3f.cameraProps.length = 0;
@@ -315,12 +362,14 @@ describe("scene pointer flow (stub R3F context)", () => {
   it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("%s taps never select a target or fly the camera", (mode) => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(<SceneViewport mode={mode} />);
+    const before = r3f.flightStarts.length;
+    expect(before).toBe(mode === "RITUAL_RELEASE" ? 1 : 0);
     fireEvent.click(waterMesh(container));
     fireEvent.click(krathongMesh(container));
     fireEvent.click(lampMesh(container));
     expect(viewport()).not.toHaveAttribute("data-selected-target");
     expect(container.querySelector("ringGeometry")).toBeNull();
-    expect(r3f.flightStarts).toHaveLength(0);
+    expect(r3f.flightStarts).toHaveLength(before);
   });
 
   it("only WORLD_EXPLORE taps select a target and fly the camera", () => {
@@ -368,14 +417,16 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(container.querySelector("ringGeometry")).toBeNull();
   });
 
-  it("ritual chip drag releases only past the drag threshold", () => {
+  const rect = () =>
+    vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 256 }));
+  const chipEl = () => screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+
+  it("a drag onto the water releases there", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const onRelease = vi.fn();
-    render(<SceneViewport mode="RITUAL_RELEASE" onGestureRelease={onRelease} />);
-    vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 256 }),
-    );
-    const chip = screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={onRelease} />);
+    rect();
+    const chip = chipEl();
 
     fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
     fireEvent.pointerMove(chip, { pointerId: 1, clientX: 163, clientY: 144 });
@@ -383,9 +434,201 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(onRelease).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(chip, { pointerId: 2, clientX: 160, clientY: 140 });
-    fireEvent.pointerMove(chip, { pointerId: 2, clientX: 160, clientY: 200 });
-    fireEvent.pointerUp(viewport(), { pointerId: 2, clientX: 160, clientY: 200 });
+    fireEvent.pointerMove(chip, { pointerId: 2, clientX: 160, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 2, clientX: 160, clientY: 100 });
     expect(onRelease).toHaveBeenCalledTimes(1);
+    const want = createRitualDropMapper().mapDrop({ x: 50, y: 50 - (40 / 256) * 100 }, { width: 320, height: 256 }, 1)!.candidate;
+    const got = onRelease.mock.calls[0][0];
+    expect(got.laneId).toBe(want.laneId);
+    expect(got.progress).toBeCloseTo(want.progress, 9);
+    expect(got.lateralOffset).toBeCloseTo(want.lateralOffset, 9);
+  });
+
+  it("a drag of many pointer-moves does not re-render RiverFlow per move", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    act(() => {
+      useWorldStore.setState({
+        eventId: "loy_krathong",
+        currentZoneId: 1,
+        zoneCount: 1,
+        zoneStatus: "ready",
+        zoneItems: [storeItemFor(1)],
+      });
+    });
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={vi.fn()} />);
+    rect();
+    const chip = chipEl();
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 130 });
+    const afterStart = riverRenders.count;
+    expect(afterStart).toBeGreaterThan(0);
+    for (let i = 1; i <= 20; i++) fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 130 - i });
+    expect(riverRenders.count).toBe(afterStart);
+    expect(chipEl().style.top).not.toBe("50%"); // the chip follows by direct DOM writes
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 160, clientY: 110 });
+  });
+
+  it("reserves a slot for the own krathong on the pier (80 shared items give 79)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    act(() => {
+      useWorldStore.setState({
+        eventId: "loy_krathong",
+        currentZoneId: 1,
+        zoneCount: 1,
+        zoneStatus: "ready",
+        zoneItems: Array.from({ length: 80 }, (_, i) => storeItemFor(i + 1)),
+      });
+    });
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(79);
+  });
+
+  it("a drop on the bank does not release", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const onRelease = vi.fn();
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={onRelease} />);
+    rect();
+    const chip = chipEl();
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 200 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 160, clientY: 200 });
+    expect(onRelease).not.toHaveBeenCalled();
+    expect(useUIStore.getState().ritual.hint).toBe("DROP_ON_WATER");
+    expect(chipEl()).toHaveStyle({ left: "50%", top: "50%" });
+  });
+});
+
+const storeItemFor = (i: number): PublicCreation => ({
+  id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+  eventId: "loy_krathong",
+  zoneId: 1,
+  appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+  coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+  publicWishText: null,
+  createdAt: "2026-11-24T12:00:00.000Z",
+  expiresAt: "2099-01-01T00:00:00.000Z",
+});
+
+const savedRelease = (patch: Partial<SavedRelease> = {}): SavedRelease => ({
+  id: "own-creation",
+  zoneId: 1,
+  coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT),
+  createdAtMs: 1_700_000_000_000,
+  serverClockOffsetMs: 0,
+  movedByServer: false,
+  ...patch,
+});
+const setRitual = (patch: Partial<RitualState>) =>
+  act(() => {
+    useUIStore.setState({ ritual: { ...INITIAL_RITUAL_STATE, ...patch } });
+  });
+const ritualStart = () =>
+  act(() => {
+    useUIStore.getState().dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });
+  });
+
+describe("make and release ritual", () => {
+  it("RITUAL_RELEASE frames the pier once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts[0].immediate).toBe(false);
+    expect(container.querySelector("ringGeometry")).toBeNull();
+    expect(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierFocus}"]`)).not.toBeNull();
+    cleanup();
+    r3f.flightStarts.length = 0;
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts[0].immediate).toBe(true);
+  });
+
+  it("ritual preview: the own krathong stands on the pier with the only point light", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "PIER");
+    expect(container.querySelector('[name="scene-krathong-pose"] [name="scene-krathong"] pointLight')).not.toBeNull();
+    expect(container.querySelectorAll("pointLight, spotLight")).toHaveLength(1);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      expect(viewport().getAttribute(attr)).not.toContain("own-creation");
+    }
+  });
+
+  it("the chip hides while releasing", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(screen.getByRole("img", { name: "กระทง ลากลงน้ำ" })).toBeInTheDocument();
+    ritualStart();
+    expect(screen.queryByRole("img", { name: "กระทง ลากลงน้ำ" })).toBeNull();
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RELEASING");
+  });
+
+  it("touchdown ripples once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useDeviceStore.getState().setReducedMotion(true);
+    const { rerender } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    ritualStart();
+    expect(useUIStore.getState().ritual.touchedDown).toBe(true);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    rerender(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+  });
+
+  it("the candle brightens at touchdown (instantly under reduced motion) and returns on failure", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    release.starts.length = 0;
+    ritualStart();
+    const candle = release.starts.filter((o) => o.name === "candle");
+    expect(candle).toHaveLength(1);
+    expect(candle[0].immediate).toBe(true);
+    act(() => {
+      useUIStore.getState().dispatchRitual({ type: "SAVE_FAILED", attempt: 1, error: { kind: "network" } });
+    });
+    expect(release.starts.filter((o) => o.name === "candle")).toHaveLength(2);
+  });
+
+  it("bump plays once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    ritualStart();
+    act(() => {
+      useUIStore.getState().dispatchRitual({
+        type: "LANDING_RESOLVED",
+        attempt: 1,
+        landing: LOY_KRATHONG_PIER_RELEASE_SPOT,
+        collided: true,
+      });
+    });
+    const bumps = () => release.starts.filter((o) => o.name === "bump" && o.from !== undefined);
+    expect(bumps()).toHaveLength(0);
+    const lower = release.starts.filter((o) => o.name === "lower" && o.from !== undefined).at(-1)!;
+    act(() => lower.onRest!());
+    expect(bumps()).toHaveLength(1);
+    act(() => {
+      useUIStore.getState().dispatchRitual({ type: "SAVED", attempt: 1, saved: savedRelease({ movedByServer: true }) });
+    });
+    expect(bumps()).toHaveLength(1);
+  });
+
+  it("after the release the own krathong rides the river", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() });
+    const own = {
+      id: "own-creation",
+      coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT),
+      createdAtMs: 1_700_000_000_000,
+      appearance: DEFAULT_KRATHONG_APPEARANCE,
+    };
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[own]} />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RIVER");
+    expect(container.querySelector('[name="river-item-own-creation"]')).toBeNull();
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 2, zoneCount: 2, zoneStatus: "ready" });
+    });
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "HIDDEN");
   });
 });
 

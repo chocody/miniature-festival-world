@@ -5,6 +5,8 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   bankLeft: "scene-bank-left",
   bankRight: "scene-bank-right",
   krathong: "scene-krathong",
+  krathongPose: "scene-krathong-pose",
+  pierFocus: "scene-pier-focus",
   houseBodies: "scene-house-bodies",
   houseRoofs: "scene-house-roofs",
   treeTrunks: "scene-tree-trunks",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import type { Group } from "three";
 import { KrathongModel } from "@/components/models/loyKrathong";
 import { TIER_BUDGETS } from "@/config/performance.config";
@@ -49,7 +49,7 @@ export interface RiverFlowProps {
  * Renders at most min(ZONE_ITEM_CAP, TIER_BUDGETS[tier].riverItemCap) krathongs (MFW-24 perf review). Each is a full
  * KrathongModel (about 20 meshes); MFW-34 instancing is the real fix.
  */
-export function RiverFlow({
+export const RiverFlow = memo(function RiverFlow({
   items,
   lanes,
   shadows,
@@ -154,4 +154,4 @@ export function RiverFlow({
       ))}
     </group>
   );
-}
+});

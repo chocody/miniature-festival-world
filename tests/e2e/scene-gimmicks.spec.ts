@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 
 test.use({ hasTouch: true });
@@ -16,6 +17,7 @@ const nextFrames = (page: Page) =>
 const WATER_TAP_OFFSET_PX = { x: -127, y: -40 };
 
 async function openWorld(page: Page, memory: number, cores: number) {
+  await mockCreateCreation(page);
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -39,6 +41,11 @@ async function openWorld(page: Page, memory: number, cores: number) {
   return { pageErrors, consoleErrors };
 }
 
+/** The release's touchdown ripple (MFW-23) is already counted when the world opens, so taps are counted from this baseline. */
+async function gimmickBaseline(page: Page): Promise<number> {
+  return Number(await scene(page).getAttribute("data-gimmick-count"));
+}
+
 async function tapWater(page: Page, times: number) {
   const box = (await scene(page).boundingBox())!;
   const x = box.x + box.width / 2 + WATER_TAP_OFFSET_PX.x;
@@ -48,11 +55,12 @@ async function tapWater(page: Page, times: number) {
 
 test("HIGH tier: water taps record ripples without errors", async ({ page }) => {
   const errors = await openWorld(page, 8, 8);
+  const base = await gimmickBaseline(page);
   await tapWater(page, 1);
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", "1");
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
   await tapWater(page, 12);
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", "13");
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 13));
   await nextFrames(page);
   expect(errors.pageErrors).toEqual([]);
   expect(errors.consoleErrors).toEqual([]);
@@ -61,8 +69,9 @@ test("HIGH tier: water taps record ripples without errors", async ({ page }) => 
 test("LOW tier: water taps record ripples without errors", async ({ page }) => {
   const errors = await openWorld(page, 2, 2);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
+  const base = await gimmickBaseline(page);
   await tapWater(page, 6);
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", "6");
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 6));
   await nextFrames(page);
   expect(errors.pageErrors).toEqual([]);
   expect(errors.consoleErrors).toEqual([]);

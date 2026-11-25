@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 
 const OWNERSHIP_WARNING = "การล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนอุปกรณ์จะทำให้ไม่สามารถค้นคืนรายการผลงานของตัวเองได้";
@@ -25,6 +26,7 @@ test("event selector shows Loy Krathong enabled and 7 festivals Coming Soon", as
 });
 
 test("flow walks from landing to SHARED_WORLD_EXPLORE", async ({ page }) => {
+  await mockCreateCreation(page);
   await page.goto("/");
   const root = page.locator("[data-flow-state]");
   await expect(root).toHaveAttribute("data-flow-state", "LANDING_EVENT_SELECT");

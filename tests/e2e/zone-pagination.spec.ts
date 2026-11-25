@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 
@@ -41,6 +42,7 @@ test("FALLBACK_2D: starts on the newest zone and pages up- and downstream", asyn
     } as typeof original;
   });
   const requested = await routeZones(page, 3, { 2: 2, 3: 85 });
+  await mockCreateCreation(page, { zoneId: 3 }); // registered after the zone routes: handles POST, GET falls back to them
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
   await walkToWorld(page);
@@ -74,6 +76,7 @@ test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) 
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
   });
   await routeZones(page, 1, { 1: 3 });
+  await mockCreateCreation(page);
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await walkToWorld(page);

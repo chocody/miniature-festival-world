@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -6,6 +6,9 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import { WISH_COPY } from "@/config/wish.config";
+import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { RITUAL_COPY } from "@/config/ritual.config";
+import { buildReleaseCoord } from "@/core/ritual";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
@@ -18,29 +21,83 @@ const zones = vi.hoisted(() => ({
 }));
 vi.mock("@/services/api/zonePagination", () => ({ getZonePagination: () => zones, loadZone: zones.loadZone }));
 
+/** Answers POST /api/creations like the server: 201 with the sent coord (or the status/body the test sets). */
+const api = vi.hoisted(() => ({
+  status: 201,
+  body: null as unknown,
+  posts: [] as { url: string; body: Record<string, unknown> }[],
+}));
+function stubCreationsApi() {
+  api.status = 201;
+  api.body = null;
+  api.posts.length = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return new Response(JSON.stringify({}), { status: 404 });
+      const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+      api.posts.push({ url, body: sent });
+      if (api.status !== 201) return new Response(JSON.stringify(api.body ?? {}), { status: api.status });
+      return new Response(
+        JSON.stringify({
+          creation: {
+            id: "0f8b6c1e-3a2d-4c5b-9e7f-1a2b3c4d5e6f",
+            eventId: sent.eventId,
+            zoneId: 1,
+            appearance: sent.appearance,
+            coord: sent.coord,
+            publicWishText: null,
+            createdAt: new Date().toISOString(),
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          },
+        }),
+        { status: 201 },
+      );
+    }),
+  );
+}
+
 const viewSpies = vi.hoisted(() => ({ rotate: vi.fn(), zoom: vi.fn() }));
 
 vi.mock("@/components/canvas3d", async () => {
   const React = await import("react");
+  const { useUIStore } = await import("@/store/useUIStore");
   return {
     SceneViewport: ({
       mode,
-      onGestureRelease,
+      onReleaseDrop,
       viewControlRef,
     }: {
       mode: string | null;
-      onGestureRelease?: () => void;
+      onReleaseDrop?: (candidate: typeof LOY_KRATHONG_PIER_RELEASE_SPOT) => void;
       viewControlRef?: React.Ref<{ rotate: (d: -1 | 1) => void; zoom: (d: -1 | 1) => void }>;
     }) => {
       React.useImperativeHandle(viewControlRef, () => ({ rotate: viewSpies.rotate, zoom: viewSpies.zoom }));
-      return React.createElement("div", { "data-testid": "scene-viewport", "data-mode": mode ?? "", onClick: onGestureRelease });
+      // Stands in for the scene's animation: touches down at once and settles when saved.
+      const ritual = useUIStore((s) => s.ritual);
+      React.useEffect(() => {
+        const { dispatchRitual } = useUIStore.getState();
+        if (ritual.phase !== "RELEASING") return;
+        dispatchRitual({ type: "TOUCHED_DOWN", attempt: ritual.attempt });
+        if (ritual.saved) dispatchRitual({ type: "SETTLED", attempt: ritual.attempt });
+      }, [ritual]);
+      return React.createElement("div", {
+        "data-testid": "scene-viewport",
+        "data-mode": mode ?? "",
+        onClick: () => onReleaseDrop?.(LOY_KRATHONG_PIER_RELEASE_SPOT),
+      });
     },
   };
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
+  window.localStorage.clear();
+  stubCreationsApi();
   useUIStore.setState(useUIStore.getInitialState(), true);
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
@@ -60,7 +117,7 @@ const stateOf = (container: HTMLElement) =>
   container.querySelector("[data-flow-state]")?.getAttribute("data-flow-state");
 
 describe("FlowRoot", () => {
-  it("clicks through all 5 states", () => {
+  it("clicks through all 5 states", async () => {
     const { container } = render(<FlowRoot />);
     expect(stateOf(container)).toBe("LANDING_EVENT_SELECT");
     expect(container.querySelector("[data-flow-state]")).not.toHaveAttribute("data-interaction-mode");
@@ -73,12 +130,12 @@ describe("FlowRoot", () => {
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
-    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("shows the ownership notice only in WRITE_WISH", () => {
+  it("shows the ownership notice only in WRITE_WISH", async () => {
     render(<FlowRoot />);
     expect(screen.queryByRole("note")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
@@ -87,9 +144,11 @@ describe("FlowRoot", () => {
     expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
     completeWish();
     expect(screen.queryByRole("note")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
-    expect(screen.queryByRole("note")).toBeNull();
+    // MFW-23 is the first vault caller: the token is created by the release, not before.
     expect(window.localStorage.getItem(DEVICE_OWNER_TOKEN_STORAGE_KEY)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(window.localStorage.getItem(DEVICE_OWNER_TOKEN_STORAGE_KEY)).not.toBeNull());
+    expect(screen.queryByRole("note")).toBeNull();
   });
 
   it("CUSTOMIZE_OBJECT shows the customizer panel only in that step", () => {
@@ -159,7 +218,7 @@ describe("FlowRoot", () => {
     expect(marker).toHaveAttribute("data-mode", "RITUAL_RELEASE");
 
     fireEvent.click(marker);
-    expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "WORLD_EXPLORE");
+    await waitFor(() => expect(screen.getByTestId("scene-viewport")).toHaveAttribute("data-mode", "WORLD_EXPLORE"));
     expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
   });
 
@@ -174,21 +233,22 @@ describe("FlowRoot", () => {
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
-  it("enters the shared world only at SHARED_WORLD_EXPLORE and leaves on unmount", () => {
+  it("enters the shared world once when the ritual starts and leaves on unmount", async () => {
     const { unmount } = render(<FlowRoot />);
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
-    expect(zones.enterWorld).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     expect(zones.enterWorld).toHaveBeenCalledTimes(1);
     expect(zones.enterWorld).toHaveBeenCalledWith("loy_krathong");
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(screen.queryByTestId("ritual-release-panel")).toBeNull());
+    expect(zones.enterWorld).toHaveBeenCalledTimes(1);
     expect(zones.leaveWorld).not.toHaveBeenCalled();
     unmount();
     expect(zones.leaveWorld).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the zone navigator only at SHARED_WORLD_EXPLORE, without buttons in a 1-zone world", () => {
+  it("shows the zone navigator only at SHARED_WORLD_EXPLORE, without buttons in a 1-zone world", async () => {
     render(<FlowRoot />);
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
@@ -199,6 +259,7 @@ describe("FlowRoot", () => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
     });
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(screen.getByTestId("zone-navigator")).toBeInTheDocument());
     act(() => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
     });
@@ -234,5 +295,47 @@ describe("FlowRoot", () => {
     await act(async () => {});
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
+  });
+
+  const walkToRitual = () => {
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
+  };
+
+  it("release finishes the ritual (FALLBACK_2D)", async () => {
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    const { container } = render(<FlowRoot />);
+    walkToRitual();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    const root = container.querySelector("[data-flow-state]")!;
+    expect(root).toHaveAttribute("data-own-krathong", "released");
+    expect(api.posts).toHaveLength(1);
+    expect(api.posts[0].url).toBe("/api/creations");
+    expect(api.posts[0].body.coord).toEqual(buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT));
+    expect(useBuilderStore.getState().wish).toBeNull();
+  });
+
+  it("a failed save stays in the ritual", async () => {
+    api.status = 503;
+    api.body = { error: "unavailable" };
+    const { container } = render(<FlowRoot />);
+    walkToRitual();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-ritual-error", "unavailable"));
+    expect(stateOf(container)).toBe("RITUAL_RELEASE");
+    expect(screen.getByRole("button", { name: "ปล่อยกระทง" })).toBeEnabled();
+    expect(screen.getByTestId("ritual-status")).toHaveTextContent(RITUAL_COPY.errors.unavailable);
+  });
+
+  it("moderation-blocked returns to the wish", async () => {
+    api.status = 422;
+    api.body = { error: "moderation_blocked", reasons: ["phone"] };
+    const { container } = render(<FlowRoot />);
+    walkToRitual();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("WRITE_WISH"));
+    expect(useBuilderStore.getState().wishServerReasons).toEqual(["phone"]);
   });
 });

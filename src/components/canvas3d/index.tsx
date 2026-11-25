@@ -7,6 +7,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  memo,
   useRef,
   useState,
   type PointerEvent,
@@ -59,17 +60,19 @@ import {
 } from "@/config/interaction.config";
 import {
   KrathongAssetsProvider,
-  KrathongModel,
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
-import { getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems } from "@/core/world";
-import { PartChangeBounce } from "./PartChangeBounce";
+import { getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems, type RiverSpot } from "@/core/world";
+import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseKind, type OwnKrathongPoseKind, type RitualState } from "@/core/ritual";
+import { OwnKrathong } from "./OwnKrathong";
+import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { useUIStore } from "@/store/useUIStore";
 import { useWorldStore } from "@/store/useWorldStore";
 
 export { TOY_SCENE_LIGHTING, TOY_MATTE_MATERIALS } from "@/config/scene.config";
@@ -138,9 +141,18 @@ interface ToyNightSceneProps {
   effectsRef: Ref<SceneEffectsHandle>;
   onWaterSelected: (tap: WorldXZ | null) => void;
   onRiverItemTapped?: (id: string) => void;
+  poseKind: OwnKrathongPoseKind;
+  ritual: RitualState;
+  site: RitualSite;
+  dragPointRef: RefObject<WorldXZ | null>;
+  releaseDropRef: RefObject<WorldXZ | null>;
+  riverNow: () => number;
+  onTouchedDown: (attempt: number, at: WorldXZ) => void;
+  onSettled: (attempt: number) => void;
+  pierFocusRef: RefObject<Group | null>;
 }
 
-function ToyNightScene({
+const ToyNightScene = memo(function ToyNightScene({
   shadows,
   shadowMapSizePx,
   appearance,
@@ -160,7 +172,17 @@ function ToyNightScene({
   effectsRef,
   onWaterSelected,
   onRiverItemTapped,
+  poseKind,
+  ritual,
+  site,
+  dragPointRef,
+  releaseDropRef,
+  riverNow,
+  onTouchedDown,
+  onSettled,
+  pierFocusRef,
 }: ToyNightSceneProps) {
+  const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   return (
     <>
       <color attach="background" args={[TOY_SCENE_LIGHTING.background]} />
@@ -188,30 +210,30 @@ function ToyNightScene({
           selectedLampIndex={selectedLampIndex}
           onLampSelected={onLampSelected}
         />
-        <group
-          ref={krathongTargetRef}
-          name={SCENE_OBJECT_NAMES.krathong}
-          rotation={[0, objectRotation, 0]}
-          onClick={(event) => {
-            event.stopPropagation();
-            onTargetSelected("krathong");
-          }}
-        >
-          <pointLight
-            color={TOY_SCENE_LIGHTING.candle.color}
-            intensity={TOY_SCENE_LIGHTING.candle.intensity}
-            distance={TOY_SCENE_LIGHTING.candle.distance}
-            position={TOY_SCENE_LIGHTING.candle.position}
-          />
-          <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
-            <KrathongModel appearance={appearance} shadows={shadows} />
-          </PartChangeBounce>
-        </group>
+        <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
+        <OwnKrathong
+          targetRef={krathongTargetRef}
+          appearance={appearance}
+          shadows={shadows}
+          reducedMotion={reducedMotion}
+          objectRotation={objectRotation}
+          onSelected={onKrathongSelected}
+          poseKind={poseKind}
+          ritual={ritual}
+          site={site}
+          lanes={getLoyKrathongRiverLanes()}
+          dragPointRef={dragPointRef}
+          releaseDropRef={releaseDropRef}
+          now={riverNow}
+          onTouchedDown={onTouchedDown}
+          onSettled={onSettled}
+        />
         <RiverFlow
           items={riverItems}
           lanes={getLoyKrathongRiverLanes()}
           shadows={shadows}
           reducedMotion={reducedMotion}
+          now={riverNow}
           pinnedIds={pinnedRiverIds}
           onItemTapped={onRiverItemTapped}
         />
@@ -226,7 +248,7 @@ function ToyNightScene({
       </group>
     </>
   );
-}
+});
 
 function CameraFlightController({
   targetRef,
@@ -308,12 +330,13 @@ function pointSample(event: PointerEvent<HTMLElement>, target: InteractionTarget
 /** A profiler-gated look-development viewport with tier-aware rendering and target focus. */
 export function SceneViewport({
   mode = null,
-  onGestureRelease,
+  onReleaseDrop,
   viewControlRef,
   riverItems,
 }: {
   mode?: InteractionMode | null;
-  onGestureRelease?: () => void;
+  /** RITUAL_RELEASE: the chip was dropped on the water; the candidate is a parametric lane spot (invariant A). */
+  onReleaseDrop?: (candidate: RiverSpot) => void;
   viewControlRef?: Ref<CustomizeViewControl>;
   riverItems?: readonly RiverFlowItem[];
 }) {
@@ -328,12 +351,40 @@ export function SceneViewport({
   const focusedCreationId = useWorldStore((s) => s.focusedCreationId);
   const storeRiverItems = useMemo(
     () =>
-      mode === "WORLD_EXPLORE" && worldEventId !== null && worldZoneId !== null
+      (mode === "WORLD_EXPLORE" || mode === "RITUAL_RELEASE") && worldEventId !== null && worldZoneId !== null
         ? publicCreationsToRiverItems(worldZoneItems, { eventId: worldEventId, zoneId: worldZoneId })
         : NO_RIVER_ITEMS,
     [mode, worldEventId, worldZoneId, worldZoneItems],
   );
   const visibleRiverItems = riverItems ?? storeRiverItems;
+  const ritual = useUIStore((s) => s.ritual);
+  const site = getLoyKrathongRitualSite();
+  const mapperRef = useRef<RitualDropMapper | null>(null);
+  const getMapper = useCallback(() => (mapperRef.current ??= createRitualDropMapper(site)), [site]);
+  const chipPercentRef = useRef<PercentPoint>({ x: RITUAL_CHIP_START_PERCENT.x, y: RITUAL_CHIP_START_PERCENT.y });
+  const draggingRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const dragPointRef = useRef<WorldXZ | null>(null);
+  const releaseDropRef = useRef<WorldXZ | null>(null);
+  const pierFocusRef = useRef<Group | null>(null);
+  const [framedPier, setFramedPier] = useState(false);
+  if (mode === "RITUAL_RELEASE" && !framedPier) setFramedPier(true); // same render-phase pattern as selectionMode
+  const offsetMs = ritual.saved?.serverClockOffsetMs ?? 0;
+  const riverNow = useMemo(() => () => Date.now() + offsetMs, [offsetMs]);
+  const ownZoneVisible = isOwnZoneVisible(ritual.saved?.zoneId ?? null, worldZoneId);
+  const poseKind = ownKrathongPoseKind({
+    mode,
+    phase: ritual.phase,
+    hasSaved: ritual.saved !== null,
+    dragging,
+    ownZoneVisible,
+  });
+  // The shared list reserves a slot whenever the own krathong is drawn in it (invariant E: items + own ≤ cap).
+  const ownShown = isOwnSlotReserved(poseKind);
+  const sceneRiverItems = useMemo(
+    () => excludeOwnAndCap(visibleRiverItems, ritual.saved?.id ?? null, ownShown),
+    [visibleRiverItems, ritual.saved, ownShown],
+  );
   const pinnedRiverIds = useMemo(
     () => (focusedCreationId === null ? NO_PINNED_RIVER_IDS : Object.freeze([focusedCreationId])),
     [focusedCreationId],
@@ -342,10 +393,13 @@ export function SceneViewport({
   const [objectRotation, setObjectRotation] = useState(0);
   const [worldRotation, setWorldRotation] = useState(0);
   const [worldOffset, setWorldOffset] = useState<[number, number]>([0, 0]);
-  const [krathongPosition, setKrathongPosition] = useState<[number, number]>([
-    RITUAL_CHIP_START_PERCENT.x,
-    RITUAL_CHIP_START_PERCENT.y,
-  ]);
+  const chipRef = useRef<HTMLDivElement | null>(null);
+  const writeChipPosition = useCallback((x: number, y: number) => {
+    const el = chipRef.current;
+    if (!el) return;
+    el.style.left = `${x}%`;
+    el.style.top = `${y}%`;
+  }, []);
   const [lastInteraction, setLastInteraction] = useState<InteractionTarget | null>(null);
   const zoomRef = useRef(1);
   const cameraRef = useRef<OrthographicCamera | null>(null);
@@ -400,18 +454,35 @@ export function SceneViewport({
     recordGimmick("inspect");
   }, [mode, recordGimmick]);
 
+  const onTouchedDown = useCallback((attempt: number, at: WorldXZ) => {
+    effectsRef.current?.spawnRipple(at); // MFW-28 pool (invariant E)
+    recordGimmick("ripple");
+    useUIStore.getState().dispatchRitual({ type: "TOUCHED_DOWN", attempt });
+  }, [recordGimmick]);
+  const onSettled = useCallback((attempt: number) => {
+    useUIStore.getState().dispatchRitual({ type: "SETTLED", attempt });
+  }, []);
+
+  const resetChip = useCallback(() => {
+    chipPercentRef.current = { x: RITUAL_CHIP_START_PERCENT.x, y: RITUAL_CHIP_START_PERCENT.y };
+    writeChipPosition(RITUAL_CHIP_START_PERCENT.x, RITUAL_CHIP_START_PERCENT.y);
+    dragPointRef.current = null;
+  }, [writeChipPosition]);
+
   const inspected = useMemo(
-    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedCreation(visibleRiverItems, inspectedId) : null),
-    [mode, inspectedId, visibleRiverItems],
+    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedCreation(sceneRiverItems, inspectedId) : null),
+    [mode, inspectedId, sceneRiverItems],
   );
 
-  const activeTargetRef = selectedTarget === "water"
+  const activeTargetRef: TargetRef | null = selectedTarget === "water"
     ? waterTargetRef
     : selectedTarget === "krathong"
       ? krathongTargetRef
       : selectedTarget === "lamp"
         ? lampTargetRef
         : null;
+  const cameraTargetRef: TargetRef | null =
+    activeTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
 
   const applyZoomFactor = useCallback((factor: number) => {
     zoomRef.current = factor;
@@ -433,15 +504,33 @@ export function SceneViewport({
       case "DRAG_KRATHONG": {
         const rect = viewportRef.current?.getBoundingClientRect();
         if (!rect) break;
-        setKrathongPosition(([x, y]) => [
-          Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, x + (action.deltaX / rect.width) * PERCENT_SCALE)),
-          Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, y + (action.deltaY / rect.height) * PERCENT_SCALE)),
-        ]);
+        const { x, y } = chipPercentRef.current;
+        const next: PercentPoint = {
+          x: Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, x + (action.deltaX / rect.width) * PERCENT_SCALE)),
+          y: Math.max(RITUAL_CHIP_MIN_PERCENT, Math.min(RITUAL_CHIP_MAX_PERCENT, y + (action.deltaY / rect.height) * PERCENT_SCALE)),
+        };
+        chipPercentRef.current = next;
+        writeChipPosition(next.x, next.y); // direct DOM write: no React re-render per pointer-move
+        draggingRef.current = true;
+        setDragging(true);
+        dragPointRef.current = getMapper().toDeckPlane(next, rect, zoomRef.current);
+        invalidateRef.current?.();
         break;
       }
-      case "RELEASE_KRATHONG":
-        onGestureRelease?.();
+      case "RELEASE_KRATHONG": {
+        draggingRef.current = false;
+        setDragging(false);
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const drop = rect ? getMapper().mapDrop(chipPercentRef.current, rect, zoomRef.current) : null;
+        resetChip();
+        if (drop === null || !drop.onWater) {
+          useUIStore.getState().dispatchRitual({ type: "DROP_REJECTED" });
+        } else {
+          releaseDropRef.current = drop.point;
+          onReleaseDrop?.(drop.candidate);
+        }
         break;
+      }
       case "PAN_RIVER":
         // Legacy pan/rotate kept as is: the gesture model awaits an owner decision (MFW-27 plan §11 Q1).
         setWorldOffset(([x, y]) => [
@@ -454,7 +543,7 @@ export function SceneViewport({
         setLastInteraction(action.target);
         break;
     }
-  }, [applyZoomFactor, onGestureRelease]);
+  }, [applyZoomFactor, onReleaseDrop, getMapper, resetChip, writeChipPosition]);
 
   useImperativeHandle(viewControlRef, () => ({
     rotate(direction) {
@@ -493,6 +582,13 @@ export function SceneViewport({
     const target = readTarget(event.target) ??
       (mode === "RITUAL_RELEASE" && insideViewport ? "water" : mode === "WORLD_EXPLORE" ? "water" : null);
     inputSeparatorRef.current.input.pointerUp(pointSample(event, target));
+    if (mode === "RITUAL_RELEASE" && draggingRef.current) {
+      // A drag that ended without a release (e.g. outside the viewport): the krathong returns to the pier.
+      draggingRef.current = false;
+      setDragging(false);
+      resetChip();
+      useUIStore.getState().dispatchRitual({ type: "DROP_REJECTED" });
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -501,6 +597,11 @@ export function SceneViewport({
   function handlePointerCancel(event: PointerEvent<HTMLElement>) {
     if (inputSeparatorRef.current?.mode === mode) {
       inputSeparatorRef.current.input.pointerCancel(event.pointerId);
+    }
+    if (mode === "RITUAL_RELEASE" && draggingRef.current) {
+      draggingRef.current = false;
+      setDragging(false);
+      resetChip();
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -523,6 +624,7 @@ export function SceneViewport({
       data-interaction-mode={mode ?? undefined}
       data-zone-id={mode === "WORLD_EXPLORE" ? worldZoneId ?? undefined : undefined}
       data-river-item-count={visibleRiverItems.length}
+      data-own-krathong-pose={mode ? poseKind : undefined}
       data-camera-locked={mode ? String(isCameraLocked(mode)) : undefined}
       data-last-interaction={lastInteraction ?? undefined}
       data-input-target={mode === "WORLD_EXPLORE" ? "water" : undefined}
@@ -558,7 +660,7 @@ export function SceneViewport({
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
             reducedMotion={reducedMotion}
-            riverItems={visibleRiverItems}
+            riverItems={sceneRiverItems}
             pinnedRiverIds={pinnedRiverIds}
             objectRotation={objectRotation}
             worldRotation={worldRotation}
@@ -573,28 +675,36 @@ export function SceneViewport({
             effectsRef={effectsRef}
             onWaterSelected={onWaterSelected}
             onRiverItemTapped={mode === "WORLD_EXPLORE" ? onRiverItemTapped : undefined}
+            poseKind={poseKind}
+            ritual={ritual}
+            site={site}
+            dragPointRef={dragPointRef}
+            releaseDropRef={releaseDropRef}
+            riverNow={riverNow}
+            onTouchedDown={onTouchedDown}
+            onSettled={onSettled}
+            pierFocusRef={pierFocusRef}
           />
-          {activeTargetRef && selectedTarget && (
-            <>
-              <CameraFlightController
-                targetRef={activeTargetRef}
-                requestId={flyRequestId}
-                reducedMotion={reducedMotion}
-              />
-              <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />
-            </>
+          {cameraTargetRef && (
+            <CameraFlightController
+              targetRef={cameraTargetRef}
+              requestId={flyRequestId}
+              reducedMotion={reducedMotion}
+            />
           )}
+          {activeTargetRef && selectedTarget && <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />}
         </KrathongAssetsProvider>
       </Canvas>
-      {mode === "RITUAL_RELEASE" && (
+      {mode === "RITUAL_RELEASE" && ritual.phase === "IDLE" && (
         <div
           role="img"
           aria-label="กระทง ลากลงน้ำ"
-          className="absolute z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full border-2 border-amber-200 bg-amber-400/80 text-xs font-semibold text-amber-950 shadow-lg active:cursor-grabbing"
+          className="absolute z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full border-2 border-amber-200 bg-transparent text-xs font-semibold text-amber-950 shadow-lg active:cursor-grabbing"
           data-input-target="krathong"
-          style={{ left: `${krathongPosition[0]}%`, top: `${krathongPosition[1]}%` }}
+          ref={chipRef}
+          style={{ left: `${RITUAL_CHIP_START_PERCENT.x}%`, top: `${RITUAL_CHIP_START_PERCENT.y}%` }}
         >
-          กระทง
+          <span className="sr-only">กระทง</span>
         </div>
       )}
       <span className="sr-only" aria-live="polite">
