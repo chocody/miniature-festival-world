@@ -12,6 +12,11 @@ export const E2E_RIVER_HIT_PREFIX = "river-hit-"; // = SCENE_OBJECT_NAMES.riverH
 export const E2E_TAP_HINT_STORAGE_KEY = "mfw:sceneTapHintSeen:v1"; // = SCENE_TAP_HINT_STORAGE_KEY
 export const E2E_TAP_HINT_SEEN_VALUE = "1"; // = SCENE_TAP_HINT_SEEN_VALUE
 export const E2E_INSPECT_DIALOG_TITLE = "กระทงในสายน้ำ"; // = INSPECT_POPUP_COPY.dialogTitle
+/**
+ * Start URL that keeps the tier the test forced (= `/?${TIER_PIN_QUERY_PARAM}=${TIER_PIN_QUERY_VALUE}`). CI's SwiftShader
+ * renders the world at 12–20 FPS, so without it the FPS profiler (correctly) falls back to 2D mid-test.
+ */
+export const E2E_PINNED_TIER_URL = "/?pinTier=1";
 
 const WATER_GRID_X_FROM = 0.1;
 const WATER_GRID_X_TO = 0.9;

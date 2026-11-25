@@ -8,6 +8,7 @@ import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
   E2E_INSPECT_DIALOG_TITLE,
   E2E_MIN_TOUCH_TARGET_PX,
+  E2E_PINNED_TIER_URL,
   E2E_TAP_HINT_SEEN_VALUE,
   E2E_TAP_HINT_STORAGE_KEY,
   installSceneProbe,
@@ -72,7 +73,7 @@ async function setTier(page: Page, memory: number, cores: number) {
 }
 
 async function walkToWorld(page: Page) {
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL); // per-tier taps must not race the runner's FPS fallback (SwiftShader on CI)
   await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);

@@ -57,6 +57,20 @@ describe("DeviceProfiler", () => {
     act(() => mql.emit(false));
     expect(useDeviceStore.getState().reducedMotion).toBe(false);
   });
+  it("?pinTier=1 keeps the initial tier (no FPS meter)", () => {
+    window.history.replaceState(null, "", "/?pinTier=1");
+    try {
+      render(<DeviceProfiler />);
+      expect(useDeviceStore.getState().qualityTier).toBe("HIGH");
+      expect(raf).not.toHaveBeenCalled();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+  it("without the flag the FPS meter starts", () => {
+    render(<DeviceProfiler />);
+    expect(raf).toHaveBeenCalled();
+  });
   it("cleans up on unmount", () => {
     const { unmount } = render(<DeviceProfiler />);
     expect(mql.listeners.size).toBe(1);
