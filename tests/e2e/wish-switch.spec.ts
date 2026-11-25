@@ -30,10 +30,11 @@ async function webglOff(page: Page) {
   });
 }
 
-async function highTier(page: Page) {
+/** LOW tier (same weak-device signal as device-profiler.spec.ts): a real 3D canvas that is cheap enough under SwiftShader on a loaded runner. */
+async function lowTier(page: Page) {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
-    Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
+    Object.defineProperty(navigator, "deviceMemory", { get: () => 2, configurable: true });
+    Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 2, configurable: true });
   });
 }
 
@@ -136,13 +137,14 @@ test("FALLBACK_2D: create open with a name, switch to private and back; survives
   await watcher.verify();
 });
 
-test("3D: create open, switch to private and switch back from My Creations", async ({ page }) => {
+test("3D (LOW tier): create open, switch to private and switch back from My Creations", async ({ page }) => {
   const watcher = watch(page);
-  await highTier(page);
+  await lowTier(page);
   const world = await routeWishSwitchWorld(page);
   await page.goto("/");
   await walkToWorld(page, OPEN_WISH, { open: true, name: NAME });
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
+  await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
+  await expect(page.locator("canvas")).toHaveCount(1); // the 3D scene is mounted before the switch is used
   await page.getByRole("button", { name: FIND_MY_BUTTON }).click();
   await expect(entries(page)).toHaveCount(1);
   const sw = entries(page).first().getByRole("switch", { name: WISH_SWITCH_LABEL });
