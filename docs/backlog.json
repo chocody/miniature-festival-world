@@ -419,9 +419,9 @@
           "summary": "Art direction & LookDev v2 — match the reference image",
           "goal": "One shared look (palette, materials, light) that every model and scene card builds on, so the world reads soft, warm and alive like the reference instead of stiff and dark.",
           "ac": [
-            "docs/spec/assets/loy-krathong-look-ref.png is the visual target; an art-direction note (docs/design/loy-krathong-look.md) records the palette, material rules, light setup and time of day (open question 32); every value lives in config (scene.config.ts or a look config), no inline magic numbers",
+            "docs/spec/assets/loy-krathong-look-ref.png is the visual target; an art-direction note (docs/design/loy-krathong-look.md) records the palette, material rules and light setup; every value lives in config (scene.config.ts or a look config), no inline magic numbers",
             "Materials read as soft clay / toy: rounded (bevelled) silhouettes, matte pastel colours, no hard black shadows; soft contact or blob shadows under objects on every 3D tier (a cheap variant on LOW)",
-            "Light is bright enough that land, houses and trees are clearly readable at all times; the village is never a dark silhouette; candle flames still glow visibly",
+            "Two light presets, day and night (open question 32): by default the scene follows the real local time of the device (day / night hours in config) and a day / night switch lets the user override it; the choice is kept on the device only. In both presets land, houses and trees are clearly readable, the village is never a dark silhouette, and candle flames glow visibly at night",
             "Applied to the existing scene without changing any stored coord or appearance data; quality tiers and reduced motion are respected and the per-tier budgets in performance.config.ts hold (r3f-perf-reviewer PASS)",
             "Before / after screenshots at phone and desktop size are attached to the PR"
           ],
@@ -464,9 +464,9 @@
           "summary": "Riverside environment v2 — wider river, rounded land, lit village",
           "goal": "A bigger river in a soft, lit, lived-in riverside like the reference.",
           "ac": [
-            "The river is clearly wider and is the main feature of the view (open question 38). The lane geometry is widened in config only: stored SplinePathCoord values stay valid, the 3D ↔ 2D round-trip tests still pass, and collision spacing and the 80-item zone capacity are re-checked by tests",
+            "The river is clearly wider and is the main feature of the view; the owner approves the width from the PR screenshots and the cap stays 80 krathongs per zone (open question 38). The lane geometry is widened in config only: stored SplinePathCoord values stay valid, the 3D ↔ 2D round-trip tests still pass, and collision spacing and the 80-item zone capacity are re-checked by tests",
             "Land has soft rounded banks and gentle height changes; puffy rounded trees, bushes, rocks and a wooden pier as in the reference",
-            "Village: several houses with different roofs and colours, warm lit windows and riverside lanterns, so the village is never dark; krathongs remain the most prominent objects",
+            "Village: several houses with different roofs and colours; in the night preset windows and riverside lanterns are warmly lit so the village is never dark, in the day preset they are off; krathongs remain the most prominent objects",
             "Stylized water: soft colour with gentle moving highlights / ripples near banks and krathongs (static under reduced motion; a cheap variant on LOW)",
             "Repeated scenery uses InstancedMesh, everything is disposed on zone switch / unmount, and the tier budgets hold (r3f-perf-reviewer PASS; draw calls and FPS recorded in the PR)"
           ],
@@ -544,7 +544,7 @@
             "Each event config declares its date window (start / end, Asia/Bangkok); a pure resolver returns the active event for a given time; unit tests cover inside, outside and boundary times",
             "The app opens straight into the active event; the event selector, the festival list and the Coming Soon cards are removed from the user flow (supersedes open question 19)",
             "Private-test override: one server-side config value forces the active event; it is set to Loy Krathong now, so the test shows only Loy Krathong whatever the date",
-            "When no event is active (open question 33) the app shows one calm screen with the next festival's name and dates, and nothing can be created",
+            "When no event is active (open question 33) the app shows one calm screen with the name and dates of the festival for that time (the nearest one in the roadmap), and nothing can be created",
             "The API uses the same resolver: creating for an event that is not active is rejected; reads keep working for the active event"
           ],
           "labels": [
@@ -615,7 +615,7 @@
           "summary": "Camera drag-to-travel — drag pans the camera, not only rotates",
           "goal": "People can drag to move around the world freely.",
           "ac": [
-            "WORLD_EXPLORE: a one-finger or mouse drag moves the camera across the world, following the finger; pinch (or wheel) zooms; rotation is kept or dropped as the owner decides (open question 34)",
+            "WORLD_EXPLORE: a one-finger or mouse drag moves the camera across the world, following the finger; pinch (or wheel) zooms; rotation stays available on a two-finger twist and on a button (open question 34)",
             "The camera itself moves (the legacy scene-group pan / rotate transform is removed); lights stay world-fixed; fly-to, the highlight ring, Find My and tap picking keep working after any pan or zoom",
             "Soft bounds keep the river in view; release has a gentle ease-out (none under reduced motion)",
             "Tap and drag stay separated (a short tap interacts, a drag travels); CUSTOMIZE and RITUAL_RELEASE gestures are unchanged; unit tests cover the gesture mapping and the bounds, e2e covers drag-pan with touch and mouse",
@@ -638,7 +638,7 @@
           "goal": "Drag along the river and the world keeps going: no dead end and no manual zone switch (open question 37).",
           "ac": [
             "Travelling along the river never reaches an edge: banks, trees, houses and villagers continue ahead and behind, generated deterministically from the position along the river (everyone sees the same scenery)",
-            "Zones stream in seamlessly: the neighbouring zone's krathongs load before they come into view, far zones are unloaded and disposed, and the number of rendered items stays within the tier budget (80 per zone, invariant E); the zone navigator becomes a position indicator and jump shortcut",
+            "Zones stream in seamlessly: the neighbouring zone's krathongs load before they come into view, far zones are unloaded and disposed, and the number of rendered items stays within the tier budget (80 per zone, invariant E); the zone navigator becomes a position indicator and jump shortcut. When the event has only one zone (or after the last zone) the river wraps around: the same zone comes back as if the river flows on (open question 37)",
             "Positions are still derived only from stored coords (zone_id + SplinePathCoord); nothing new is persisted; the 2D fallback shows the same continuous river from the same data",
             "Memory stays flat during a long travel and no hitch exceeds the tier budget when a zone streams in (probe numbers recorded in the PR the same way as docs/perf/MFW-34.md)",
             "Find My and fly-to work along the whole river; reduced motion uses instant cuts"
@@ -682,7 +682,7 @@
           "summary": "More scene gimmicks — houses, trees, villagers and sky lanterns react to taps",
           "goal": "Small delights everywhere: most things in the scene answer a tap.",
           "ac": [
-            "New tap reactions (final list: open question 35; default set): house → windows light up with a puff of chimney smoke; tree → leaves shake and a few fall; villager → waves or hops; lantern → a sky lantern (โคมลอย) rises and fades",
+            "New tap reactions (open question 35): house → windows light up with a puff of chimney smoke; tree → leaves shake and a few fall; villager → waves or hops; lantern → a sky lantern (โคมลอย) rises and fades; sky → a firework is launched",
             "Every interactive object uses the same feedback language (small bounce + glow) so people learn what can be tapped",
             "Every effect comes from ObjectPoolManager with a fixed cap from config: no new objects per tap and no per-frame allocation (r3f-perf-reviewer PASS)",
             "Reduced motion: reactions are instant state changes without bounce or particles; nothing flashes faster than WCAG 2.3.1 allows",
@@ -720,9 +720,9 @@
           "goal": "The server lets an owner open or close a wish at any time without ever leaking a closed one.",
           "ac": [
             "New migration file (existing migrations untouched): a nullable public display_name on creations_public and an encrypted private display name next to the private wish; RLS and grants stay closed (anon and authenticated denied on every table, view and function)",
-            "POST /api/creations accepts displayName; the name passes the same server moderation guard as public wish text (PII and profanity, Thai and English) and a length limit from config (open question 36)",
+            "POST /api/creations accepts an optional displayName (open question 36); the name passes the same server moderation guard as public wish text (PII and profanity, Thai and English) and a length limit from config (placeholder value)",
             "A new ownership endpoint (POST; raw owner token only in the body; constant-time hash compare; uniform not-found answer) switches a creation open or closed. Opening: the server decrypts the wish and name, runs the moderation guard, and only if it passes writes public_wish_text and display_name and clears the ciphertext. Closing: encrypts both back into the private table and clears them from the public row",
-            "The text and name exist in exactly one store at a time; a wish hidden by reports or moderation stays hidden whatever the switch says",
+            "The text and name exist in exactly one store at a time; a wish hidden by reports or moderation stays hidden and cannot be opened again (open question 36)",
             "Public responses carry display_name and public_wish_text only for open, visible wishes; a test asserts owner_token, owner_token_hash and private_wish_text never appear",
             "Works with the in-memory repository when Supabase env is absent; tests cover open → close → open, a moderation rejection on open, and a wrong token"
           ],
@@ -743,7 +743,7 @@
           "summary": "Wish visibility switch & display name — UI",
           "goal": "Writing a wish is simple: a name, the wish, and one switch that says who can see it.",
           "ac": [
-            "Wish step: a name field and a single switch \"เปิดให้ทุกคนเห็น\" (off = private) replace the two-option choice; the helper text says clearly that when it is on, everyone sees the name and the wish (name rules: open question 36)",
+            "Wish step: an optional name field and a single switch \"เปิดให้ทุกคนเห็น\" (off = private, the default) replace the two-option choice; the helper text says clearly that when it is on, everyone sees the name and the wish; an empty name is shown as \"ไม่ระบุชื่อ\" (open question 36)",
             "The owner can flip the switch later from My Creations / the owner section of the inspect popup on the owning device; the change shows at once and survives a reload; a moderation rejection shows the reasons and the wish stays private",
             "Inspect popup: an open wish shows name + wish + Report; a closed wish shows only the krathong to everyone else (no name, no text)",
             "The raw token is sent only in the POST body; the name and wish are not kept on the device outside the existing owner flow; the 2D fallback has the same switch and popup",
