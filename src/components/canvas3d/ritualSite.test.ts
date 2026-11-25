@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import { PINCH_ZOOM_MIN, RITUAL_CHIP_START_PERCENT } from "@/config/interaction.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { getFramedCameraZoom } from "@/core/camera";
 import { locateOnLane, splineProgressToWorld } from "@/core/coordinates";
 import { clampSpotToLane } from "@/core/world";
 import { createRitualDropMapper, getLoyKrathongRitualSite } from "./ritualSite";
@@ -51,7 +53,9 @@ describe("ritual site", () => {
   });
 
   it("classifies drops on water and on the banks", () => {
-    const at = (dyPx: number) => ({ x: 50, y: 50 + (dyPx / FIELD.height) * PERCENT_SCALE });
+    // The px offsets were probed at SCENE_CAMERA_ZOOM; scaled to the framed zoom of FIELD (MFW-54) they hit the same world points.
+    const pxScale = getFramedCameraZoom(FIELD) / SCENE_CAMERA_ZOOM;
+    const at = (dyPx: number) => ({ x: 50, y: 50 + ((dyPx * pxScale) / FIELD.height) * PERCENT_SCALE });
     const up = mapper.mapDrop(at(-40), FIELD, 1)!;
     expect(up.onWater).toBe(true);
     expect(up.candidate.lateralOffset).toBeCloseTo(0.057, 2);
@@ -62,6 +66,30 @@ describe("ritual site", () => {
   it("returns null for an unusable size", () => {
     expect(mapper.toDeckPlane({ x: 50, y: 50 }, { width: 0, height: 0 }, 1)).toBeNull();
     expect(mapper.mapDrop({ x: 50, y: 50 }, { width: 0, height: 256 }, 1)).toBeNull();
+  });
+
+  it("keeps the tip centred and the world scale framed at any viewport (MFW-54)", () => {
+    const sizes = [
+      { width: 360, height: 640 },
+      { width: 1440, height: 900 },
+      { width: 844, height: 390 },
+    ];
+    const half = PERCENT_SCALE / 2;
+    const viewPlane = sizes.map((size) => {
+      const tip = mapper.toPercent(site.tip, size, 1);
+      expect(tip.x).toBeCloseTo(half, 9);
+      expect(tip.y).toBeCloseTo(half, 9);
+      const p = mapper.toPercent(site.releasePoint, size, 1);
+      const zoom = getFramedCameraZoom(size);
+      return {
+        x: (((p.x - half) / PERCENT_SCALE) * size.width) / zoom,
+        y: (((p.y - half) / PERCENT_SCALE) * size.height) / zoom,
+      };
+    });
+    for (const v of viewPlane.slice(1)) {
+      expect(v.x).toBeCloseTo(viewPlane[0].x, 9);
+      expect(v.y).toBeCloseTo(viewPlane[0].y, 9);
+    }
   });
 
   it("faces the flow at the release spot", () => {

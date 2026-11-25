@@ -53,3 +53,5 @@ export function updateHighlightPosition(
 ): void {
   ringPosition.set(target.x, target.y + heightOffset, target.z);
 }
+
+export { getFramedCameraZoom, type ViewportPixelSize } from "./viewportFraming";

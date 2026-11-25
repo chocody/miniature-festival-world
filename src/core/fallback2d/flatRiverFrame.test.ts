@@ -24,7 +24,9 @@ import {
   flatCoordToCanvasInto,
   flatProgressToCanvasInto,
   flatRiverScrollLeft,
+  flatRiverScrollLeftAfterRescale,
 } from "./flatRiverFrame";
+import { canvasToWorldXZ, worldToCanvas } from "./topDownProjection";
 import { getLoyKrathongFlatRiver } from "./loyKrathongFlatRiver";
 import {
   canvasToSplineLocation,
@@ -146,5 +148,52 @@ describe("flatRiverScrollLeft", () => {
     [NaN, 360, 1000, 0],
   ])("(%s, %s, %s) → %s", (x, vw, cw, expected) => {
     expect(flatRiverScrollLeft(x, vw, cw)).toBe(expected);
+  });
+});
+
+describe("flatRiverScrollLeftAfterRescale (MFW-54)", () => {
+  it.each([
+    [500, 360, 360, 2, 0, 5000, 1180],
+    [500, 360, 360, 1, 0, 5000, 500],
+    [500, 360, 360, 0.1, 0, 1000, 0],
+    [500, 360, 360, 2, 10, 5000, 1170],
+  ])("(%s, %s, %s, %s, %s, %s) → %s", (left, oldW, newW, ratio, pad, content, expected) => {
+    expect(flatRiverScrollLeftAfterRescale(left, oldW, newW, ratio, pad, content)).toBe(expected);
+  });
+
+  it("any NaN input or a non-positive ratio → 0", () => {
+    const args = [500, 360, 360, 2, 0, 5000];
+    for (let i = 0; i < args.length; i++) {
+      const bad = [...args];
+      bad[i] = Number.NaN;
+      expect(flatRiverScrollLeftAfterRescale(...(bad as [number, number, number, number, number, number]))).toBe(0);
+    }
+    expect(flatRiverScrollLeftAfterRescale(500, 360, 360, 0, 0, 5000)).toBe(0);
+    expect(flatRiverScrollLeftAfterRescale(500, 360, 360, -1, 0, 5000)).toBe(0);
+  });
+});
+
+describe("the stage-height map round-trips (MFW-54, invariant B)", () => {
+  it.each([360, 640, 900])("at %s px: world → 2D canvas → world and coord → 2D → coord within 1e-6", (height) => {
+    const def = LOY_KRATHONG_RIVER_LANES[0];
+    const flat = createFlatLane(def);
+    const ref = createRiverLane(def);
+    const { projection } = getLoyKrathongFlatRiver(height);
+    expect(projection.viewport.height).toBe(height);
+    const out = createCanvasPointOut();
+    const scratch = createFlatCanvasScratch();
+    for (const spawnProgress of [0.05, 0.2, 0.5, 0.8, 0.95]) {
+      for (const lateralOffset of [-0.45, 0, 0.45]) {
+        const coord: SplinePathCoord = { mode: "SPLINE_PATH", laneId: def.laneId, spawnProgress, speedFactor: 0, lateralOffset };
+        flatCoordToCanvasInto(coord, flat, 0, 0, projection, out, scratch);
+        const loc = canvasToSplineLocation({ x: out.x, y: out.y }, ref, projection);
+        expect(Math.abs(loc.progress - currentProgress(coord, 0, 0))).toBeLessThan(1e-6);
+        expect(Math.abs(loc.lateralOffset - lateralOffset)).toBeLessThan(1e-6);
+        const world = { x: scratch.pose.x, z: scratch.pose.z };
+        const back = canvasToWorldXZ(worldToCanvas(world, projection), projection);
+        expect(Math.abs(back.x - world.x)).toBeLessThan(1e-6);
+        expect(Math.abs(back.z - world.z)).toBeLessThan(1e-6);
+      }
+    }
   });
 });

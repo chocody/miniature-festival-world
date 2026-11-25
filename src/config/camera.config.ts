@@ -17,6 +17,16 @@ export const HIGHLIGHT_RING_SIZES = Object.freeze({
 export const SCENE_CAMERA_ZOOM = 52;
 export const SCENE_CAMERA_NEAR = 0.1;
 export const SCENE_CAMERA_FAR = 40;
+/**
+ * MFW-54: view-plane rectangle (world units, centred on the camera focus) that always stays in view; the base zoom is the largest
+ * that fits it ("contain"). PLACEHOLDER (spec silent; owner reviews from screenshots): 7.2 wide holds the whole pier deck
+ * (|x| ≤ 3.2 in the default view) with a margin, 4.9 high ≈ the old 256-px viewport at SCENE_CAMERA_ZOOM.
+ * sceneFraming.test.ts pins that the pier and both banks stay inside.
+ */
+export const SCENE_FRAME_VIEW_SIZE = Object.freeze({ width: 7.2, height: 4.9 });
+/** MFW-54: big screens show more world instead of a bigger krathong. PLACEHOLDER: 2 → 1440×900 shows ≈ 13.8 × 8.7 units (the old desktop viewport showed ≈ 13.5 across). */
+export const SCENE_CAMERA_ZOOM_MAX_FACTOR = 2;
+export const SCENE_CAMERA_ZOOM_MAX = SCENE_CAMERA_ZOOM * SCENE_CAMERA_ZOOM_MAX_FACTOR;
 /** Highlight ring look (MFW-17 values, moved in MFW-27). */
 export const HIGHLIGHT_RING_COLOR = "#ffd166";
 export const HIGHLIGHT_RING_OPACITY = 0.9;

@@ -2,8 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_SWIFTSHADER_3D_VIEWPORT, E2E_WATER_TAP_OFFSET_PX } from "./fixtures/stageFixtures";
+import { sceneZoomScale } from "./helpers/stage";
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
 const root = (page: Page) => page.locator("[data-flow-state]");
 const scene = (page: Page) => page.locator('[aria-label="Toy-like night river preview"]');
@@ -11,11 +13,11 @@ const nextFrames = (page: Page) =>
   page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 /**
- * World (−3, −0.24, −0.15) on the river centreline, projected by the default orthographic camera (position CAMERA_FLIGHT_OFFSET
- * looking at the origin, zoom 52). An orthographic projection does not depend on the viewport width. It is about 133 px from the
- * centre krathong, and MFW-27's no-occlusion test keeps props off the lanes.
+ * E2E_WATER_TAP_OFFSET_PX: world (−3, −0.24, −0.15) on the river centreline, projected by the default orthographic camera (position
+ * CAMERA_FLIGHT_OFFSET looking at the origin) at zoom E2E_PROBED_CAMERA_ZOOM; scaled to the framed zoom (MFW-54). An orthographic
+ * projection does not depend on the viewport width. It is about 133 px from the centre krathong at zoom 52, and MFW-27's
+ * no-occlusion test keeps props off the lanes.
  */
-const WATER_TAP_OFFSET_PX = { x: -127, y: -40 };
 
 async function openWorld(page: Page, memory: number, cores: number) {
   await mockCreateCreation(page);
@@ -49,8 +51,9 @@ async function gimmickBaseline(page: Page): Promise<number> {
 
 async function tapWater(page: Page, times: number) {
   const box = (await scene(page).boundingBox())!;
-  const x = box.x + box.width / 2 + WATER_TAP_OFFSET_PX.x;
-  const y = box.y + box.height / 2 + WATER_TAP_OFFSET_PX.y;
+  const scale = await sceneZoomScale(page);
+  const x = box.x + box.width / 2 + E2E_WATER_TAP_OFFSET_PX.x * scale;
+  const y = box.y + box.height / 2 + E2E_WATER_TAP_OFFSET_PX.y * scale;
   for (let i = 0; i < times; i++) await page.touchscreen.tap(x, y);
 }
 

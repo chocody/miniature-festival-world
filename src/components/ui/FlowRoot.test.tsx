@@ -425,4 +425,73 @@ describe("FlowRoot", () => {
     expect(useBuilderStore.getState().wish).toBeNull();
     expect(JSON.stringify({ ...window.localStorage })).not.toContain("น้องมะลิ");
   });
+
+  describe("full-screen stage (MFW-54, backlog 10.2)", () => {
+    const inSlot = (el: Element, slot: string) => el.closest(`[data-overlay-slot="${slot}"]`) !== null;
+    const stageLayer = () => screen.getByTestId("stage-layer");
+    const overlayLayer = () => screen.getByTestId("overlay-layer");
+
+    it("full-screen stage: scene in the stage layer, controls in the overlay layer", async () => {
+      act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-stage-layout", "fullscreen");
+
+      const scene = await screen.findByTestId("scene-viewport");
+      expect(stageLayer()).toContainElement(scene);
+      expect(overlayLayer()).toContainElement(screen.getByRole("region", { name: "แต่งกระทง" }));
+      expect(within(stageLayer()).queryByRole("button")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+      expect(inSlot(screen.getByRole("dialog", { name: WISH_COPY.title }), "dialog")).toBe(true);
+
+      act(() => {
+        useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+      });
+      completeWish();
+      expect(inSlot(screen.getByTestId("ritual-release-panel"), "panel")).toBe(true);
+      expect(stageLayer()).toContainElement(await screen.findByTestId("scene-viewport"));
+
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      expect(inSlot(await screen.findByTestId("zone-navigator"), "top")).toBe(true);
+      expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
+      expect(inSlot(screen.getByRole("heading", { name: "SHARED_WORLD_EXPLORE" }), "panel")).toBe(true);
+      expect(stageLayer()).toContainElement(screen.getByTestId("scene-viewport"));
+    });
+
+    it("the scene element survives RITUAL → WORLD", async () => {
+      act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      walkToRitual();
+      const before = await screen.findByTestId("scene-viewport");
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      expect(screen.getByTestId("scene-viewport")).toBe(before);
+    });
+
+    it("FALLBACK_2D: the flat view sits in the stage layer, controls in the overlay layer", async () => {
+      act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-stage-layout", "fullscreen");
+      expect(stageLayer()).toContainElement(await screen.findByTestId("flat-viewport"));
+      expect(overlayLayer()).toContainElement(screen.getByRole("region", { name: "แต่งกระทง" }));
+      expect(within(stageLayer()).queryByRole("button")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+      expect(inSlot(screen.getByRole("dialog", { name: WISH_COPY.title }), "dialog")).toBe(true);
+      completeWish();
+      expect(stageLayer()).toContainElement(await screen.findByTestId("flat-viewport"));
+      expect(inSlot(screen.getByTestId("ritual-release-panel"), "panel")).toBe(true);
+
+      act(() => {
+        useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+      });
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      expect(stageLayer()).toContainElement(screen.getByTestId("flat-viewport"));
+      expect(inSlot(screen.getByTestId("zone-navigator"), "top")).toBe(true);
+      expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
+      expect(inSlot(screen.getByRole("heading", { name: "SHARED_WORLD_EXPLORE" }), "panel")).toBe(true);
+    });
+  });
 });

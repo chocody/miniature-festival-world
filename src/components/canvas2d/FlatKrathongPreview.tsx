@@ -32,10 +32,10 @@ export function FlatKrathongPreview() {
       data-krathong-base={appearance.base}
       data-flower-count={appearance.flowers.filter((f) => f !== null).length}
       data-layer-count={layers.length}
-      className="relative mb-8 h-64 w-full select-none overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
+      className="relative flex h-full w-full select-none items-start justify-center overflow-hidden pt-[max(calc(var(--spacing)*3),env(safe-area-inset-top))] md:items-center md:pt-0"
       style={{ backgroundColor: FLAT_VIEW_COLORS.background }}
     >
-      <svg role="img" aria-label={FLAT_VIEW_COPY.previewLabel} viewBox={VIEW_BOX} preserveAspectRatio="xMidYMid meet" className="block h-full w-full">
+      <svg role="img" aria-label={FLAT_VIEW_COPY.previewLabel} viewBox={VIEW_BOX} preserveAspectRatio="xMidYMid meet" className="block h-[45dvh] max-h-64 w-full">
         <FlatKrathongShapes layers={layers} />
       </svg>
     </section>
