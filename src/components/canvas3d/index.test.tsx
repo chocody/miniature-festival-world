@@ -2,7 +2,7 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrthographicCamera, Vector3 } from "three";
-import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
@@ -24,7 +24,7 @@ import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes, getRiverItemPositionAt } from "@/core/world";
-import { getCameraFlightPose } from "@/core/camera";
+import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
 import { HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
@@ -1320,5 +1320,147 @@ describe("scene tap hint (MFW-59)", () => {
     expect(hintEl()).toBeNull();
     // interaction state (lastInteraction) already re-renders the viewport once per tap; the hint adds no extra render
     expect(riverRenders.count - before).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
+  /** jsdom has no ResizeObserver: a stub that records the callback, the observed elements and disconnects. */
+  class FakeResizeObserver {
+    static last: FakeResizeObserver | null = null;
+    readonly observed: Element[] = [];
+    readonly disconnect = vi.fn();
+    constructor(readonly callback: ResizeObserverCallback) {
+      FakeResizeObserver.last = this;
+    }
+    observe(el: Element) {
+      this.observed.push(el);
+    }
+    unobserve() {}
+  }
+  const resize = (width: number, height: number) => {
+    const ro = FakeResizeObserver.last!;
+    act(() =>
+      ro.callback([{ contentRect: { width, height } } as ResizeObserverEntry], ro as unknown as ResizeObserver),
+    );
+  };
+  const pinchTo15 = () => {
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerDown(v, { pointerId: 2, clientX: 30, clientY: 10 });
+    fireEvent.pointerMove(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 10, clientY: 10 });
+  };
+
+  beforeEach(() => {
+    FakeResizeObserver.last = null;
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("framed zoom follows the viewport and keeps the pinch factor", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(FakeResizeObserver.last!.observed).toEqual([viewport()]);
+    const camera = r3f.camera;
+
+    resize(390, 844);
+    const portrait = getFramedCameraZoom({ width: 390, height: 844 });
+    expect(r3f.camera!.zoom).toBeCloseTo(portrait, 9);
+    expect(viewport().dataset.cameraZoom).toBe(String(portrait));
+
+    pinchTo15();
+    expect(r3f.camera!.zoom).toBeCloseTo(portrait * 1.5, 9);
+
+    const rendersBeforeRotation = riverRenders.count;
+    resize(844, 390);
+    expect(r3f.camera!.zoom).toBeCloseTo(getFramedCameraZoom({ width: 844, height: 390 }) * 1.5, 9);
+    expect(viewport().dataset.cameraZoom).toBe(String(getFramedCameraZoom({ width: 844, height: 390 })));
+    expect(r3f.camera).toBe(camera);
+    expect(riverRenders.count).toBe(rendersBeforeRotation);
+  });
+
+  it("the first resize re-renders nothing", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    const renders = riverRenders.count;
+    expect(renders).toBeGreaterThan(0); // RiverFlow is mounted, so a re-render would be counted
+    resize(390, 844);
+    resize(1440, 900);
+    expect(riverRenders.count).toBe(renders);
+  });
+
+  it("a resize keeps the selection and starts no flight", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useDeviceStore.setState({ reducedMotion: true });
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    const flights = r3f.flightStarts.length;
+    const flow = useUIStore.getState().flowState;
+
+    resize(844, 390);
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(r3f.flightStarts).toHaveLength(flights);
+    expect(useUIStore.getState().flowState).toBe(flow);
+    expect(r3f.camera!.zoom).toBeCloseTo(getFramedCameraZoom({ width: 844, height: 390 }), 9);
+  });
+
+  it("unmount disconnects the observer", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { unmount } = render(<SceneViewport mode="CUSTOMIZE" />);
+    const ro = FakeResizeObserver.last!;
+    expect(ro.disconnect).not.toHaveBeenCalled();
+    unmount();
+    expect(ro.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("the section fills its stage parent", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    const classes = viewport().className.split(" ");
+    expect(classes).toContain("h-full");
+    expect(classes).toContain("w-full");
+    for (const old of ["h-64", "mb-8", "rounded-3xl", "border"]) expect(classes).not.toContain(old);
+  });
+
+  it("the inspect popup sits in the sheet slot", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+    const items = [
+      {
+        id: ITEM_ID,
+        coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+        createdAtMs: 1_700_000_000_000,
+        appearance: DEFAULT_KRATHONG_APPEARANCE,
+        publicWishText: "ขอให้ครอบครัวมีความสุข",
+      },
+    ];
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    fireEvent.click(container.querySelector(`[name="river-hit-${ITEM_ID}"]`)!);
+    expect(screen.getByRole("dialog").closest('[data-overlay-slot="sheet"]')).not.toBeNull();
+  });
+
+  it("LOW renders a big screen within its pixel budget; HIGH keeps its pixel-ratio range", () => {
+    vi.stubGlobal("screen", { width: 1440, height: 900 });
+    useDeviceStore.getState().setQualityTier("LOW");
+    const { unmount } = render(<SceneViewport mode="CUSTOMIZE" />);
+    const ratio = Math.sqrt(TIER_MAX_RENDER_PIXELS.LOW! / (1440 * 900));
+    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-dpr", `${ratio},${ratio}`);
+    unmount();
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-dpr", `1,${TIER_BUDGETS.HIGH.pixelRatioCap}`);
+  });
+
+  it("the perf probe sits in the debug slot", () => {
+    window.history.replaceState(null, "", "/?perfProbe=1");
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const panel = container.querySelector('[data-testid="perf-probe"]')!;
+    expect(panel.closest('[data-overlay-slot="debug"]')).not.toBeNull();
   });
 });

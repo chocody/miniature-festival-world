@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FLAT_RIVER_FRAME_INTERVAL_MS } from "@/config/fallback2d.config";
+import { FLAT_RIVER_FRAME_INTERVAL_MS, FLAT_RIVER_VIEW_HEIGHT_PX } from "@/config/fallback2d.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT, LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
@@ -13,6 +13,7 @@ import {
   createFlatCanvasScratch,
   flatProgressToCanvasInto,
   flatRiverScrollLeft,
+  flatRiverScrollLeftAfterRescale,
   getLoyKrathongFlatRiver,
 } from "@/core/fallback2d/flat";
 import { getRiverItemCanvasPositionAt } from "@/core/fallback2d/riverTopDown"; // three-based reference (tests only)
@@ -436,5 +437,150 @@ describe("FlatRiverView", () => {
     const last = handleCounter;
     unmount();
     expect(cancel).toHaveBeenCalledWith(last);
+  });
+
+  describe("full-screen stage (MFW-54, backlog 10.2)", () => {
+    const SCROLLER = '[data-testid="flat-river-scroller"]';
+    let stageHeight = 640;
+    const stubStageHeight = () =>
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.matches(SCROLLER) ? stageHeight : 0;
+        },
+      });
+    const unstubStageHeight = () => {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight;
+    };
+    const svgOf = (c: HTMLElement) => c.querySelector("svg")!;
+
+    it("map height follows the stage", () => {
+      stageHeight = 640;
+      stubStageHeight();
+      try {
+        const tall = getLoyKrathongFlatRiver(640).projection;
+        const { container } = mount();
+        expect(svgOf(container).getAttribute("height")).toBe("640");
+        expect(svgOf(container).getAttribute("width")).toBe(String(tall.viewport.width));
+        const els = screen.getAllByTestId("flat-river-item");
+        items(5).forEach((c, i) => {
+          const p = getRiverItemCanvasPositionAt(
+            { coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) },
+            getLoyKrathongRiverLanes(),
+            T,
+            tall,
+          )!;
+          expect(transformOf(els[i])).toBe("translate(" + p.x + " " + p.y + ")");
+        });
+
+        tap(water(container));
+        runFrame(T + STEP);
+        const visible = visibleRipples(container);
+        expect(visible).toHaveLength(1);
+        const u = STEP / RIPPLE_LOOK.durationMs;
+        const radius = RIPPLE_LOOK.startRadius + (RIPPLE_LOOK.endRadius - RIPPLE_LOOK.startRadius) * (1 - (1 - u) ** 3);
+        expect(Number(visible[0].getAttribute("r"))).toBeCloseTo(((radius * (1 + RIPPLE_LOOK.ringInnerRatio)) / 2) * tall.scale, 3);
+        expect(Number(visible[0].getAttribute("cx"))).toBeCloseTo(30, 6);
+        expect(Number(visible[0].getAttribute("cy"))).toBeCloseTo(40, 6);
+      } finally {
+        unstubStageHeight();
+      }
+    });
+
+    it("resize keeps the scroll centre", () => {
+      let callback: ResizeObserverCallback | null = null;
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(cb: ResizeObserverCallback) {
+            callback = cb;
+          }
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      stageHeight = 640;
+      stubStageHeight();
+      // The viewport width must be known when the 640 map commits: that is the width the rescale reads as the old one.
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.matches(SCROLLER) ? 360 : 0;
+        },
+      });
+      try {
+        mount();
+        const scroller = screen.getByTestId("flat-river-scroller");
+        Object.defineProperty(scroller, "clientWidth", { value: 360, writable: true, configurable: true });
+        Object.defineProperty(scroller, "scrollLeft", { value: 500, writable: true, configurable: true });
+        scrollTo.mockClear();
+        stageHeight = 900;
+        act(() => callback!([], {} as ResizeObserver));
+        const s640 = getLoyKrathongFlatRiver(640).projection.scale;
+        const big = getLoyKrathongFlatRiver(900).projection;
+        expect(scrollTo).toHaveBeenCalledTimes(1);
+        expect(scrollTo).toHaveBeenCalledWith({
+          left: flatRiverScrollLeftAfterRescale(500, 360, 360, big.scale / s640, 0, big.viewport.width),
+          behavior: "auto",
+        });
+      } finally {
+        unstubStageHeight();
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("a first measurement wider than the old map centres the pier (desktop)", () => {
+      let callback: ResizeObserverCallback | null = null;
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(cb: ResizeObserverCallback) {
+            callback = cb;
+          }
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      const wide = W + 100; // wider than the default-height map: the old map could not scroll
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.matches(SCROLLER) ? wide : 0;
+        },
+      });
+      stageHeight = 0; // not measured yet: default map
+      stubStageHeight();
+      try {
+        mount();
+        scrollTo.mockClear();
+        stageHeight = 900;
+        act(() => callback!([], {} as ResizeObserver));
+        const big = getLoyKrathongFlatRiver(900);
+        const pierX = big.projection.offsetX + (big.scene.pierTip.x - big.projection.bounds.minX) * big.projection.scale;
+        expect(scrollTo).toHaveBeenCalledTimes(1);
+        expect(scrollTo).toHaveBeenCalledWith({
+          left: flatRiverScrollLeft(pierX, wide, big.projection.viewport.width),
+          behavior: "auto",
+        });
+      } finally {
+        unstubStageHeight();
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("no measurement → default map", () => {
+      const { container } = mount();
+      expect(svgOf(container).getAttribute("height")).toBe(String(FLAT_RIVER_VIEW_HEIGHT_PX));
+    });
+
+    it("the inspect dialog sits in the sheet slot", () => {
+      const { container } = mount();
+      tap(container.querySelector('[data-input-target="krathong"][data-creation-id="' + items(5)[2].id + '"]')!);
+      expect(screen.getByRole("dialog").closest('[data-overlay-slot="sheet"]')).not.toBeNull();
+    });
   });
 });

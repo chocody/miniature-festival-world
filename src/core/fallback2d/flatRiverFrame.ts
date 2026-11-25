@@ -64,3 +64,17 @@ export function flatRiverScrollLeft(targetX: number, viewportWidth: number, cont
   const max = Math.max(0, contentWidth - viewportWidth);
   return Math.min(max, Math.max(0, targetX - viewportWidth / 2));
 }
+
+/** scrollLeft that keeps the map point at the old viewport centre centred after the map scale changes by scaleRatio (new / old). Any non-finite input or scaleRatio ≤ 0 → 0. */
+export function flatRiverScrollLeftAfterRescale(
+  scrollLeft: number,
+  oldViewportWidth: number,
+  newViewportWidth: number,
+  scaleRatio: number,
+  paddingPx: number,
+  newContentWidth: number,
+): number {
+  const inputs = [scrollLeft, oldViewportWidth, newViewportWidth, scaleRatio, paddingPx, newContentWidth];
+  if (!inputs.every(Number.isFinite) || scaleRatio <= 0) return 0;
+  return flatRiverScrollLeft((scrollLeft + oldViewportWidth / 2 - paddingPx) * scaleRatio + paddingPx, newViewportWidth, newContentWidth);
+}

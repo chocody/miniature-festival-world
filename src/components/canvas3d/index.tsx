@@ -30,9 +30,11 @@ import {
 } from "@/config/camera.config";
 import type { EffectPoolCaps, QualityTier, RenderTier } from "@/config/performance.config";
 import { EFFECT_POOL_CAPS, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
 import { InspectPopup } from "@/components/ui/InspectPopup";
+import { OverlaySlot } from "@/components/ui/StageLayout";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
@@ -40,7 +42,7 @@ import { SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
-import { createCameraController, updateHighlightPosition } from "@/core/camera";
+import { createCameraController, getFramedCameraZoom, updateHighlightPosition } from "@/core/camera";
 import type { CameraTargetKind } from "@/core/camera";
 import {
   capturesOnPointerDown,
@@ -429,6 +431,8 @@ export function SceneViewport({
   }, []);
   const [lastInteraction, setLastInteraction] = useState<InteractionTarget | null>(null);
   const zoomRef = useRef(1);
+  /** Framed zoom of the measured viewport (MFW-54); the pinch factor in zoomRef multiplies it. */
+  const baseZoomRef = useRef(SCENE_CAMERA_ZOOM);
   const cameraRef = useRef<OrthographicCamera | null>(null);
   const invalidateRef = useRef<(() => void) | null>(null);
   const inputSeparatorRef = useRef<{ mode: InteractionMode; input: InputSeparator } | null>(null);
@@ -521,17 +525,24 @@ export function SceneViewport({
   const cameraTargetRef: TargetRef | null =
     activeTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
 
-  const applyZoomFactor = useCallback((factor: number) => {
-    zoomRef.current = factor;
-    if (cameraRef.current) {
-      cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
-      cameraRef.current.updateProjectionMatrix();
-      invalidateRef.current?.();
-    }
+  const applyCameraZoom = useCallback(() => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    camera.zoom = baseZoomRef.current * zoomRef.current;
+    camera.updateProjectionMatrix();
+    invalidateRef.current?.();
   }, []);
 
   const tapHint = useSceneTapHint(mode === "WORLD_EXPLORE");
   const dismissTapHint = tapHint.dismiss;
+
+  const applyZoomFactor = useCallback(
+    (factor: number) => {
+      zoomRef.current = factor;
+      applyCameraZoom();
+    },
+    [applyCameraZoom],
+  );
 
   const onAction = useCallback((action: InteractionAction) => {
     switch (action.type) {
@@ -657,7 +668,35 @@ export function SceneViewport({
     }
   }
 
-  if (!profiled || qualityTier === "FALLBACK_2D") return null;
+  const sceneShown = profiled && qualityTier !== "FALLBACK_2D";
+
+  // MFW-54: the base zoom frames the scene at any viewport size; applied imperatively, never through React state.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!sceneShown || !el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[entries.length - 1]?.contentRect;
+      if (!box) return;
+      const next = getFramedCameraZoom({ width: box.width, height: box.height });
+      el.dataset.cameraZoom = String(next); // direct DOM write: no React re-render per resize (e2e hook)
+      if (next === baseZoomRef.current) return;
+      baseZoomRef.current = next;
+      applyCameraZoom();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [sceneShown, applyCameraZoom]);
+
+  // MFW-54: the full-screen canvas stays within the tier's pixel budget; the screen size is stable across resize and rotation.
+  const canvasDpr = useMemo(
+    () =>
+      sceneShown
+        ? getCanvasDprRange(qualityTier as RenderTier, typeof screen === "undefined" ? 0 : screen.width * screen.height)
+        : null,
+    [sceneShown, qualityTier],
+  );
+
+  if (!sceneShown) return null;
 
   const settings = getSceneRenderSettings(qualityTier as Exclude<QualityTier, "FALLBACK_2D">);
   const effectCaps = EFFECT_POOL_CAPS[qualityTier as RenderTier];
@@ -666,7 +705,7 @@ export function SceneViewport({
     <>
     <section
       aria-label="Toy-like night river preview"
-      className="relative mb-8 h-64 w-full touch-none select-none overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
+      className="relative h-full w-full touch-none select-none overflow-hidden"
       style={{ backgroundColor: TOY_SCENE_LIGHTING.background }}
       data-quality-tier={qualityTier}
       data-selected-target={selectedTarget ?? undefined}
@@ -691,7 +730,7 @@ export function SceneViewport({
         aria-label="Orthographic toy-like night river scene"
         orthographic={TOY_SCENE_CAMERA.orthographic}
         camera={TOY_SCENE_CANVAS_CAMERA}
-        dpr={settings.dpr}
+        dpr={canvasDpr ?? settings.dpr}
         gl={settings.antialias ? CANVAS_GL_ANTIALIAS_ON : CANVAS_GL_ANTIALIAS_OFF}
         shadows={settings.shadows}
         frameloop="demand"
@@ -699,7 +738,7 @@ export function SceneViewport({
           cameraRef.current = camera instanceof OrthographicCamera ? camera : null;
           invalidateRef.current = invalidate;
           if (cameraRef.current) {
-            cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
+            cameraRef.current.zoom = baseZoomRef.current * zoomRef.current;
             cameraRef.current.updateProjectionMatrix();
           }
           rendererRef.current = gl;
@@ -766,21 +805,25 @@ export function SceneViewport({
       </span>
     </section>
     {perfProbeEnabled && (
-      <PerfProbePanel
-        rendererRef={rendererRef}
-        riverItemCount={visibleRiverItems.length}
-        qualityTier={qualityTier}
-        soakEnabled={mode === "WORLD_EXPLORE"}
-        onSoakItems={setSoakRiverItems}
-      />
+      <OverlaySlot slot="debug">
+        <PerfProbePanel
+          rendererRef={rendererRef}
+          riverItemCount={visibleRiverItems.length}
+          qualityTier={qualityTier}
+          soakEnabled={mode === "WORLD_EXPLORE"}
+          onSoakItems={setSoakRiverItems}
+        />
+      </OverlaySlot>
     )}
     {inspected && (
-      <InspectPopup
-        key={inspected.id}
-        creation={inspected}
-        onClose={() => setInspectedId(null)}
-        ownerSection={<OwnerWishSection creation={inspected} />}
-      />
+      <OverlaySlot slot="sheet">
+        <InspectPopup
+          key={inspected.id}
+          creation={inspected}
+          onClose={() => setInspectedId(null)}
+          ownerSection={<OwnerWishSection creation={inspected} />}
+        />
+      </OverlaySlot>
     )}
     </>
   );

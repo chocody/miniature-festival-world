@@ -2,8 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
 const root = (page: Page) => page.locator("[data-flow-state]");
 const nextFrames = (page: Page) =>

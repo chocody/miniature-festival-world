@@ -2,13 +2,16 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { sceneZoomScale } from "./helpers/stage";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
 /** String only the three.js renderer chunk contains in the production build (positive control below proves it survives minification). */
 const WEBGL_CHUNK_MARKER = "WebGLRenderer";
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
-/** Tap left of the 48 px krathong chip (centred at 50 %), on the island/water; the WORLD_EXPLORE positive control proves it hits a mesh. */
+/** Tap left of the 48 px krathong chip (centred at 50 %), on the island/water; the WORLD_EXPLORE positive control proves it hits a mesh.
+ * Probed at zoom E2E_PROBED_CAMERA_ZOOM; scaled to the framed zoom (MFW-54) it hits the same world point. */
 const SCENE_TAP_OFFSET_X_PX = 40;
 const root = (page: Page) => page.locator("[data-flow-state]");
 
@@ -55,7 +58,8 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
   await expect(page.locator("canvas")).toHaveCount(1);
   const box = (await page.locator(VIEWPORT).boundingBox())!;
-  const tap = { x: box.x + box.width / 2 - SCENE_TAP_OFFSET_X_PX, y: box.y + box.height / 2 };
+  const scale = await sceneZoomScale(page);
+  const tap = { x: box.x + box.width / 2 - SCENE_TAP_OFFSET_X_PX * scale, y: box.y + box.height / 2 };
   await page.touchscreen.tap(tap.x, tap.y);
   await nextFrames(page);
   await expect(page.locator(VIEWPORT)).not.toHaveAttribute("data-selected-target");

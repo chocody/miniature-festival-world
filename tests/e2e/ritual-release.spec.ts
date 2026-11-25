@@ -2,8 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation, type MockCreateOptions } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { sceneZoomScale } from "./helpers/stage";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
 const CHIP = '[data-input-target="krathong"]';
@@ -91,10 +93,12 @@ test("3D: releases from the pier", async ({ page }) => {
 test("3D: drag onto the water", async ({ page }) => {
   const { errors, requests } = await setup(page);
   await expect(page.locator("canvas")).toHaveCount(1);
-  await dragChip(page, DRAG_DOWN_PX);
+  // The drag lengths were probed at zoom E2E_PROBED_CAMERA_ZOOM; scaled to the framed zoom (MFW-54) they reach the same world points.
+  const scale = await sceneZoomScale(page);
+  await dragChip(page, DRAG_DOWN_PX * scale);
   await expect(page.getByTestId("ritual-status")).toHaveText(DROP_ON_WATER);
   expect(requests).toHaveLength(0);
-  await dragChip(page, -DRAG_UP_PX);
+  await dragChip(page, -DRAG_UP_PX * scale);
   await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   expect(requests).toHaveLength(1);
   expect(errors).toEqual([]);

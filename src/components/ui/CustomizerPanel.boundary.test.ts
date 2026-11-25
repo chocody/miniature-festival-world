@@ -11,6 +11,7 @@ const files = [
   "src/store/useBuilderStore.ts",
   "src/config/customizer.config.ts",
   "src/core/customization/krathongChoices.ts",
+  "src/components/ui/StageLayout.tsx",
 ];
 
 describe("customizer landing-bundle boundary", () => {

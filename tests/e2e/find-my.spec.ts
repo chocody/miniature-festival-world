@@ -4,6 +4,7 @@ import { E2E_CREATION_ID, E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation } from
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -85,6 +86,7 @@ async function openAndSelect(page: Page) {
 }
 
 test("3D: finds my krathong in another zone", async ({ page }) => {
+  await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
   await highTier(page);
   const requested = await releaseThenMoveAway(page, true);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");

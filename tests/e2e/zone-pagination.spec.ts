@@ -3,6 +3,7 @@ import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -72,6 +73,7 @@ test("FALLBACK_2D: starts on the newest zone and pages up- and downstream", asyn
 });
 
 test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) => {
+  await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });

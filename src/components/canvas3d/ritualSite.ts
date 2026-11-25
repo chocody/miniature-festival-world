@@ -1,9 +1,9 @@
 import { OrthographicCamera, Plane, Raycaster, Vector2, Vector3 } from "three";
-import { SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR } from "@/config/camera.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT, LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
 import { PERCENT_SCALE } from "@/config/interaction.config";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
-import { getCameraFlightPose } from "@/core/camera";
+import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
 import {
   LATERAL_OFFSET_RANGE,
   locateOnLane,
@@ -56,6 +56,7 @@ export interface RitualDrop {
   readonly onWater: boolean;
   readonly candidate: RiverSpot;
 }
+/** `zoomFactor` is the pinch factor over the framed zoom of `size` (getFramedCameraZoom, MFW-54), as in SceneViewport. */
 export interface RitualDropMapper {
   /** Screen percent → the deck-height plane (y = site.tip.y) of the ritual view. null if the size is not positive/finite or the ray misses. */
   toDeckPlane(percent: PercentPoint, size: ViewportSize, zoomFactor: number): WorldXZ | null;
@@ -102,7 +103,7 @@ export function createRitualDropMapper(
     camera.right = size.width / HALF;
     camera.top = size.height / HALF;
     camera.bottom = -size.height / HALF;
-    camera.zoom = SCENE_CAMERA_ZOOM * zoomFactor;
+    camera.zoom = getFramedCameraZoom(size) * zoomFactor;
     camera.position.set(pose.cameraX, pose.cameraY, pose.cameraZ);
     camera.lookAt(pose.focusX, pose.focusY, pose.focusZ);
     camera.updateProjectionMatrix();

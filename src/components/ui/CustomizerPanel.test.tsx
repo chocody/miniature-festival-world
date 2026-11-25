@@ -11,6 +11,7 @@ import { DEFAULT_KRATHONG_APPEARANCE, parseKrathongAppearance } from "@/core/cus
 import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { CustomizerPanel } from "./CustomizerPanel";
+import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -47,6 +48,12 @@ describe("CustomizerPanel", () => {
     expect(tabs.map((t) => t.textContent)).toEqual(CUSTOMIZER_TABS.map((t) => t.label));
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", tabs[0].id);
+  });
+
+  it("is a stage overlay panel with no in-flow spacer (MFW-54)", () => {
+    setup();
+    expect(screen.queryByTestId("customizer-spacer")).toBeNull();
+    expect(screen.getByRole("region", { name: "แต่งกระทง" }).className).toContain(STAGE_LAYOUT_CLASSES.panel);
   });
 
   it("base tab picks a base", () => {
