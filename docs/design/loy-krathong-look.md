@@ -30,19 +30,19 @@ screenshots. "Reserved" keys are not used yet; the listed card builds on them.
 | wallCream | #E4D4B3 | house walls |
 | roofTeal | #718C86 | house roofs (one roof material today) |
 | roofTerracotta | #D1936B | second roof colour — reserved for 9.3 |
-| doorWood | #B9815A | doors, crates — reserved for 9.3 |
+| doorWood | #B9815A | doors, crates — reserved for 9.3; krathong incense sticks (MFW-48) |
 | woodLight | #D4AE82 | pier deck |
 | woodDark | #725F46 | pier posts, lamp posts |
 | trunk | #7C5D40 | tree trunks |
 | canopy | #8CA682 | tree canopies |
 | canopyShade | #4E644E | canopy shade side — reserved for 9.3 |
-| leafLight | #8DA667 | krathong banana leaf, lit — reserved for 9.2 |
+| leafLight | #8DA667 | krathong banana leaf, lit — banana-trunk base (MFW-48) |
 | leafDark | #3F5B35 | krathong banana leaf, shade — reserved for 9.2 |
 | flowerCoral | #E19A7C | krathong flower petals — reserved for 9.2 |
 | flowerCream | #EBDFC4 | pale krathong petals — reserved for 9.2 |
-| flowerYellow | #F2D585 | flower centres, lamp heads |
+| flowerYellow | #F2D585 | flower centres (krathong, MFW-48), lamp heads |
 | candleWax | #D5B279 | candle body — reserved for 9.2 |
-| flameCore | #FDF7C6 | flame core — reserved for 9.2 |
+| flameCore | #FDF7C6 | flame core — krathong flame albedo (MFW-48) |
 | flameHalo | #F9EAA6 | flame halo — reserved for 9.2 |
 | lanternGlow | #FFC46B | warm lamp emissive |
 | shadowTint | #40564A | blob-shadow tint (dark sage, never black) |
@@ -181,3 +181,92 @@ Captured on the production build with SwiftShader WebGL (HIGH tier, before the f
 |---|---|---|---|
 | World, 1440×900 | ![before](screenshots/mfw-47/before-desktop-world.png) | ![day](screenshots/mfw-47/after-desktop-world-day.png) | ![night](screenshots/mfw-47/after-desktop-world-night.png) |
 | Customize, 390×844 | ![before](screenshots/mfw-47/before-phone-customize.png) | ![day](screenshots/mfw-47/after-phone-customize-day.png) | — |
+
+## 10. Krathong v2 (MFW-48)
+
+Backlog 9.2. Every value mirrors `src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it
+from the screenshots below. Appearance keys and stored appearance data are unchanged, so saved krathongs render with v2.
+The same model is drawn in the customizer, at the pier and on the river; the river uses the instanced batch.
+
+### Shapes
+
+All parts are parametric clay meshes. Each is an indexed closed solid with smooth normals, built by
+`src/core/customization/krathongMeshData.ts`.
+- Bases:
+  - banana trunk: a puffy rounded drum (lathe);
+  - lotus: two layers of rounded petal lobes;
+  - bread: a rounded dome.
+  Leaves and flowers sit on each base's `rimY`.
+- Leaves: 8 units, each with two folded blades (a diamond cross-section gives the centre ridge).
+  - A shorter outer blade flares out with its tip curled up.
+  - A taller inner blade stands almost upright on the flower-socket angle.
+  - style_01 is pointed, style_02 is broader and rounder.
+  - A fixed per-leaf yaw / scale jitter (`KRATHONG_LEAF_VARIATION`) makes the ring look hand-made.
+- Flowers face up and outward (`KRATHONG_FLOWER_TILT_RAD`), each with a round centre part:
+  - marigold: two star-petal layers;
+  - orchid: 5 rounded petals;
+  - lotus: two pointed layers.
+- Candle: a tall slim lathe (0.7) with a rounded top rim, in the stored candle colour.
+- Flame: a teardrop on the candle tip.
+- Incense: 3 slim sticks.
+- The 2D fallback is unchanged in code. It reads the same assembly, so it picks up the v2 proportions, the leaf variation and
+  one small yellow ellipse per flower centre. Full 2D v2 art is MFW-51.
+
+### Palette use
+
+- Banana base: `leafLight`.
+- Flower centres: `flowerYellow`. Its WCAG contrast with every petal colour is ≥ `KRATHONG_FLOWER_CENTRE_MIN_CONTRAST` 1.25.
+- Flame albedo: `flameCore`, with the MFW-47 warm emissive, not tone-mapped.
+- Incense: `doorWood`.
+- The stored leaf and candle hexes stay the material colours. The v1 flower hues stay (open question below).
+
+### Flame flicker
+
+- Two slow sines, at 1.1 and 1.9 Hz. Every component is ≤ `FLAME_FLICKER_MAX_HZ` 3 (WCAG 2.3.1 three flashes); the unit
+  test counts ≤ 3 maxima in any 1 s window.
+- Amplitudes: height ±8 %, width ∓4 %, emissive ±4 %. The peak-to-peak emissive swing of 8 % stays below
+  `FLAME_FLICKER_MAX_EMISSIVE_SWING` 10 % (WCAG general-flash threshold).
+- One shared frame per canvas, so all flames flicker in sync.
+- Static under reduced motion and on FALLBACK_2D.
+- Redraw cadence in an idle demand canvas: `FLAME_FLICKER_REDRAW_INTERVAL_MS` 100 / 125 / 150 ms (HIGH / MEDIUM / LOW).
+  See `docs/perf/MFW-48.md` for its cost on SwiftShader.
+
+### Budgets
+
+- No new shader program (`MeshStandardMaterial`, FrontSide, smooth, opaque), no texture.
+- Triangles per krathong:
+  - default 1 024 (v1 1 360);
+  - worst 1 088 (guard `KRATHONG_MAX_TRIANGLES` 1 200);
+  - e2e fixture 548 (v1 380).
+- Hero model: ≤ 30 meshes. River batch: 18 InstancedMesh (+1 flower-centre bucket).
+- Footprint radius ≤ 1.288 (guard `KRATHONG_MODEL_FOOTPRINT_RADIUS` 1.3).
+
+### DRAFT list
+
+- Every `mesh` spec, `rimY`, part `localY`, `KRATHONG_LEAF_VARIATION`, `KRATHONG_FLOWER_TILT_RAD` and `centreScale`.
+- The candle height 0.7 (v1 0.5).
+- The banana-base, flame and incense colours.
+- `FLAME_FLICKER` and `FLAME_FLICKER_REDRAW_INTERVAL_MS`.
+- The leaf and flower sizes were enlarged by the dev from the lead's draft after the screenshots; see the MFW-48 dev report.
+- Lead guards (not product numbers): `KRATHONG_MAX_TRIANGLES`, `KRATHONG_FLOWER_CENTRE_MIN_CONTRAST`,
+  `FLAME_FLICKER_MAX_HZ`, `FLAME_FLICKER_MAX_EMISSIVE_SWING`.
+
+### Before / after (MFW-48)
+
+Captured on the production build with SwiftShader WebGL, HIGH tier.
+
+| | Before (MFW-47) | After — day | After — night |
+|---|---|---|---|
+| Krathong close-up, 390×844 (zoomed in) | ![before](screenshots/mfw-48/before-phone-zoom-day.png) | ![day](screenshots/mfw-48/after-phone-zoom-day.png) | ![night](screenshots/mfw-48/after-phone-zoom-night.png) |
+| Customize, 390×844 | ![before](screenshots/mfw-48/before-phone-customize-day.png) | ![day](screenshots/mfw-48/after-phone-customize-day.png) | ![night](screenshots/mfw-48/after-phone-customize-night.png) |
+| Customize, 1440×900 | ![before](screenshots/mfw-48/before-desktop-customize-day.png) | ![day](screenshots/mfw-48/after-desktop-customize-day.png) | ![night](screenshots/mfw-48/after-desktop-customize-night.png) |
+| Pier, 390×844 | — | ![day](screenshots/mfw-48/after-phone-pier-day.png) | ![night](screenshots/mfw-48/after-phone-pier-night.png) |
+| Pier, 1440×900 | — | ![day](screenshots/mfw-48/after-desktop-pier-day.png) | ![night](screenshots/mfw-48/after-desktop-pier-night.png) |
+| World, 390×844 | — | ![day](screenshots/mfw-48/after-phone-world-day.png) | ![night](screenshots/mfw-48/after-phone-world-night.png) |
+| World, 1440×900 | — | ![day](screenshots/mfw-48/after-desktop-world-day.png) | ![night](screenshots/mfw-48/after-desktop-world-night.png) |
+
+Other options (day, close-up):
+- ![lotus base, style_02, orchids](screenshots/mfw-48/after-phone-variant-lotus-style02-orchid-day.png)
+- ![bread base, style_01, lotus flowers](screenshots/mfw-48/after-phone-variant-bread-style01-lotus-day.png)
+
+Before-night customize shots: `screenshots/mfw-48/before-*-customize-night.png`.

@@ -1,13 +1,14 @@
-import { BufferGeometry, ConeGeometry, CylinderGeometry, MeshStandardMaterial, SphereGeometry } from "three";
-import type { PrimitiveGeometrySpec } from "@/config/krathongModel.config";
+import { BufferAttribute, BufferGeometry, MeshStandardMaterial } from "three";
 import {
-  geometrySpecFor,
   KRATHONG_GEOMETRY_KEYS,
   KRATHONG_MATERIAL_KEYS,
   materialSpecFor,
+  meshSpecFor,
   type KrathongGeometryKey,
   type KrathongMaterialKey,
 } from "@/core/customization";
+import { createFlameFlickerFrame, type FlameFlickerFrame } from "@/core/customization/flameFlicker";
+import { buildKrathongMeshData } from "@/core/customization/krathongMeshData";
 
 export interface KrathongAssets {
   /** Same object for the same key, every call. */
@@ -15,25 +16,30 @@ export interface KrathongAssets {
   material(key: KrathongMaterialKey): MeshStandardMaterial;
   listGeometries(): readonly BufferGeometry[];
   listMaterials(): readonly MeshStandardMaterial[];
+  /** Shared flame flicker of this canvas: written once per frame by <FlameFlicker>, read by KrathongModel and the river batch. */
+  readonly flameFlicker: FlameFlickerFrame;
   /** Disposes every geometry and material once; idempotent. */
   dispose(): void;
 }
 
-function buildGeometry(spec: PrimitiveGeometrySpec): BufferGeometry {
-  switch (spec.type) {
-    case "cylinder":
-      return new CylinderGeometry(spec.radiusTop, spec.radiusBottom, spec.height, spec.radialSegments);
-    case "sphere":
-      return new SphereGeometry(spec.radius, spec.widthSegments, spec.heightSegments);
-    case "cone":
-      return new ConeGeometry(spec.radius, spec.height, spec.radialSegments);
-  }
+const POSITION_ITEM_SIZE = 3;
+const INDEX_ITEM_SIZE = 1;
+
+/** v2 parametric clay mesh (MFW-48): indexed closed solid with smooth normals. */
+function buildGeometry(key: KrathongGeometryKey): BufferGeometry {
+  const data = buildKrathongMeshData(meshSpecFor(key));
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(data.positions, POSITION_ITEM_SIZE));
+  geometry.setIndex(new BufferAttribute(data.indices, INDEX_ITEM_SIZE));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 /** One three geometry/material per key; every krathong part under one canvas shares them. */
 export function createKrathongAssets(): KrathongAssets {
   const geometries = new Map<string, BufferGeometry>(
-    KRATHONG_GEOMETRY_KEYS.map((key) => [key, buildGeometry(geometrySpecFor(key))]),
+    KRATHONG_GEOMETRY_KEYS.map((key) => [key, buildGeometry(key)]),
   );
   const materials = new Map<string, MeshStandardMaterial>(
     KRATHONG_MATERIAL_KEYS.map((key) => {
@@ -63,6 +69,7 @@ export function createKrathongAssets(): KrathongAssets {
     },
     listGeometries: () => [...geometries.values()],
     listMaterials: () => [...materials.values()],
+    flameFlicker: createFlameFlickerFrame(),
     dispose() {
       if (disposed) return;
       disposed = true;

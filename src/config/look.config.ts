@@ -20,19 +20,19 @@ export const LOOK_PALETTE = Object.freeze({
   wallCream: "#E4D4B3", // house walls (ref)
   roofTeal: "#718C86", // left house roof (ref)
   roofTerracotta: "#D1936B", // right house roof (ref) — reserved for 9.3 (one roof material today)
-  doorWood: "#B9815A", // doors, crates (ref) — reserved for 9.3
+  doorWood: "#B9815A", // doors, crates (ref) — reserved for 9.3; krathong incense sticks (MFW-48)
   woodLight: "#D4AE82", // pier deck planks (ref)
   woodDark: "#725F46", // pier posts, lamp posts (ref)
   trunk: "#7C5D40", // tree trunks (ref)
   canopy: "#8CA682", // tree canopy, lit side (ref)
   canopyShade: "#4E644E", // tree canopy shade side (ref) — reserved for 9.3
-  leafLight: "#8DA667", // krathong banana leaf, lit (ref) — reserved for 9.2
+  leafLight: "#8DA667", // krathong banana leaf, lit (ref) — banana-trunk base (MFW-48)
   leafDark: "#3F5B35", // krathong banana leaf, shade (ref) — reserved for 9.2
   flowerCoral: "#E19A7C", // krathong flower petals (ref) — reserved for 9.2
   flowerCream: "#EBDFC4", // krathong flower petals, pale (ref) — reserved for 9.2
-  flowerYellow: "#F2D585", // flower centres / lantern body (ref)
+  flowerYellow: "#F2D585", // flower centres / lantern body (ref) — krathong flower centres (MFW-48)
   candleWax: "#D5B279", // candle body (ref) — reserved for 9.2
-  flameCore: "#FDF7C6", // flame core (ref) — reserved for 9.2
+  flameCore: "#FDF7C6", // flame core (ref) — krathong flame albedo (MFW-48)
   flameHalo: "#F9EAA6", // flame halo (ref) — reserved for 9.2
   lanternGlow: "#FFC46B", // warm lamp emissive (= existing LAMP_GLOW_LOOK colour)
   shadowTint: "#40564A", // blob-shadow tint: dark sage, never black (ref contact shadows #5E6D54 / #475C60)

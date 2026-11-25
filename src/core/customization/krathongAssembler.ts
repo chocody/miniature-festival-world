@@ -7,6 +7,7 @@ import {
   KRATHONG_INCENSE_MODEL,
   KRATHONG_LEAF_COUNT,
   KRATHONG_LEAF_MODELS,
+  KRATHONG_LEAF_VARIATION,
 } from "@/config/krathongModel.config";
 import { KRATHONG_SOCKETS } from "./sockets";
 import type { KrathongAppearance, KrathongAssembly, KrathongPartInstance } from "./types";
@@ -37,18 +38,20 @@ export function assembleKrathong(appearance: KrathongAppearance): KrathongAssemb
     },
   ];
 
+  const rim = base.rimY;
   const leaf = KRATHONG_LEAF_MODELS[appearance.lotusFold];
   for (let j = 0; j < KRATHONG_LEAF_COUNT; j += 1) {
     const theta = ((j + HALF_STEP) * 2 * Math.PI) / KRATHONG_LEAF_COUNT;
+    const v = KRATHONG_LEAF_VARIATION[j];
     body.push({
       id: `leaf_${j}`,
       role: "leaf",
       socketId: null,
       geometryKey: `leaf:${appearance.lotusFold}`,
       materialKey: `leaf:${appearance.leafColor}`,
-      localPosition: ringPoint(r, theta, top + leaf.localY),
-      rotationY: theta,
-      scale: leaf.scale,
+      localPosition: ringPoint(r, theta, rim + leaf.localY),
+      rotationY: theta + v.yawRad,
+      scale: [leaf.scale[0] * v.scale, leaf.scale[1] * v.scale, leaf.scale[2] * v.scale],
     });
   }
 
@@ -57,15 +60,27 @@ export function assembleKrathong(appearance: KrathongAppearance): KrathongAssemb
     const socket = KRATHONG_SOCKETS[1 + i];
     const flower = KRATHONG_FLOWER_MODELS[kind];
     const theta = ((socket.angleDeg ?? 0) * Math.PI) / HALF_TURN_DEGREES;
+    const localPosition = ringPoint(r, theta, rim + flower.localY);
     body.push({
       id: `flower_${socket.id}`,
       role: "flower",
       socketId: socket.id,
       geometryKey: `flower:${kind}`,
       materialKey: `flower:${kind}`,
-      localPosition: ringPoint(r, theta, top + flower.localY),
+      localPosition,
       rotationY: theta,
       scale: flower.scale,
+    });
+    const c = flower.centreScale;
+    body.push({
+      id: `flowerCentre_${socket.id}`,
+      role: "flowerCentre",
+      socketId: socket.id,
+      geometryKey: "flowerCentre",
+      materialKey: "flowerCentre",
+      localPosition,
+      rotationY: theta,
+      scale: [c, c, c],
     });
   });
 

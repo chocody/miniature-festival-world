@@ -3,8 +3,14 @@ import { cleanup, render } from "@testing-library/react";
 import { BufferGeometry, InstancedMesh, Material, Matrix4, Quaternion } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { perfSoakAppearance } from "@/components/canvas3d/perfSoak";
-import { DEFAULT_KRATHONG_APPEARANCE, KRATHONG_GEOMETRY_KEYS, KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
-import { KrathongAssetsProvider } from "./KrathongAssetsProvider";
+import {
+  DEFAULT_KRATHONG_APPEARANCE,
+  KRATHONG_GEOMETRY_KEYS,
+  KRATHONG_INSTANCE_BUCKET_COUNT,
+  KRATHONG_INSTANCE_BUCKETS,
+} from "@/core/customization";
+import { KrathongAssetsProvider, useKrathongAssets } from "./KrathongAssetsProvider";
+import type { KrathongAssets } from "./krathongAssets";
 import { RiverKrathongBatch, type RiverKrathongBatchHandle } from "./RiverKrathongBatch";
 import { planKrathongInstances } from "./riverKrathongBatch";
 
@@ -25,6 +31,28 @@ describe("RiverKrathongBatch", () => {
     const { container } = render(ui(ref));
     expect(ref.current!.meshes).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
     expect(container.querySelector('[name="river-krathong-batch"]')!.querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
+  });
+
+  it("MFW-48: bucket meshes use the shared v2 geometry and material", () => {
+    let assets: KrathongAssets | null = null;
+    function Probe() {
+      assets = useKrathongAssets();
+      return null;
+    }
+    const ref = createRef<RiverKrathongBatchHandle>();
+    render(
+      <KrathongAssetsProvider>
+        <Probe />
+        <RiverKrathongBatch ref={ref} plan={plan(3)} shadows={false} />
+      </KrathongAssetsProvider>,
+    );
+    expect(assets).not.toBeNull();
+    const a = assets as unknown as KrathongAssets;
+    expect(ref.current!.meshes).toHaveLength(KRATHONG_INSTANCE_BUCKETS.length);
+    ref.current!.meshes.forEach((mesh, i) => {
+      expect(mesh.geometry).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey));
+      expect(mesh.material).toBe(a.material(KRATHONG_INSTANCE_BUCKETS[i].materialKey));
+    });
   });
 
   it("counts follow the plan", () => {

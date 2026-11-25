@@ -98,6 +98,33 @@ describe("planKrathongInstances / writeKrathongItemInstances", () => {
     }
   });
 
+  it("MFW-48: flame instances get the shared flicker scale", () => {
+    const position = [2.5, -0.2, 0.7] as const;
+    const euler = [0.05, 1.3, -0.04] as const;
+    const flicker = { heightScale: 1.1, widthScale: 0.95, emissiveScale: 1 };
+    const expected = referenceKrathongMatrices(DEFAULT_KRATHONG_APPEARANCE, position, euler, 0.8);
+    const plan = planKrathongInstances([DEFAULT_KRATHONG_APPEARANCE]);
+    const stored = new Map<string, Matrix4>();
+    const item = itemGroup(position, euler);
+    writeKrathongItemInstances(plan, 0, item.matrix, item.quaternion, { setMatrixAt: (b, s, m) => void stored.set(`${b}:${s}`, m.clone()) }, flicker);
+    const parts = plan.items[0].parts;
+    expect(parts.filter((p) => p.flicker)).toHaveLength(1);
+    const flameIndex = parts.findIndex((p) => KRATHONG_INSTANCE_BUCKETS[p.bucketIndex].role === "flame");
+    expect(parts[flameIndex].flicker).toBe(true);
+    parts.forEach((part, i) => {
+      const want = part.flicker
+        ? new Matrix4().multiplyMatrices(expected[i], new Matrix4().makeScale(flicker.widthScale, flicker.heightScale, flicker.widthScale))
+        : expected[i];
+      const got = stored.get(`${part.bucketIndex}:${part.slot}`)!;
+      for (let e = 0; e < 16; e++) expect(Math.abs(got.elements[e] - want.elements[e])).toBeLessThan(1e-9);
+      if (part.upright) {
+        const dir = new Vector3(0, 1, 0).transformDirection(got);
+        expect(Math.abs(dir.x)).toBeLessThan(1e-9);
+        expect(Math.abs(dir.z)).toBeLessThan(1e-9);
+      }
+    });
+  });
+
   it("upright parts stay upright", () => {
     const plan = planKrathongInstances([DEFAULT_KRATHONG_APPEARANCE]);
     const stored = new Map<string, Matrix4>();

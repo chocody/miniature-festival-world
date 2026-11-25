@@ -32,6 +32,7 @@ import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
+import { FLAME_FLICKER_REDRAW_INTERVAL_MS } from "@/config/krathongModel.config";
 import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
@@ -1536,5 +1537,53 @@ describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     const panel = container.querySelector('[data-testid="perf-probe"]')!;
     expect(panel.closest('[data-overlay-slot="debug"]')).not.toBeNull();
+  });
+});
+
+describe("krathong model v2 (MFW-48)", () => {
+  const otherItem = (id: string) => ({
+    id,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+  });
+  const expectOneV2Model = (c: HTMLElement) => {
+    expect(c.querySelectorAll('[name="krathong-model"]')).toHaveLength(1);
+    expect(c.querySelectorAll('[name="krathong-model"] mesh[name^="flowerCentre_"]')).toHaveLength(RIM_SOCKET_COUNT);
+    expect(c.querySelectorAll('mesh[name="flame"]')).toHaveLength(1);
+  };
+
+  it("AC3: one v2 krathong model in CUSTOMIZE, on the pier and on the river", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const customize = render(<SceneViewport mode="CUSTOMIZE" />);
+    expectOneV2Model(customize.container);
+    cleanup();
+
+    const pier = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "PIER");
+    expectOneV2Model(pier.container);
+    cleanup();
+
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() });
+    const own = { ...otherItem("own-creation"), coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT) };
+    const river = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[own, otherItem("a"), otherItem("b")]} />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RIVER");
+    expectOneV2Model(river.container);
+    const batch = river.container.querySelectorAll('[name="river-krathong-batch"]');
+    expect(batch).toHaveLength(1);
+    expect(batch[0].querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
+  });
+
+  it("flame flicker follows reduced motion", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const spy = vi.spyOn(window, "setInterval");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(spy.mock.calls.some((call) => call[1] === FLAME_FLICKER_REDRAW_INTERVAL_MS.HIGH)).toBe(true);
+    cleanup();
+    spy.mockClear();
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(spy.mock.calls.some((call) => call[1] === FLAME_FLICKER_REDRAW_INTERVAL_MS.HIGH)).toBe(false);
+    spy.mockRestore();
   });
 });

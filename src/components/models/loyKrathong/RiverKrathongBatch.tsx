@@ -45,10 +45,10 @@ export function RiverKrathongBatch({ plan, shadows, ref }: RiverKrathongBatchPro
     () => ({
       meshes,
       writeItem: (itemIndex, itemMatrix, itemQuaternion) =>
-        writeKrathongItemInstances(plan, itemIndex, itemMatrix, itemQuaternion, sink),
+        writeKrathongItemInstances(plan, itemIndex, itemMatrix, itemQuaternion, sink, assets.flameFlicker),
       commit: () => commitKrathongBatch(meshes, plan),
     }),
-    [meshes, plan, sink],
+    [assets, meshes, plan, sink],
   );
   return (
     <group name={SCENE_OBJECT_NAMES.riverKrathongBatch}>

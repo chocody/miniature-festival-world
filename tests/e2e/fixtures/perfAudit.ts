@@ -6,6 +6,8 @@ export const E2E_SOAK_DWELL_MS = 1_000; // = PERF_SOAK_DWELL_MS
 /** Test-only tolerances (lead decision, MFW-34). Do not raise them to make a run pass; report instead. */
 export const E2E_ZONE_SWITCH_CYCLES = 5; // × 4 switches per cycle = 20 switches
 export const E2E_MAX_HEAP_GROWTH_BYTES = 2 * 1_048_576;
+/** LOW-tier shader programs after 20 zone switches, measured at BASE 9c98d1c (MFW-47) with this spec (MFW-48 dev report). */
+export const E2E_MAX_SHADER_PROGRAMS = 8;
 export const E2E_SOAK_MARGIN_MS = 30_000;
 export const E2E_PERF_TEST_TIMEOUT_MS = 180_000;
 export const PERF_AUDIT_RECORD_ONLY_ENV = "PERF_AUDIT_RECORD_ONLY";

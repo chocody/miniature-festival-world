@@ -101,4 +101,28 @@ describe("instancing audit (backlog 8.2)", () => {
     expect(end).toBeGreaterThan(start);
     expect(doc.slice(start, end)).not.toContain("TBD");
   });
+
+  it("the flame flicker allocates nothing per frame (MFW-48)", () => {
+    expect(functionSource(read("src/core/customization/flameFlicker.ts"), "writeFlameFlickerAt")).not.toMatch(ALLOCATION);
+    expect(useFrameBody(read("src/components/models/loyKrathong/FlameFlicker.tsx"))).not.toMatch(ALLOCATION);
+    expect(useFrameBody(read("src/components/models/loyKrathong/KrathongModel.tsx"))).not.toMatch(ALLOCATION);
+    const batch = read("src/components/models/loyKrathong/riverKrathongBatch.ts");
+    expect(functionSource(batch, "writeKrathongItemInstances")).not.toMatch(ALLOCATION);
+    for (const file of ["src/components/models/loyKrathong/FlameFlicker.tsx", "src/components/models/loyKrathong/KrathongModel.tsx"]) {
+      const source = read(file);
+      expect(source, file).not.toMatch(NEW_RESOURCE);
+      expect(source, file).not.toMatch(TEXTURE_API);
+      expect(source, file).not.toMatch(CONSOLE);
+    }
+  });
+
+  it("MFW-48 findings doc has the automated numbers", () => {
+    expect(existsSync(join(process.cwd(), "docs/perf/MFW-48.md"))).toBe(true);
+    const doc = read("docs/perf/MFW-48.md");
+    const start = doc.indexOf("<!-- automated:start -->");
+    const end = doc.indexOf("<!-- automated:end -->");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(doc.slice(start, end)).not.toContain("TBD");
+  });
 });
