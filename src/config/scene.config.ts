@@ -23,9 +23,10 @@ export const MOON_SHADOW_MAP_SIZE_PX = 1024;
 
 /**
  * "Low detail" regression guard: max triangles per environment part geometry. Lead decision, MFW-27 (not a product limit);
- * raised to 320 in MFW-47 (lead decision): a bevelled roundedBox with 2 segments has 300 triangles.
+ * 128 since MFW-47: the largest shipped part is the bevelled house body (roundedBox, 1 segment = 108 triangles), plus
+ * small headroom.
  */
-export const ENVIRONMENT_PART_MAX_TRIANGLES = 320;
+export const ENVIRONMENT_PART_MAX_TRIANGLES = 128;
 
 /** three.js primitive used by one scene part (constructor args by name). */
 export type PartGeometrySpec =

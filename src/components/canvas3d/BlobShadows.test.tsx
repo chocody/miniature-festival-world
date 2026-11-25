@@ -123,6 +123,19 @@ describe("DynamicBlobShadows", () => {
   });
 });
 
+describe("DynamicBlobShadows hideAt", () => {
+  it("collapses a slot to zero scale so no stray blob shows", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const ref = createRef<DynamicBlobShadowsHandle>();
+    render(<DynamicBlobShadows ref={ref} name="dyn" capacity={2} surfaceY={-0.24} radius={0.3} />);
+    ref.current!.writeAt(1, 5, 5);
+    ref.current!.hideAt(1);
+    ref.current!.commit(2);
+    const m = created.meshes[0].instanceMatrix.array;
+    expect([m[16], m[21], m[26]]).toEqual([0, 1, 0]);
+  });
+});
+
 describe("KrathongBlobShadow", () => {
   it("renders one named blob that ignores taps, sized from config", () => {
     useDeviceStore.getState().setQualityTier("LOW");

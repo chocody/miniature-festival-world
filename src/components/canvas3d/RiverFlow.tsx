@@ -125,7 +125,10 @@ export const RiverFlow = memo(function RiverFlow({
     for (let i = 0; i < rendered.length; i++) {
       const item = rendered[i];
       const group = groups.current.get(item.id);
-      if (!group) continue;
+      if (!group) {
+        blobs.current?.hideAt(i); // zero-scale: no stray blob at the origin for a slot without an anchor yet
+        continue;
+      }
       applyRiverItemTransform(group, item, nowMs, reducedMotion, scratch.current);
       blobs.current?.writeAt(i, group.position.x, group.position.z);
       group.updateMatrix(); // position · rotation (YXZ) · RIVER_KRATHONG_SCALE → group.matrix

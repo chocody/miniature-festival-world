@@ -64,6 +64,8 @@ export function EnvironmentBlobShadows({ layout }: { readonly layout: RiverEnvir
 
 export interface DynamicBlobShadowsHandle {
   writeAt(index: number, x: number, z: number): void;
+  /** Collapses slot `index` to zero scale (an item rendered without a transform this frame). */
+  hideAt(index: number): void;
   commit(count: number): void;
 }
 
@@ -90,6 +92,9 @@ export function DynamicBlobShadows({ name, capacity, surfaceY, radius, ref }: Dy
     () => ({
       writeAt(index, x, z) {
         writeBlobShadowAt(mesh, index, x, y, z, radius, scratch);
+      },
+      hideAt(index) {
+        writeBlobShadowAt(mesh, index, 0, y, 0, 0, scratch);
       },
       commit(count) {
         commitBlobShadows(mesh, count);

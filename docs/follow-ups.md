@@ -6,6 +6,8 @@ real device. Newest first. Remove an item when its fix is merged.
 
 | Card | Severity | Item | Kind |
 |---|---|---|---|
+| MFW-47 | Low | `DayNightSwitch` uses a negative-margin layout under the scene: rework it with the full-screen stage (MFW-54); it also has no arrow-key roving between the radios. | fix later |
+| MFW-47 | Medium | Perf review: `BLOB_SHADOW_TIER_GEOMETRY` should live in or with `performance.config.ts` (per-tier budgets); LOW pays the full environment triangle growth (rounded houses, round canopies, 8-segment cylinders) — decide with on-device numbers. | fix later · re-test on device |
 | MFW-47 | — | Owner review from the PR screenshots: palette/light values (DRAFT), day/night hours (PLACEHOLDER 06–18), switch form and copy (DRAFT); readability guard is a Lambert estimate, re-check the night village and blob shadows on a real phone. | owner · re-test on device |
 | MFW-63 | Medium | Owner switch race: a slow "open" re-read (`syncWorldAfterSwitch` in `src/services/api/ownedWishState.ts`) can overwrite a later "close" on the owner's device until the next zone refresh (server state is correct; no leak). Fix: per-creation sync sequence; test open → close before the fetch resolves. | fix later |
 | MFW-63 | Medium | No 3D popup test for the name / owner switch; `RiverFlowItem` has no `displayName` field (the name reaches the popup by structural typing). Add the field and a canvas3d popup test (open item shows name + Report; closed owned item shows the switch). | fix later |

@@ -61,7 +61,7 @@ screenshots. "Reserved" keys are not used yet; the listed card builds on them.
 - House bodies are bevelled: `roundedBox` with radius 0.06 and 1 bevel segment (108 triangles), smooth-shaded so the
   edge reads rounded. The lead's draft had 2 segments (300 triangles); at the scene's size the two look the same, and
   the extra triangles cost frame time in the SwiftShader e2e (see §7). The per-part low-poly guard
-  `ENVIRONMENT_PART_MAX_TRIANGLES` is 320.
+  `ENVIRONMENT_PART_MAX_TRIANGLES` is 128 (largest part 108).
 - Lamp heads stay icosahedron detail 0 (about 7 px on screen), smooth-shaded.
 - Pastel: no environment albedo below `LOOK_MIN_ALBEDO_LUMINANCE` = 0.1 (WCAG relative luminance).
 - No black shadows: the key-light shadow has `shadow.intensity` < 1, and blob shadows are a translucent sage tint.
@@ -171,4 +171,4 @@ A preset change is an instant cut (no cross-fade), so it is safe under reduced m
   design; the instant-cut preset change.
 - PLACEHOLDER: `DAY_NIGHT_HOURS` (06:00–18:00).
 - Lead guards (not product numbers): `LOOK_MIN_LIT_LUMINANCE` 0.025, `LOOK_MIN_ALBEDO_LUMINANCE` 0.1,
-  `ENVIRONMENT_PART_MAX_TRIANGLES` 320.
+  `ENVIRONMENT_PART_MAX_TRIANGLES` 128.

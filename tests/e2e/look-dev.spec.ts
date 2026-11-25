@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 /** Duplicated literals (do not import src/ into Playwright): LIGHT_PRESET_STORAGE_KEY / LIGHT_PRESET_SWITCH_COPY in src/config/look.config.ts. */
 const LIGHT_PRESET_STORAGE_KEY = "mfw:lightPreset:v1";
@@ -23,8 +24,9 @@ async function openScene(page: Page): Promise<{ pageErrors: string[]; consoleErr
   return { pageErrors, consoleErrors };
 }
 
+/** The app opens straight into the active event (MFW-53): wait for hydration, then for the 3D canvas. */
 async function enterLoyKrathong(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);
 }
 
