@@ -25,12 +25,12 @@ screenshots. "Reserved" keys are not used yet; the listed card builds on them.
 | grass | #A7BA96 | lit land (banks) |
 | grassShade | #5E6D54 | land in contact shade under trees — reserved for 9.3 |
 | water | #90AAAE | river body |
-| waterLight | #ACC3C7 | river highlight near the bank — reserved for 9.3 |
-| waterDeep | #546970 | water in shade by the bank / under the pier — reserved for 9.3 |
+| waterLight | #ACC3C7 | river highlight near the bank — used since MFW-49 (shore band, glints, krathong ripples) |
+| waterDeep | #546970 | water in shade by the bank / under the pier — used since MFW-49 (window glass) |
 | wallCream | #E4D4B3 | house walls |
-| roofTeal | #718C86 | house roofs (one roof material today) |
-| roofTerracotta | #D1936B | second roof colour — reserved for 9.3 |
-| doorWood | #B9815A | doors, crates — reserved for 9.3; krathong incense sticks (MFW-48) |
+| roofTeal | #718C86 | pyramid house roofs |
+| roofTerracotta | #D1936B | gable house roofs — used since MFW-49 |
+| doorWood | #B9815A | house doors — used since MFW-49; krathong incense sticks (MFW-48) |
 | woodLight | #D4AE82 | pier deck |
 | woodDark | #725F46 | pier posts, lamp posts |
 | trunk | #7C5D40 | tree trunks |
@@ -48,6 +48,7 @@ screenshots. "Reserved" keys are not used yet; the listed card builds on them.
 | shadowTint | #40564A | blob-shadow tint (dark sage, never black) |
 | daySky | #D8E4CF | DAY background (pale sage haze); also the 2D fallback background |
 | nightSky | #2E3E63 | NIGHT background (deep periwinkle, not black) |
+| stone | #B9B7A8 | riverside rocks; not in the reference, DRAFT (MFW-49) |
 
 ## 3. Material rules
 
@@ -159,8 +160,8 @@ A preset change is an instant cut (no cross-fade), so it is safe under reduced m
 
 - 9.2 (MFW-48, krathong models): leafLight, leafDark, flowerCoral, flowerCream, flowerYellow, candleWax, flameCore,
   flameHalo; the flame-glow rule; `KRATHONG_BLOB_SHADOW`.
-- 9.3 (MFW-49, river and environment): grassShade, waterLight, waterDeep, roofTerracotta, doorWood, canopyShade;
-  per-preset lamps, lit windows, wider water.
+- 9.3 (MFW-49, river and environment): waterLight, waterDeep, roofTerracotta, doorWood (used, §11); per-preset lamps,
+  lit windows, wider water. grassShade and canopyShade stay unused (the lit matte program shades them).
 - 9.4 (MFW-50, villagers): the palette and the blob-shadow helpers (`DynamicBlobShadows`).
 - 9.5 (MFW-51, 2D): the same palette; a 2D day/night preset and switch.
 
@@ -270,3 +271,128 @@ Other options (day, close-up):
 - ![bread base, style_01, lotus flowers](screenshots/mfw-48/after-phone-variant-bread-style01-lotus-day.png)
 
 Before-night customize shots: `screenshots/mfw-48/before-*-customize-night.png`.
+
+## 11. Riverside v2 (MFW-49, backlog 9.3)
+
+Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, paths, water motion), `look.config.ts`
+(`VILLAGE_LIGHTS`, `LAMP_LIGHT_POOL_LOOK`, `WATER_HIGHLIGHT_LOOK`, `stone`) and `performance.config.ts`
+(`WATER_EFFECT_TIERS`, `ENVIRONMENT_RENDER_BUDGETS`). Config wins over this note.
+
+### 11.1 Wider river
+
+- Channel 3.2 → **4.8** world units (×1.5); lane 2.4 → **3.0** (×1.25). DRAFT: the owner approves the width from the PR
+  screenshots (open question 38). `ZONE_ITEM_CAP` stays 80.
+- The lane is the widest that keeps `RIVER_COLLISION_CURVATURE_MARGIN` (1.1) valid on the bends: at lane 3.2 or more,
+  krathongs on the inner bend edge would overlap (inner-bend world spacing 0.5708 < 2 × `RIVER_COLLISION_RADIUS` = 0.572).
+- The centreline control points are unchanged, so arc length, progress → place mapping and along-spacing are the same:
+  every stored `SplinePathCoord` keeps its place along the river; lateral spacing only grows (×1.25), so stored pairs stay
+  legal (`loyKrathong.river.lanes.test.ts` L1–L6).
+- The pier reaches further into the wider water: `overWaterLength` 0.35 → 0.6, `releaseInset` 0.3 → 0.35. The tip
+  (lateral 2.4 − 0.6 = 1.8) stays outside the lane edge (1.5); the release spot stays clamped to the body limit (0.4047).
+- 2D: `FLAT_RIVER_END_MARGIN_PROGRESS` 0.05 → 0.06 keeps the % 1 wrap off the map with the wider lane.
+
+### 11.2 Land
+
+- Each bank is a 5-point cross-section (`RIVER_BANK_PROFILE`, offsets from the channel edge): a rounded lip from under
+  the water (y −0.26) up to the village terrace (`RIVER_BANK_TOP_Y` −0.14) at 0.25, a flat terrace to 3 (lamps, path,
+  village), then a gentle rise to 0.08 at the bank edge (`bankWidth` 5). Smooth vertex normals round the lip; the
+  shoreline is the clean intersection of the water and the lip.
+- A flat ground (`RIVER_GROUND`, radius 30, below the water) lies around everything so no viewport shows background. It is
+  a disc with a hole shaped like the river + banks outline (`buildGroundHoleOutline`: the outer bank edges pulled in by
+  `holeMargin` 1), so it never overdraws the water or banks, and no camera ray passes under a bank edge into the hole. It is
+  drawn last among opaque meshes (`RIVER_GROUND_RENDER_ORDER`). See §11.7 for why it is not a plain disc.
+- Puffy rounded trees (detail-1 canopies), squashed bushes (`bush`), faceted riverside rocks (`rock`, palette `stone`) and
+  the wooden pier. Props stand on the profile: base y = `bankSurfaceY(profile, setback)`.
+
+### 11.3 Village and lights
+
+- 7 houses: 5 on the far bank, 2 on the near bank turned to face the camera (`yawOffsetRad` π) so their lit windows show.
+- Two roof kinds and colours: teal pyramid (`houseRoof`) and terracotta gable (`houseRoofGable`), one InstancedMesh each
+  (no per-instance colour: it would add a shader variant on SwiftShader). Walls stay cream.
+- `HOUSE_FACADE`: one door and two windows on each house front (local +Z), resolved by `resolveHouseFeatures`.
+- `VILLAGE_LIGHTS` (DRAFT): NIGHT windows 0.9 and lanterns 1.2 emissive and warm additive lamp light pools
+  (`LAMP_LIGHT_POOL_LOOK`, radius 0.55, opacity 0.35); DAY all off. Emissive is a uniform, so a preset switch recompiles
+  nothing and creates nothing. No new lights (the light count is part of every program key).
+- The krathong flame stays the brightest surface in both presets (`riverLayout.test.ts`).
+
+### 11.4 Riverside walking path (contract for MFW-50)
+
+- `LOY_KRATHONG_RIVERSIDE_PATHS` (DRAFT): path 1 on the far bank (side −1, setback 0.6), path 2 on the near bank (side 1,
+  setback 0.9, behind the pier's bank end at 0.5); both half-width 0.2 over the whole river (progress 0 → 1), on the flat
+  terrace.
+- `riversidePathPoseInto(channel, path, profile, progress, across, out)` is MFW-50's only entry point. It is allocation-free
+  and render-time only (never persisted, invariant A): it writes x, y (the bank surface), z and the downstream flow yaw for
+  `progress` (clamped to the path) and `across` ∈ [−1, 1] (clamped; ±1 = the strip edges).
+- Clearance guarantee (`riverLayout.test.ts` R6): no house, tree, bush, rock or lamp footprint overlaps a strip, and the pier
+  ends before the near-bank strip.
+- MFW-50 must keep villagers on the strip (never on the water or through props), must not persist their positions, and
+  decides whether the path is drawn (today it is invisible).
+
+### 11.5 Water
+
+- Soft colour (`water` palette) plus three vertex-alpha fans that all share the blob-shadow program (no new shader):
+  - shore band (`RIVER_WATER_HIGHLIGHTS.shore`, 0.35 wide, alpha 1 at the bank → 0): every 3D tier, static;
+  - drifting glints near both banks (`waterGlintPoseInto`): `WATER_EFFECT_TIERS` HIGH 6, MEDIUM 6, LOW 0;
+  - a soft ripple ring around each river krathong (`krathongRippleScale`): HIGH / MEDIUM, one draw call for the zone.
+- LOW (the cheap variant) = the static shore band only. Reduced motion = glints written once at t = 0 and a constant
+  ripple radius.
+- Glints never call `invalidate()`: they move whenever the scene already renders continuously (the shared world, where
+  krathongs drift) and stay still in CUSTOMIZE / RITUAL (no extra rendering on idle views).
+
+### 11.6 Budget and numbers
+
+Environment main pass, no river krathongs (`environmentBudget.test.tsx` counts it with the real builders; guard
+`ENVIRONMENT_RENDER_BUDGETS`). MFW-47 environment for comparison: 12 calls; 3 228 triangles HIGH, 2 886 LOW.
+
+| Tier | NIGHT calls / triangles | DAY calls / triangles | Budget calls / triangles |
+|---|---|---|---|
+| HIGH | 21 / 5 834 | 20 / 5 450 | 21 / 6 500 |
+| MEDIUM | 21 / 5 378 | 20 / 5 090 | 21 / 5 850 |
+| LOW | 20 / 4 970 | 19 / 4 730 | 20 / 5 400 |
+
+The ground (disc with the river-shaped hole) has 126 triangles. Ripples add `KRATHONG_RIPPLE_MAX_TRIANGLES` (48; the ring has 32) per
+rendered krathong and one draw call on HIGH / MEDIUM.
+To hold the SwiftShader CI frame budget, the spec's four ordered cuts were applied: HIGH glints 10 → 6, ripple ring 12 → 8
+segments, bushes 8 → 6 and rocks 6 → 4, `ribbonSegments` 64 → 48. Measured numbers: §11.7.
+
+### 11.7 Measured numbers (local container, SwiftShader)
+
+Rebased on main ce0f2e4 (MFW-47, 48, 54, 55, 57): full-screen stage, `?pinTier=1`, world view after release, 390×844.
+
+- Ground: the spec's full disc shades the pixels hidden under the water and banks (SwiftShader does not reject them early);
+  on the old 256-px stage it cost about 25 % of the HIGH frame. The ground now has a hole shaped like the river + banks
+  outline, so it overdraws nothing. On the full-screen stage its *visible* area still costs frame time on SwiftShader (it
+  replaces background that main clears for free): LOW 60 → 46 fps with it, 60 without (measured variant).
+- e2e `perf-audit.spec.ts` (`[perf-audit]` lines), main → MFW-49:
+  - HIGH world (one or a full zone): calls 32 → 42 (flat with the krathong count); triangles 5 864 → 8 396 (one) and
+    96 240 → 101 300 (full zone, ripples included). HIGH CUSTOMIZE: calls 78 → 87, triangles 6 816 → 9 316, programs 8 → 8.
+  - LOW zone switches: 20 → 27 calls, flat; geometries 22 → 29, flat; programs 8 → 8.
+  - Probe soak (80 river krathongs): calls 31 → 38, triangles 26 982 → 29 132, geometries 27 → 34, programs 8 → 8; every
+    counter flat across 20 zone switches.
+- World view `?perfProbe=1` (calls / triangles / programs; programs include the probe panel's):
+  - HIGH: DAY 78 / 6 816 / 9 → 87 / 9 378 / 9; NIGHT 78 / 6 816 / 9 → 88 / 9 762 / 9.
+  - MEDIUM: DAY 43 / 4 060 / 5 → 51 / 6 150 / 5; NIGHT 43 / 4 060 / 5 → 52 / 6 438 / 5.
+  - LOW: DAY 43 / 3 940 / 5 → 50 / 5 784 / 5; NIGHT 43 / 3 940 / 5 → 51 / 6 024 / 5.
+  - No new shader program on any tier.
+- FPS (3 s rAF count, tier pinned, load < 4): HIGH 34–40 → 23–26; MEDIUM 49–57 → 31–34; LOW 59–60 → 43–49. Without the
+  ground: HIGH 28–31, LOW 59–60.
+- The e2e suite passes on MFW-49 (`--workers=1`, tiers pinned).
+- Real phone GPUs are far from these limits (a flat lit plane is trivial on a GPU); the on-device check is in
+  `docs/follow-ups.md`.
+
+### 11.8 DRAFT values (MFW-49)
+
+Channel and lane widths, pier `overWaterLength` / `releaseInset`, `RIVER_BANK_PROFILE`, `bankWidth`, `RIVER_GROUND`,
+`HOUSE_FACADE`, every placement, the new parts (`houseRoofGable`, `houseDoor`, `houseWindow`, `bush`, `rock`), `stone`,
+`VILLAGE_LIGHTS`, `LAMP_LIGHT_POOL_LOOK`, `WATER_HIGHLIGHT_LOOK`, `RIVER_WATER_HIGHLIGHTS`, `LOY_KRATHONG_RIVERSIDE_PATHS`.
+Lead guards (not product numbers): `WATER_EFFECT_TIERS`, `ENVIRONMENT_RENDER_BUDGETS`, `KRATHONG_RIPPLE_MAX_TRIANGLES`.
+
+### 11.9 Before / after (MFW-49)
+
+Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after release, on the MFW-54 full-screen stage.
+Before = the MFW-47 screenshots (256-px stage).
+
+| | Before (MFW-47) | After — day | After — night |
+|---|---|---|---|
+| World, 1440×900 | ![day](screenshots/mfw-47/after-desktop-world-day.png) ![night](screenshots/mfw-47/after-desktop-world-night.png) | ![day](screenshots/mfw-49/after-desktop-1440x900-world-day.png) | ![night](screenshots/mfw-49/after-desktop-1440x900-world-night.png) |
+| World, 390×844 | — | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) |

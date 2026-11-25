@@ -84,7 +84,7 @@ describe("scene framing at any aspect ratio (MFW-54)", () => {
 describe("tap discs at the framed zoom (MFW-54 fix round; documented follow-up)", () => {
   // The MFW-59 proxies are sized in world units for MIN_TOUCH_TARGET_PX at SCENE_CAMERA_ZOOM. The framed zoom is at or above it from
   // a 374-px width, so the AC phones 390×844 and wider keep ≥ 44 px discs. Below that the disc shrinks with the zoom: 360×640 frames
-  // at zoom 50 → ≈ 42.3 px. Scaling the proxies by SCENE_CAMERA_ZOOM / zoom is a follow-up (docs/follow-ups.md, MFW-54).
+  // at zoom ≈ 48.6 (7.4-wide frame since MFW-49) → ≈ 41.2 px. Scaling the proxies by SCENE_CAMERA_ZOOM / zoom is a follow-up (docs/follow-ups.md, MFW-54).
   const discPx = (zoom: number) => ({
     lamp: 2 * LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO * zoom,
     krathong: 2 * RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE * TAP_PROXY_INRADIUS_RATIO * zoom,
@@ -98,7 +98,7 @@ describe("tap discs at the framed zoom (MFW-54 fix round; documented follow-up)"
     }
   });
 
-  it("documents the 360-px shortfall: discs scale with zoom / SCENE_CAMERA_ZOOM (≈ 42.3 px at 360×640)", () => {
+  it("documents the 360-px shortfall: discs scale with zoom / SCENE_CAMERA_ZOOM (≈ 41.2 px at 360×640)", () => {
     const zoom = getFramedCameraZoom({ width: 360, height: 640 });
     expect(zoom).toBeLessThan(SCENE_CAMERA_ZOOM);
     const d = discPx(zoom);

@@ -6,8 +6,21 @@ import {
   LOY_KRATHONG_RIVER_LANES,
   LOY_KRATHONG_RIVER_LANE_ID,
   LOY_KRATHONG_RIVER_LANE_WIDTH,
+  LOY_KRATHONG_PIER,
+  LOY_KRATHONG_PIER_RELEASE_SPOT,
   RIVER_WATER_SURFACE_Y,
 } from "./loyKrathong.river.config";
+import { RIVER_COLLISION_RADIUS, RIVER_MIN_CENTER_SPACING } from "@/config/riverFlow.config";
+import { ZONE_ITEM_CAP } from "@/config/world.config";
+import {
+  createRiverChannel,
+  findNearestFreeSpot,
+  resolvePierLayout,
+  riverCoordFromSpot,
+  riverSpotDistance,
+  riverSpotLateralLimit,
+  riverSpotOf,
+} from "@/core/world";
 import {
   createRiverLane,
   createRiverLaneSet,
@@ -15,6 +28,8 @@ import {
   locateOnLane,
   splineCoordFromLocation,
   splineProgressToWorld,
+  type RiverLaneSet,
+  type RiverPlacementSource,
 } from "@/core/coordinates";
 import {
   LATERAL_SAMPLES,
@@ -124,5 +139,81 @@ describe("Loy Krathong river lane (open question 21)", () => {
     expect(text).not.toMatch(/from "three"/);
     expect(text).not.toMatch(/@react-three/);
     expect(text).not.toMatch(/from "react"/);
+  });
+});
+
+describe("wider river, same stored coords (MFW-49, open question 38)", () => {
+  /** MFW-24 shipped width (test-only literal): the v1 lane every stored coord was placed on. */
+  const V1_LANE_WIDTH = 2.4;
+  const V1_CHANNEL_WIDTH = 3.2;
+  const V1_CONTROL_POINTS = [
+    { x: -12, z: 0.6 },
+    { x: -6, z: -0.3 },
+    { x: 0, z: 0 },
+    { x: 6, z: 0.4 },
+    { x: 12, z: -0.5 },
+  ];
+  const CREATED = 1_700_000_000_000;
+  const newLanes = createRiverLaneSet(LOY_KRATHONG_RIVER_LANES);
+  const newLane = newLanes.get(LOY_KRATHONG_RIVER_LANE_ID)!;
+  const channel = createRiverChannel(LOY_KRATHONG_RIVER_CHANNEL);
+
+  function greedyFill(lanes: RiverLaneSet): RiverPlacementSource[] {
+    const items: RiverPlacementSource[] = [];
+    const release = { laneId: LOY_KRATHONG_RIVER_LANE_ID, progress: 0.4, lateralOffset: 0.38 };
+    for (;;) {
+      const s = findNearestFreeSpot(release, items, lanes, CREATED);
+      if (s === null) break;
+      items.push({ coord: riverCoordFromSpot(s, CREATED), createdAtMs: CREATED });
+      expect(items.length).toBeLessThan(1000);
+    }
+    return items;
+  }
+
+  it("L1: the channel and the lane are wider than v1", () => {
+    expect(LOY_KRATHONG_RIVER_CHANNEL.width).toBeGreaterThan(V1_CHANNEL_WIDTH);
+    expect(LOY_KRATHONG_RIVER_LANE_WIDTH).toBeGreaterThan(V1_LANE_WIDTH);
+  });
+
+  it("L2: the centreline control points are the v1 points", () => {
+    expect(LOY_KRATHONG_RIVER_CHANNEL.controlPoints.map((p) => ({ x: p.x, z: p.z }))).toEqual(V1_CONTROL_POINTS);
+    expect(LOY_KRATHONG_RIVER_LANES[0].controlPoints.map((p) => ({ x: p.x, z: p.z }))).toEqual(V1_CONTROL_POINTS);
+  });
+
+  it("L3: the zone cap stays 80", () => {
+    expect(ZONE_ITEM_CAP).toBe(80);
+  });
+
+  it("L4: a full v1 zone stays valid and collision-free on the wider lane", { timeout: 30_000 }, () => {
+    const v1 = createRiverLaneSet(LOY_KRATHONG_RIVER_LANES.map((d) => ({ ...d, width: V1_LANE_WIDTH })));
+    const items = greedyFill(v1);
+    expect(items.length).toBeGreaterThanOrEqual(ZONE_ITEM_CAP);
+    const limit = riverSpotLateralLimit(newLane);
+    const spots = items.map((i) => riverSpotOf(i, newLanes, CREATED)!);
+    const world = spots.map((s) => splineProgressToWorld(newLane, s.progress, s.lateralOffset).position);
+    items.forEach((item, i) => {
+      expect(isPersistableCoord(item.coord)).toBe(true);
+      expect(Math.abs(item.coord.lateralOffset)).toBeLessThanOrEqual(limit);
+      expect(Math.abs(locateOnLane(channel, world[i]).lateralOffset)).toBeLessThanOrEqual(HALF + 1e-9);
+    });
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        expect(riverSpotDistance(spots[i], spots[j], newLane)).toBeGreaterThanOrEqual(RIVER_MIN_CENTER_SPACING - 1e-9);
+        expect(Math.hypot(world[i].x - world[j].x, world[i].z - world[j].z)).toBeGreaterThanOrEqual(2 * RIVER_COLLISION_RADIUS);
+      }
+    }
+  });
+
+  it("L5: a full zone fits on the new lane", { timeout: 30_000 }, () => {
+    expect(greedyFill(newLanes).length).toBeGreaterThanOrEqual(ZONE_ITEM_CAP);
+  });
+
+  it("L6: the pier tip stays outside the lane and the release point is on it", () => {
+    const pier = resolvePierLayout(channel, LOY_KRATHONG_PIER, RIVER_WATER_SURFACE_Y);
+    const tip = locateOnLane(newLane, pier.tip);
+    expect(Math.abs(tip.lateralOffset) * newLane.width).toBeGreaterThan(newLane.width / 2);
+    const release = locateOnLane(newLane, pier.releasePoint);
+    expect(Math.abs(release.lateralOffset)).toBeLessThanOrEqual(HALF);
+    expect(Math.abs(LOY_KRATHONG_PIER_RELEASE_SPOT.lateralOffset)).toBeLessThanOrEqual(riverSpotLateralLimit(newLane));
   });
 });

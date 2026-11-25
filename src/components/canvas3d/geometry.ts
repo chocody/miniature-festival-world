@@ -6,10 +6,13 @@ import {
   CylinderGeometry,
   IcosahedronGeometry,
   MeshStandardMaterial,
+  Path,
+  Shape,
+  ShapeGeometry,
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { MatteMaterialSpec, PartGeometrySpec } from "@/config/scene.config";
-import type { RibbonGeometryData } from "@/core/world";
+import type { BankGeometryData, RibbonGeometryData, RiverGroundLayout } from "@/core/world";
 
 /** three's MeshStandardMaterial default. */
 const DEFAULT_EMISSIVE_INTENSITY = 1;
@@ -28,8 +31,13 @@ export function createPartGeometry(spec: PartGeometrySpec): BufferGeometry {
       return new ConeGeometry(spec.radius, spec.height, spec.radialSegments);
     case "cylinder":
       return new CylinderGeometry(spec.radiusTop, spec.radiusBottom, spec.height, spec.radialSegments);
-    case "icosahedron":
-      return new IcosahedronGeometry(spec.radius, spec.detail ?? ICOSAHEDRON_DETAIL);
+    case "icosahedron": {
+      const geometry = new IcosahedronGeometry(spec.radius, spec.detail ?? ICOSAHEDRON_DETAIL);
+      if (spec.scaleY !== undefined && spec.scaleY !== 1) geometry.scale(1, spec.scaleY, 1); // puffy squash (MFW-49)
+      return geometry;
+    }
+    case "gable":
+      return createGableGeometry(spec.width, spec.depth, spec.height);
     case "roundedBox":
       return new RoundedBoxGeometry(spec.width, spec.height, spec.depth, spec.segments, spec.radius);
     default: {
@@ -39,8 +47,34 @@ export function createPartGeometry(spec: PartGeometrySpec): BufferGeometry {
   }
 }
 
+/**
+ * Gable roof (MFW-49): a triangular prism with its ridge along local x, base at y = −height/2 and ridge at +height/2.
+ * Non-indexed, 8 triangles (2 per slope, 1 per gable end, 2 for the base), one normal per face.
+ */
+function createGableGeometry(width: number, depth: number, height: number): BufferGeometry {
+  const x = width / 2;
+  const y = height / 2;
+  const z = depth / 2;
+  // prettier-ignore
+  const positions = new Float32Array([
+    -x, -y, z, x, -y, z, x, y, 0, // front slope (+z)
+    -x, -y, z, x, y, 0, -x, y, 0,
+    x, -y, -z, -x, -y, -z, -x, y, 0, // back slope (−z)
+    x, -y, -z, -x, y, 0, x, y, 0,
+    x, -y, z, x, -y, -z, x, y, 0, // gable end (+x)
+    -x, -y, -z, -x, -y, z, -x, y, 0, // gable end (−x)
+    -x, -y, -z, x, -y, -z, x, -y, z, // base (−y)
+    -x, -y, -z, x, -y, z, -x, -y, z,
+  ]);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, VECTOR3_ITEM_SIZE));
+  geometry.computeVertexNormals(); // non-indexed: each triangle gets its own face normal
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 /** Kinds whose three geometry already has one normal per face (no shared vertices across faces). */
-const FACETED_KINDS: ReadonlySet<PartGeometrySpec["kind"]> = new Set(["box"]);
+const FACETED_KINDS: ReadonlySet<PartGeometrySpec["kind"]> = new Set(["box", "gable"]);
 
 /**
  * Instanced part geometry and material that share ONE compiled shader program for every instanced part (MFW-47 perf):
@@ -59,6 +93,11 @@ export function createInstancedPartGeometry(spec: PartGeometrySpec, flat: boolea
 
 export function createInstancedPartMaterial(spec: MatteMaterialSpec): MeshStandardMaterial {
   return createMatteMaterial({ ...spec, flatShading: false });
+}
+
+/** Runtime emissive change (a uniform: no shader recompile), e.g. the village lights per light preset (MFW-49). */
+export function applyEmissiveIntensity(material: MeshStandardMaterial, emissiveIntensity: number): void {
+  material.emissiveIntensity = emissiveIntensity;
 }
 
 export function createMatteMaterial(spec: MatteMaterialSpec): MeshStandardMaterial {
@@ -82,6 +121,41 @@ export function createRibbonGeometry(data: RibbonGeometryData): BufferGeometry {
   g.setIndex(new BufferAttribute(data.indices, INDEX_ITEM_SIZE));
   g.computeBoundingSphere();
   return g;
+}
+
+/** Rounded bank surface (MFW-49): indexed, smooth vertex normals (the rounded lip), absolute world heights. */
+export function createBankGeometry(data: BankGeometryData): BufferGeometry {
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(data.positions, VECTOR3_ITEM_SIZE));
+  g.setIndex(new BufferAttribute(data.indices, INDEX_ITEM_SIZE));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+const FULL_TURN = 2 * Math.PI;
+
+/**
+ * Ground in its local xy plane (the mesh rotates it −π/2 about x, so local (x, y) = world (x, −z)): a disc of `radius` with a
+ * hole shaped like the river + banks outline, so it never overdraws the water or banks (MFW-49; SwiftShader shades hidden pixels).
+ */
+export function createGroundGeometry(ground: RiverGroundLayout): BufferGeometry {
+  const shape = new Shape();
+  for (let i = 0; i < ground.segments; i++) {
+    const a = (FULL_TURN * i) / ground.segments;
+    const x = ground.radius * Math.cos(a);
+    const y = ground.radius * Math.sin(a);
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  if (ground.hole.length >= TRIANGLE_VERTICES) {
+    const hole = new Path();
+    ground.hole.forEach((p, i) => (i === 0 ? hole.moveTo(p.x, -p.z) : hole.lineTo(p.x, -p.z)));
+    shape.holes.push(hole);
+  }
+  const geometry = new ShapeGeometry(shape, 1);
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 export function countTriangles(geometry: BufferGeometry): number {

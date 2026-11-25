@@ -16,4 +16,10 @@ describe("art-direction note (MFW-47 AC1)", () => {
     expect(doc).toMatch(/\bDAY\b/);
     expect(doc).toMatch(/\bNIGHT\b/);
   });
+
+  it("documents the riverside walking path contract for MFW-50 (MFW-49)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    expect(doc).toContain("LOY_KRATHONG_RIVERSIDE_PATHS");
+    expect(doc).toContain("riversidePathPoseInto");
+  });
 });

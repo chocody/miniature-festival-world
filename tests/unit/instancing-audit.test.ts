@@ -12,6 +12,8 @@ const RIVER_FILES = [
   "src/components/canvas3d/perfProbe.ts",
   "src/components/canvas3d/perfSoak.ts",
   "src/components/canvas3d/PerfProbePanel.tsx",
+  // MFW-49: water highlights / ripples build their resources through the blobShadowMeshes factories only.
+  "src/components/canvas3d/WaterHighlights.tsx",
 ];
 const NEW_RESOURCE = /new\s+\w*(Geometry|Material|Texture)\b/;
 const TEXTURE_API = /TextureLoader|useTexture|CanvasTexture|DataTexture/;

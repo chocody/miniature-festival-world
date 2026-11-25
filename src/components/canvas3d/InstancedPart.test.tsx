@@ -6,6 +6,19 @@ import type { InstanceTransform } from "@/core/world";
 import { InstancedPart } from "./InstancedPart";
 import { applyInstanceTransforms, composeInstanceMatrix, partShadowProps } from "./instancing";
 
+const createdMaterials = vi.hoisted(() => [] as import("three").MeshStandardMaterial[]);
+vi.mock("./geometry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./geometry")>();
+  return {
+    ...actual,
+    createInstancedPartMaterial: (spec: Parameters<typeof actual.createInstancedPartMaterial>[0]) => {
+      const m = actual.createInstancedPartMaterial(spec);
+      createdMaterials.push(m);
+      return m;
+    },
+  };
+});
+
 vi.mock("@react-three/fiber", () => ({
   useThree: (selector: (state: { invalidate: () => void }) => unknown) => selector({ invalidate: () => {} }),
 }));
@@ -75,5 +88,22 @@ describe("InstancedPart", () => {
     view.unmount();
     expect(geometryDispose).toHaveBeenCalledTimes(1);
     expect(materialDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies and updates the emissiveIntensity prop without re-creating the material (MFW-49)", () => {
+    const glowing: ScenePartSpec = { ...PART, material: { ...PART.material, emissive: "#ffc46b", emissiveIntensity: 0.9 } };
+    createdMaterials.length = 0;
+    const materialDispose = vi.spyOn(Material.prototype, "dispose");
+    const transforms = [T0];
+    const view = render(<InstancedPart name="x" part={glowing} transforms={transforms} shadows={false} emissiveIntensity={0} />);
+    expect(createdMaterials).toHaveLength(1);
+    const material = createdMaterials[0];
+    expect(material.emissiveIntensity).toBe(0);
+    view.rerender(<InstancedPart name="x" part={glowing} transforms={transforms} shadows={false} emissiveIntensity={1.2} />);
+    expect(createdMaterials).toHaveLength(1);
+    expect(material.emissiveIntensity).toBe(1.2);
+    expect(materialDispose).not.toHaveBeenCalled();
+    view.rerender(<InstancedPart name="x" part={glowing} transforms={transforms} shadows={false} />);
+    expect(material.emissiveIntensity).toBe(1.2); // undefined leaves the current value
   });
 });

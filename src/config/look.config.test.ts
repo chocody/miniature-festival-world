@@ -9,6 +9,7 @@ import {
   BLOB_SHADOW_TIER_GEOMETRY,
   DAY_NIGHT_HOURS,
   KRATHONG_BLOB_SHADOW,
+  LAMP_LIGHT_POOL_LOOK,
   LIGHT_PRESET_CHOICES,
   LIGHT_PRESET_IDS,
   LIGHT_PRESET_STORAGE_KEY,
@@ -16,6 +17,8 @@ import {
   LIGHT_PRESETS,
   LOOK_PALETTE,
   RIVER_KRATHONG_BLOB_SHADOW_RADIUS,
+  VILLAGE_LIGHTS,
+  WATER_HIGHLIGHT_LOOK,
 } from "./look.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
@@ -88,5 +91,46 @@ describe("look config (MFW-47)", () => {
     expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.AUTO}"`);
     expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.NIGHT}"`);
     expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.groupLabel}"`);
+  });
+});
+
+describe("village lights and water look (MFW-49)", () => {
+  it("is frozen", () => {
+    for (const o of [
+      VILLAGE_LIGHTS,
+      VILLAGE_LIGHTS.DAY,
+      VILLAGE_LIGHTS.NIGHT,
+      LAMP_LIGHT_POOL_LOOK,
+      WATER_HIGHLIGHT_LOOK,
+    ]) {
+      expect(Object.isFrozen(o)).toBe(true);
+    }
+  });
+
+  it("colours are #RRGGBB and opacities in (0, 1)", () => {
+    expect(LOOK_PALETTE.stone).toMatch(HEX);
+    expect(LAMP_LIGHT_POOL_LOOK.color).toMatch(HEX);
+    expect(WATER_HIGHLIGHT_LOOK.color).toMatch(HEX);
+    for (const o of [
+      LAMP_LIGHT_POOL_LOOK.opacity,
+      WATER_HIGHLIGHT_LOOK.shoreOpacity,
+      WATER_HIGHLIGHT_LOOK.glintOpacity,
+      WATER_HIGHLIGHT_LOOK.rippleOpacity,
+    ]) {
+      expect(o).toBeGreaterThan(0);
+      expect(o).toBeLessThan(1);
+    }
+  });
+
+  it("has a preset entry for every light preset, lit at NIGHT and off at DAY", () => {
+    expect(Object.keys(VILLAGE_LIGHTS).sort()).toEqual([...LIGHT_PRESET_IDS].sort());
+    expect(VILLAGE_LIGHTS.DAY.windowEmissiveIntensity).toBe(0);
+    expect(VILLAGE_LIGHTS.DAY.lanternEmissiveIntensity).toBe(0);
+    expect(VILLAGE_LIGHTS.DAY.lampLightPools).toBe(false);
+    expect(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity).toBeGreaterThan(0);
+    expect(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity).toBeGreaterThan(0);
+    expect(VILLAGE_LIGHTS.NIGHT.lampLightPools).toBe(true);
+    expect(LAMP_LIGHT_POOL_LOOK.radius).toBeGreaterThan(0);
+    expect(LAMP_LIGHT_POOL_LOOK.liftY).toBeGreaterThan(0);
   });
 });

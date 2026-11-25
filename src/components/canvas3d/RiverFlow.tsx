@@ -4,8 +4,9 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Matrix4, Vector3, type Group } from "three";
 import { planKrathongInstances, RiverKrathongBatch, type RiverKrathongBatchHandle } from "@/components/models/loyKrathong";
+import { RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config";
 import { RIVER_KRATHONG_BLOB_SHADOW_RADIUS } from "@/config/look.config";
-import { TIER_BUDGETS } from "@/config/performance.config";
+import { TIER_BUDGETS, WATER_EFFECT_TIERS, type RenderTier } from "@/config/performance.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { RiverLaneSet, SplinePathCoord } from "@/core/coordinates";
@@ -14,6 +15,7 @@ import { createBounceFrame, writeBounceAt } from "@/core/effects";
 import {
   applyRiverItemTransform,
   createRiverFrameScratch,
+  krathongRippleScale,
   NO_PINNED_RIVER_IDS,
   prepareRiverItems,
   selectVisibleRiverItems,
@@ -24,6 +26,7 @@ import { createRiverTapProxy } from "./effects/riverTapProxy";
 import { isTapClick } from "./effects/tapPoint";
 import { pickNearestRiverHitId } from "./effects/riverHitPick";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
+import { KrathongRipples, type KrathongRipplesHandle } from "./WaterHighlights";
 
 /** One krathong on the shared river. Public data only (invariant C): no owner token, hash or private wish. */
 export interface RiverFlowItem {
@@ -71,6 +74,9 @@ export const RiverFlow = memo(function RiverFlow({
   const budget = qualityTier === "FALLBACK_2D" ? null : TIER_BUDGETS[qualityTier];
   const visibleCap = budget === null ? 0 : Math.min(ZONE_ITEM_CAP, budget.riverItemCap); // perf gate (a) + (b)
   const castShadow = shadows && budget !== null && budget.riverItemCastShadow;
+  // Soft ripple ring around each krathong (MFW-49 AC4): HIGH/MEDIUM only (LOW = the cheap water variant), on the water surface.
+  const ripplesOn =
+    shadowSurfaceY !== undefined && budget !== null && WATER_EFFECT_TIERS[qualityTier as RenderTier].krathongRipples;
   const prepared = useMemo(() => prepareRiverItems(items, lanes), [items, lanes]);
   const visible = useMemo(
     () => selectVisibleRiverItems(prepared, visibleCap, pinnedIds),
@@ -84,6 +90,7 @@ export const RiverFlow = memo(function RiverFlow({
   );
   const batch = useRef<RiverKrathongBatchHandle | null>(null);
   const blobs = useRef<DynamicBlobShadowsHandle | null>(null);
+  const ripples = useRef<KrathongRipplesHandle | null>(null);
   const bounceMatrix = useRef(new Matrix4());
   const bounceScale = useRef(new Vector3());
   const groups = useRef(new Map<string, Group>());
@@ -103,6 +110,7 @@ export const RiverFlow = memo(function RiverFlow({
   useFrame(() => {
     if (rendered.length === 0) {
       blobs.current?.commit(0);
+      ripples.current?.commit(0);
       return;
     }
     const nowMs = now();
@@ -127,10 +135,17 @@ export const RiverFlow = memo(function RiverFlow({
       const group = groups.current.get(item.id);
       if (!group) {
         blobs.current?.hideAt(i); // zero-scale: no stray blob at the origin for a slot without an anchor yet
+        ripples.current?.hideAt(i);
         continue;
       }
       applyRiverItemTransform(group, item, nowMs, reducedMotion, scratch.current);
       blobs.current?.writeAt(i, group.position.x, group.position.z);
+      ripples.current?.writeAt(
+        i,
+        group.position.x,
+        group.position.z,
+        krathongRippleScale(i, nowMs, reducedMotion, RIVER_WATER_HIGHLIGHTS.ripple),
+      );
       group.updateMatrix(); // position · rotation (YXZ) · RIVER_KRATHONG_SCALE → group.matrix
       if (item.id === bouncingId) {
         // The bounce scales the model about the anchor origin: M · S(f), exactly what the bounce child group did.
@@ -142,6 +157,7 @@ export const RiverFlow = memo(function RiverFlow({
     }
     target?.commit();
     blobs.current?.commit(rendered.length);
+    ripples.current?.commit(rendered.length);
     invalidate(); // keep the demand canvas rendering while krathongs drift (also under reduced motion)
   });
 
@@ -205,6 +221,9 @@ export const RiverFlow = memo(function RiverFlow({
           surfaceY={shadowSurfaceY}
           radius={RIVER_KRATHONG_BLOB_SHADOW_RADIUS}
         />
+      )}
+      {ripplesOn && shadowSurfaceY !== undefined && (
+        <KrathongRipples ref={ripples} capacity={ZONE_ITEM_CAP} surfaceY={shadowSurfaceY} />
       )}
     </>
   );

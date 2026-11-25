@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { bankSurfaceY, type BankProfilePoint } from "./bankProfile";
 import {
   RIVER_CHANNEL_CURVE_ID,
   buildRibbonGeometryData,
   createRiverChannel,
   resolveBankPlacement,
   resolvePierLayout,
+  buildGroundHoleOutline,
+  resolveHouseFeatures,
   resolveRiverEnvironment,
   riverFrameAt,
   type BankPlacement,
+  type HousePlacement,
+  type InstanceTransform,
   type PierDefinition,
   type RiverEnvironmentDefinition,
 } from "./riverEnvironment";
@@ -138,6 +143,12 @@ describe("resolvePierLayout", () => {
 });
 
 describe("resolveRiverEnvironment", () => {
+  const PROFILE: readonly BankProfilePoint[] = [
+    { offset: 0, y: -0.3 },
+    { offset: 0.5, y: -0.14 },
+    { offset: 3, y: 0 },
+  ];
+  const HOUSE: HousePlacement = { ...PLACEMENT, roof: "gable" };
   const def: RiverEnvironmentDefinition = {
     channel: STRAIGHT,
     waterSurfaceY: -0.24,
@@ -145,23 +156,166 @@ describe("resolveRiverEnvironment", () => {
     bankWidth: 3,
     waterUnderlap: 0.2,
     ribbonSegments: 4,
-    houses: [PLACEMENT],
+    bankProfile: PROFILE,
+    ground: { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 },
+    houses: [HOUSE, { ...HOUSE, progress: 0.3, roof: "pyramid" }],
+    houseFacade: { door: { x: 0, y: 0.1, z: 0.3 }, windows: [{ x: -0.2, y: 0.3, z: 0.3 }, { x: 0.2, y: 0.3, z: 0.3 }] },
     trees: [PLACEMENT],
+    bushes: [PLACEMENT],
+    rocks: [PLACEMENT],
     lamps: [PLACEMENT],
     pier: PIER,
+    paths: [],
   };
   it("resolves everything", () => {
     const l = resolveRiverEnvironment(def);
-    expect([l.houses.length, l.trees.length, l.lamps.length, l.pier.piles.length]).toEqual([1, 1, 1, 4]);
+    expect([l.houses.length, l.trees.length, l.lamps.length, l.pier.piles.length]).toEqual([2, 1, 1, 4]);
+    expect([l.bushes.length, l.rocks.length, l.houseDoors.length, l.houseWindows.length]).toEqual([1, 1, 2, 4]);
+    expect(l.housesByRoof.gable).toEqual([l.houses[0]]);
+    expect(l.housesByRoof.pyramid).toEqual([l.houses[1]]);
+    expect(l.ribbonSegments).toBe(4);
+    expect(l.ground).toMatchObject(def.ground);
+    // Straight channel (z = 0, width 4), 3-wide banks, holeMargin 0.5: rows 1..3 on each side at |z| = 4.5.
+    expect(l.ground.hole).toHaveLength(2 * (def.ribbonSegments - 1));
+    for (const p of l.ground.hole) expect(Math.abs(p.z)).toBeCloseTo(4.5, 5);
     expect(l.water.positions[2]).toBeCloseTo(-2.2);
     expect(l.bounds.minX).toBeCloseTo(0);
     expect(l.bounds.maxX).toBeCloseTo(20);
     expect(l.bounds.minZ).toBeCloseTo(-5);
     expect(l.bounds.maxZ).toBeCloseTo(5);
   });
+  it("banks follow the profile, rowSize = profile length", () => {
+    const l = resolveRiverEnvironment(def);
+    for (const bank of [l.banks.left, l.banks.right]) {
+      expect(bank.rowSize).toBe(PROFILE.length);
+      expect(bank.vertexCount).toBe((def.ribbonSegments + 1) * PROFILE.length);
+      PROFILE.forEach((p, k) => expect(bank.positions[k * 3 + 1]).toBeCloseTo(p.y));
+    }
+    expect(l.banks.right.positions[2]).toBeCloseTo(2); // k = 0 at the right water edge
+    expect(l.banks.left.positions[2]).toBeCloseTo(-2);
+  });
+  it("props sit on the bank profile", () => {
+    const l = resolveRiverEnvironment(def);
+    const y = bankSurfaceY(PROFILE, PLACEMENT.setback);
+    for (const t of [...l.houses, ...l.trees, ...l.bushes, ...l.rocks, ...l.lamps]) expect(t.position.y).toBeCloseTo(y, 9);
+  });
   it("validates bank width, underlap and setbacks", () => {
-    expect(() => resolveRiverEnvironment({ ...def, houses: [{ ...PLACEMENT, setback: 3 }] })).toThrow(/houses\[0\]/);
+    expect(() => resolveRiverEnvironment({ ...def, houses: [{ ...HOUSE, setback: 3 }] })).toThrow(/houses\[0\]/);
+    expect(() => resolveRiverEnvironment({ ...def, bushes: [{ ...PLACEMENT, setback: 3 }] })).toThrow(/bushes\[0\]/);
+    expect(() => resolveRiverEnvironment({ ...def, rocks: [{ ...PLACEMENT, setback: 3 }] })).toThrow(/rocks\[0\]/);
     expect(() => resolveRiverEnvironment({ ...def, waterUnderlap: 3 })).toThrow(RangeError);
     expect(() => resolveRiverEnvironment({ ...def, bankWidth: 0 })).toThrow(RangeError);
+  });
+});
+
+describe("resolveRiverEnvironment v2 validation (MFW-49)", () => {
+  const base: RiverEnvironmentDefinition = {
+    channel: STRAIGHT,
+    waterSurfaceY: -0.24,
+    bankTopY: -0.14,
+    bankWidth: 3,
+    waterUnderlap: 0.2,
+    ribbonSegments: 4,
+    bankProfile: [
+      { offset: 0, y: -0.3 },
+      { offset: 3, y: 0 },
+    ],
+    ground: { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 },
+    houses: [{ ...PLACEMENT, roof: "pyramid" }],
+    houseFacade: { door: { x: 0, y: 0, z: 0 }, windows: [] },
+    trees: [],
+    bushes: [],
+    rocks: [],
+    lamps: [],
+    pier: PIER,
+    paths: [{ pathId: 1, side: 1, setback: 1, halfWidth: 0.2, fromProgress: 0, toProgress: 1 }],
+  };
+  it("accepts the fixture", () => {
+    expect(() => resolveRiverEnvironment(base)).not.toThrow();
+  });
+  it("rejects a bad profile", () => {
+    expect(() => resolveRiverEnvironment({ ...base, bankProfile: [{ offset: 0, y: -0.3 }, { offset: 2, y: 0 }] })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, bankProfile: [{ offset: 0, y: 0 }, { offset: 3, y: 0 }] })).toThrow(RangeError);
+  });
+  it("rejects a bad ground", () => {
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, radius: 0 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, segments: 2 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, segments: 3.5 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, y: -0.3 } })).toThrow(RangeError); // = profile[0].y
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, y: -0.2 } })).toThrow(RangeError);
+  });
+  it("rejects an unknown roof kind", () => {
+    expect(() => resolveRiverEnvironment({ ...base, houses: [{ ...PLACEMENT, roof: "dome" as "gable" }] })).toThrow(/houses\[0\]\.roof/);
+  });
+  it("rejects duplicate and invalid path ids", () => {
+    const path = base.paths[0];
+    expect(() => resolveRiverEnvironment({ ...base, paths: [path, { ...path, side: -1 }] })).toThrow(/duplicate/);
+    expect(() => resolveRiverEnvironment({ ...base, paths: [{ ...path, pathId: 0 }] })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, paths: [{ ...path, setback: 2.9 }] })).toThrow(RangeError);
+  });
+});
+
+describe("resolveHouseFeatures", () => {
+  const house = (yawRad: number): InstanceTransform => ({ position: { x: 1, y: 2, z: 3 }, yawRad, scale: 2 });
+  const offset = { x: 0.5, y: 0.25, z: 1 };
+  it("yaw 0: offset × scale, keeps yaw and scale", () => {
+    const [f] = resolveHouseFeatures([house(0)], [offset]);
+    expect(f.position.x).toBeCloseTo(2);
+    expect(f.position.y).toBeCloseTo(2.5);
+    expect(f.position.z).toBeCloseTo(5);
+    expect(f.yawRad).toBe(0);
+    expect(f.scale).toBe(2);
+  });
+  it("yaw π/2: R_y maps local +Z to world +X and local +X to world −Z", () => {
+    const [f] = resolveHouseFeatures([house(Math.PI / 2)], [offset]);
+    expect(f.position.x).toBeCloseTo(1 + 2); // z·scale along +X
+    expect(f.position.z).toBeCloseTo(3 - 1); // −x·scale along Z
+    expect(f.yawRad).toBeCloseTo(Math.PI / 2);
+  });
+  it("orders house by house, then offset by offset", () => {
+    const a = house(0);
+    const b = { ...house(0), position: { x: 10, y: 0, z: 0 } };
+    const out = resolveHouseFeatures([a, b], [offset, { x: 0, y: 0, z: 0 }]);
+    expect(out.map((t) => t.position.x)).toEqual([2, 1, 11, 10].map((n) => expect.closeTo(n, 9)));
+  });
+});
+
+describe("buildGroundHoleOutline (MFW-49 ground hole)", () => {
+  it("follows both outer bank edges pulled in by the margin, rows 1 … n − 1, left then right reversed", () => {
+    const out = buildGroundHoleOutline(channel, 3, 0.5, 4);
+    expect(out.map((p) => [p.x, p.z])).toEqual(
+      [[5, -4.5], [10, -4.5], [15, -4.5], [15, 4.5], [10, 4.5], [5, 4.5]].map(([x, z]) => [expect.closeTo(x, 5), expect.closeTo(z, 5)]),
+    );
+  });
+  it("is empty with fewer than 3 segments", () => {
+    expect(buildGroundHoleOutline(channel, 3, 0.5, 2)).toEqual([]);
+  });
+  it("rejects a bad hole margin and a ground that does not enclose the river", () => {
+    const base = {
+      channel: STRAIGHT,
+      waterSurfaceY: -0.24,
+      bankTopY: -0.14,
+      bankWidth: 3,
+      waterUnderlap: 0.2,
+      ribbonSegments: 4,
+      bankProfile: [
+        { offset: 0, y: -0.3 },
+        { offset: 3, y: 0 },
+      ],
+      houses: [],
+      houseFacade: { door: { x: 0, y: 0, z: 0 }, windows: [] },
+      trees: [],
+      bushes: [],
+      rocks: [],
+      lamps: [],
+      pier: PIER,
+      paths: [],
+    } satisfies Omit<RiverEnvironmentDefinition, "ground">;
+    const g = { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 };
+    expect(() => resolveRiverEnvironment({ ...base, ground: g })).not.toThrow();
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: -1 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: 3 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: Number.NaN } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, radius: 10 } })).toThrow(/enclose/);
   });
 });

@@ -19,11 +19,12 @@ export const SCENE_CAMERA_NEAR = 0.1;
 export const SCENE_CAMERA_FAR = 40;
 /**
  * MFW-54: view-plane rectangle (world units, centred on the camera focus) that always stays in view; the base zoom is the largest
- * that fits it ("contain"). PLACEHOLDER (spec silent; owner reviews from screenshots): 7.2 wide holds the whole pier deck
- * (|x| ≤ 3.2 in the default view) with a margin, 4.9 high ≈ the old 256-px viewport at SCENE_CAMERA_ZOOM.
+ * that fits it ("contain"). PLACEHOLDER (spec silent; owner reviews from screenshots): 7.4 wide holds the whole pier deck
+ * (|x| ≤ 3.68 in the default view since the MFW-49 wider channel; MFW-54 shipped 7.2 for |x| ≤ 3.2) and keeps the framed zoom
+ * ≥ SCENE_CAMERA_ZOOM at 390 px wide (390 / 7.4 ≈ 52.7); 4.9 high ≈ the old 256-px viewport at SCENE_CAMERA_ZOOM.
  * sceneFraming.test.ts pins that the pier and both banks stay inside.
  */
-export const SCENE_FRAME_VIEW_SIZE = Object.freeze({ width: 7.2, height: 4.9 });
+export const SCENE_FRAME_VIEW_SIZE = Object.freeze({ width: 7.4, height: 4.9 });
 /** MFW-54: big screens show more world instead of a bigger krathong. PLACEHOLDER: 2 → 1440×900 shows ≈ 13.8 × 8.7 units (the old desktop viewport showed ≈ 13.5 across). */
 export const SCENE_CAMERA_ZOOM_MAX_FACTOR = 2;
 export const SCENE_CAMERA_ZOOM_MAX = SCENE_CAMERA_ZOOM * SCENE_CAMERA_ZOOM_MAX_FACTOR;

@@ -1,5 +1,13 @@
 import { createRiverLane, splineProgressToWorld } from "@/core/coordinates";
 import type { RiverLane, WorldVec3, WorldXZ } from "@/core/coordinates";
+import {
+  assertBankProfile,
+  bankSurfaceY,
+  buildBankProfileGeometryData,
+  type BankGeometryData,
+  type BankProfilePoint,
+} from "./bankProfile";
+import { assertRiversidePath, type RiversidePathDefinition } from "./riversidePaths";
 
 /** The channel reuses the lane curve machinery; this id is never matched against a SplinePathCoord. */
 export const RIVER_CHANNEL_CURVE_ID = 0;
@@ -30,17 +38,53 @@ export interface PierDefinition {
   readonly releaseInset: number; // > 0, release point distance beyond the tip, over water
   readonly pileAlongFractions: readonly number[]; // each in (0, 1]: fraction of overWaterLength from the water edge
 }
+export type HouseRoofKind = "pyramid" | "gable";
+export const HOUSE_ROOF_KINDS: readonly HouseRoofKind[] = Object.freeze(["pyramid", "gable"] as const);
+export interface HousePlacement extends BankPlacement {
+  readonly roof: HouseRoofKind;
+}
+/** Offset in a prop's local frame (local +Z = the prop's front), multiplied by the instance scale. */
+export interface LocalOffset {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+export interface HouseFacadeDefinition {
+  readonly door: LocalOffset;
+  readonly windows: readonly LocalOffset[];
+}
+/**
+ * Flat ground under the whole diorama (below the water), so no viewport shows the background. It has a hole shaped like the
+ * river + banks outline (pulled in by holeMargin), so the ground never shades pixels the water or banks cover.
+ */
+export interface RiverGroundDefinition {
+  readonly radius: number; // finite > 0
+  readonly y: number; // < min(waterSurfaceY, bankProfile[0].y)
+  readonly segments: number; // integer >= 3
+  /** The hole edge stays this far (world units) inside the banks' outer boundary, so no gap shows under a bank edge. [0, bankWidth). */
+  readonly holeMargin: number;
+}
+/** Resolved ground: a disc of `radius` with a hole following the bank outline (`buildGroundHoleOutline`; empty = no hole). */
+export interface RiverGroundLayout extends RiverGroundDefinition {
+  readonly hole: readonly WorldXZ[];
+}
 export interface RiverEnvironmentDefinition {
   readonly channel: RiverChannelDefinition;
   readonly waterSurfaceY: number;
-  readonly bankTopY: number;
+  readonly bankTopY: number; // village terrace height (the flat part of bankProfile)
   readonly bankWidth: number; // > 0
   readonly waterUnderlap: number; // >= 0 and < bankWidth: water extends this far under each bank
   readonly ribbonSegments: number; // integer >= 1
-  readonly houses: readonly BankPlacement[];
+  readonly bankProfile: readonly BankProfilePoint[]; // bank cross-section, last offset === bankWidth
+  readonly ground: RiverGroundDefinition;
+  readonly houses: readonly HousePlacement[];
+  readonly houseFacade: HouseFacadeDefinition;
   readonly trees: readonly BankPlacement[];
+  readonly bushes: readonly BankPlacement[];
+  readonly rocks: readonly BankPlacement[];
   readonly lamps: readonly BankPlacement[];
   readonly pier: PierDefinition;
+  readonly paths: readonly RiversidePathDefinition[]; // MFW-50 walking paths (config only, not drawn)
 }
 export interface InstanceTransform {
   readonly position: WorldVec3; // instance base (derived, never persisted)
@@ -77,12 +121,21 @@ export interface RiverFrame {
 export interface RiverEnvironmentLayout {
   readonly channel: RiverLane;
   readonly waterSurfaceY: number;
-  readonly bankTopY: number;
+  readonly bankTopY: number; // village terrace height
+  readonly ribbonSegments: number;
+  readonly bankProfile: readonly BankProfilePoint[];
+  readonly ground: RiverGroundLayout;
   readonly water: RibbonGeometryData;
-  readonly banks: { readonly left: RibbonGeometryData; readonly right: RibbonGeometryData };
+  readonly banks: { readonly left: BankGeometryData; readonly right: BankGeometryData };
   readonly houses: readonly InstanceTransform[];
+  readonly housesByRoof: Readonly<Record<HouseRoofKind, readonly InstanceTransform[]>>;
+  readonly houseDoors: readonly InstanceTransform[];
+  readonly houseWindows: readonly InstanceTransform[];
   readonly trees: readonly InstanceTransform[];
+  readonly bushes: readonly InstanceTransform[];
+  readonly rocks: readonly InstanceTransform[];
   readonly lamps: readonly InstanceTransform[];
+  readonly paths: readonly RiversidePathDefinition[];
   readonly pier: PierLayout;
   readonly bounds: WorldBoundsXZ; // union of the water and both bank ribbons; for a future pan clamp
 }
@@ -164,7 +217,7 @@ export function buildRibbonGeometryData(
   return { positions, indices, vertexCount };
 }
 
-export function ribbonBoundsXZ(data: RibbonGeometryData): WorldBoundsXZ {
+export function ribbonBoundsXZ(data: Pick<RibbonGeometryData, "positions" | "vertexCount">): WorldBoundsXZ {
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -241,33 +294,130 @@ export function resolvePierLayout(channel: RiverLane, pier: PierDefinition, wate
   };
 }
 
+/**
+ * Features on each house's front (door, windows), house by house then offset by offset: position = house.position +
+ * R_y(house.yawRad)·(offset·house.scale), with R_y(θ)(x, z) = (x cos θ + z sin θ, −x sin θ + z cos θ); yaw and scale are the house's.
+ */
+export function resolveHouseFeatures(
+  houses: readonly InstanceTransform[],
+  offsets: readonly LocalOffset[],
+): InstanceTransform[] {
+  const out: InstanceTransform[] = [];
+  for (const house of houses) {
+    const cos = Math.cos(house.yawRad);
+    const sin = Math.sin(house.yawRad);
+    for (const o of offsets) {
+      const x = o.x * house.scale;
+      const z = o.z * house.scale;
+      out.push({
+        position: {
+          x: house.position.x + x * cos + z * sin,
+          y: house.position.y + o.y * house.scale,
+          z: house.position.z - x * sin + z * cos,
+        },
+        yawRad: house.yawRad,
+        scale: house.scale,
+      });
+    }
+  }
+  return out;
+}
+
+function assertGround(def: RiverEnvironmentDefinition): void {
+  const { ground } = def;
+  requirePositive(ground.radius, "ground radius");
+  requireFinite(ground.y, "ground y");
+  requireFinite(ground.holeMargin, "ground holeMargin");
+  if (ground.holeMargin < 0 || ground.holeMargin >= def.bankWidth) throw new RangeError("ground holeMargin must be >= 0 and < bankWidth");
+  if (!Number.isInteger(ground.segments) || ground.segments < 3) throw new RangeError("ground segments must be an integer >= 3");
+  if (!(ground.y < Math.min(def.waterSurfaceY, def.bankProfile[0].y))) {
+    throw new RangeError("ground y must be below the water surface and the bank profile");
+  }
+}
+
+/**
+ * Outline of the ground's hole (xz, counter-clockwise or clockwise, closed implicitly): the banks' outer edges pulled in by
+ * `holeMargin`, from channel row 1 to row segments − 1 on the left bank and back on the right bank. The hole therefore lies under
+ * the water and banks (rows 0 and `segments` stay covered by the ground under the river ends), so the ground never shades a pixel
+ * the water or a bank covers. Empty (no hole) with fewer than 3 segments.
+ */
+export function buildGroundHoleOutline(
+  channel: RiverLane,
+  bankWidth: number,
+  holeMargin: number,
+  segments: number,
+): WorldXZ[] {
+  if (!Number.isInteger(segments) || segments < 3) return [];
+  const lateral = channel.width / 2 + bankWidth - holeMargin;
+  const out: WorldXZ[] = [];
+  const at = (i: number, side: BankSide) => {
+    const { centerline: c, right } = riverFrameAt(channel, i / segments);
+    out.push({ x: c.x + right.x * side * lateral, z: c.z + right.z * side * lateral });
+  };
+  for (let i = 1; i < segments; i++) at(i, -1);
+  for (let i = segments - 1; i >= 1; i--) at(i, 1);
+  return out;
+}
+
 export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverEnvironmentLayout {
   requirePositive(def.bankWidth, "bankWidth");
   requireFinite(def.waterUnderlap, "waterUnderlap");
   if (def.waterUnderlap < 0 || def.waterUnderlap >= def.bankWidth) {
     throw new RangeError("waterUnderlap must be >= 0 and < bankWidth");
   }
-  const lists = { houses: def.houses, trees: def.trees, lamps: def.lamps } as const;
+  assertBankProfile(def.bankProfile, def.bankWidth, def.waterSurfaceY);
+  assertGround(def);
+  const lists = {
+    houses: def.houses,
+    trees: def.trees,
+    bushes: def.bushes,
+    rocks: def.rocks,
+    lamps: def.lamps,
+  } as const;
   for (const [name, list] of Object.entries(lists)) {
     list.forEach((p, index) => {
       if (p.setback >= def.bankWidth) throw new RangeError(`${name}[${index}].setback must be < bankWidth`);
     });
   }
+  def.houses.forEach((h, index) => {
+    if (!HOUSE_ROOF_KINDS.includes(h.roof)) throw new RangeError(`houses[${index}].roof must be one of ${HOUSE_ROOF_KINDS.join(", ")}`);
+  });
+  const pathIds = new Set<number>();
+  for (const path of def.paths) {
+    assertRiversidePath(path, def.bankWidth);
+    if (pathIds.has(path.pathId)) throw new RangeError(`duplicate path pathId ${path.pathId}`);
+    pathIds.add(path.pathId);
+  }
   const channel = createRiverChannel(def.channel);
   const half = def.channel.width / 2;
   const water = buildRibbonGeometryData(channel, -(half + def.waterUnderlap), half + def.waterUnderlap, def.ribbonSegments);
-  const left = buildRibbonGeometryData(channel, -(half + def.bankWidth), -half, def.ribbonSegments);
-  const right = buildRibbonGeometryData(channel, half, half + def.bankWidth, def.ribbonSegments);
-  const resolve = (list: readonly BankPlacement[]) => list.map((p) => resolveBankPlacement(channel, p, def.bankTopY));
+  const left = buildBankProfileGeometryData(channel, -1, def.bankProfile, def.ribbonSegments);
+  const right = buildBankProfileGeometryData(channel, 1, def.bankProfile, def.ribbonSegments);
+  const ground = buildGroundHoleOutline(channel, def.bankWidth, def.ground.holeMargin, def.ribbonSegments);
+  if (ground.some((p) => Math.hypot(p.x, p.z) >= def.ground.radius)) throw new RangeError("ground radius must enclose the river outline");
+  const resolve = (list: readonly BankPlacement[]) =>
+    list.map((p) => resolveBankPlacement(channel, p, bankSurfaceY(def.bankProfile, p.setback)));
+  const houses = resolve(def.houses);
+  const housesByRoof: Record<HouseRoofKind, InstanceTransform[]> = { pyramid: [], gable: [] };
+  def.houses.forEach((h, i) => housesByRoof[h.roof].push(houses[i]));
   return {
     channel,
     waterSurfaceY: def.waterSurfaceY,
     bankTopY: def.bankTopY,
+    ribbonSegments: def.ribbonSegments,
+    bankProfile: def.bankProfile,
+    ground: { ...def.ground, hole: ground },
     water,
     banks: { left, right },
-    houses: resolve(def.houses),
+    houses,
+    housesByRoof,
+    houseDoors: resolveHouseFeatures(houses, [def.houseFacade.door]),
+    houseWindows: resolveHouseFeatures(houses, def.houseFacade.windows),
     trees: resolve(def.trees),
+    bushes: resolve(def.bushes),
+    rocks: resolve(def.rocks),
     lamps: resolve(def.lamps),
+    paths: def.paths,
     pier: resolvePierLayout(channel, def.pier, def.waterSurfaceY),
     bounds: mergeBoundsXZ(mergeBoundsXZ(ribbonBoundsXZ(water), ribbonBoundsXZ(left)), ribbonBoundsXZ(right)),
   };

@@ -14,6 +14,7 @@ import { prepareRiverItems, selectVisibleRiverItems } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { BLOB_SHADOW_LOOK } from "@/config/look.config";
+import { RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 
 const pick = vi.hoisted(() => ({ override: null as string | null }));
@@ -56,6 +57,8 @@ vi.mock("@/components/models/loyKrathong", async (importOriginal) => {
 });
 
 const blobMeshes = vi.hoisted(() => ({ list: [] as import("three").InstancedMesh[] }));
+/** Latest recorded fan mesh with this name (since MFW-49 the krathong ripples share the blob mesh factory). */
+const fanMesh = (name: string) => [...blobMeshes.list].reverse().find((m) => m.name === name);
 
 /** Records the river blob mesh so the test can read its instances (the DOM stub cannot). */
 vi.mock("./blobShadowMeshes", async (importOriginal) => {
@@ -525,7 +528,7 @@ describe("river blob shadows (MFW-47)", () => {
     const view = render(withBlobs(three));
     expect(view.container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toHaveLength(1);
     r3f.frame!();
-    const mesh = blobMeshes.list.at(-1)!;
+    const mesh = fanMesh(SCENE_OBJECT_NAMES.riverBlobShadows)!;
     expect(mesh.count).toBe(3);
     const m = new Matrix4();
     mesh.getMatrixAt(0, m);
@@ -539,12 +542,97 @@ describe("river blob shadows (MFW-47)", () => {
   it("an empty river shows no blobs", () => {
     render(withBlobs([]));
     r3f.frame!();
-    expect(blobMeshes.list.at(-1)!.count).toBe(0);
+    expect(fanMesh(SCENE_OBJECT_NAMES.riverBlobShadows)!.count).toBe(0);
   });
 
   it("without shadowSurfaceY there is no blob mesh", () => {
     const view = render(ui());
     expect(view.container.querySelector(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toBeNull();
     expect(blobMeshes.list).toHaveLength(0);
+  });
+});
+
+describe("krathong ripples (MFW-49 AC4)", () => {
+  const three = [mk("a"), mk("b", 1, 0.5), mk("c", 1, 0.7)];
+  const withRipples = (list: readonly RiverFlowItem[], reducedMotion = false, surface: { y?: number } = { y: -0.24 }) => (
+    <RiverFlow items={list} lanes={lanes} shadows reducedMotion={reducedMotion} now={() => NOW} shadowSurfaceY={surface.y} />
+  );
+  const sel = `[name="${SCENE_OBJECT_NAMES.krathongRipples}"]`;
+  beforeEach(() => {
+    blobMeshes.list.length = 0;
+  });
+  afterEach(() => useDeviceStore.setState(useDeviceStore.getInitialState(), true));
+
+  it.each(["HIGH", "MEDIUM"] as const)("%s with shadowSurfaceY renders the ripple rings", (tier) => {
+    useDeviceStore.getState().setQualityTier(tier);
+    const view = render(withRipples(three));
+    expect(view.container.querySelectorAll(sel)).toHaveLength(1);
+  });
+
+  it("LOW (the cheap variant) has no ripples", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const view = render(withRipples(three));
+    expect(view.container.querySelector(sel)).toBeNull();
+    expect(fanMesh(SCENE_OBJECT_NAMES.krathongRipples)).toBeUndefined();
+  });
+
+  it("no shadowSurfaceY: no ripples", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const view = render(withRipples(three, false, {}));
+    expect(view.container.querySelector(sel)).toBeNull();
+  });
+
+  it("a frame writes one ring at each krathong's xz, on the water", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const view = render(withRipples(three));
+    r3f.frame!();
+    const mesh = fanMesh(SCENE_OBJECT_NAMES.krathongRipples)!;
+    expect(mesh.count).toBe(3);
+    const m = new Matrix4();
+    ["a", "b", "c"].forEach((id, i) => {
+      mesh.getMatrixAt(i, m);
+      const p = new Vector3().setFromMatrixPosition(m);
+      const node = el(view.container, id);
+      expect(p.x).toBeCloseTo(node.position.x, 5);
+      expect(p.z).toBeCloseTo(node.position.z, 5);
+      expect(p.y).toBeCloseTo(-0.24 + RIVER_WATER_HIGHLIGHTS.liftY, 6);
+    });
+  });
+
+  it("reduced motion: the ring keeps the constant radius on two different frames", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(withRipples(three, true));
+    const radiusAt = () => {
+      r3f.frame!();
+      const m = new Matrix4();
+      fanMesh(SCENE_OBJECT_NAMES.krathongRipples)!.getMatrixAt(0, m);
+      return new Vector3().setFromMatrixScale(m).x;
+    };
+    const first = radiusAt();
+    NOW += 700;
+    const second = radiusAt();
+    expect(first).toBeCloseTo(RIVER_WATER_HIGHLIGHTS.ripple.radius, 6);
+    expect(second).toBeCloseTo(RIVER_WATER_HIGHLIGHTS.ripple.radius, 6);
+  });
+
+  it("motion on: the ring pulses between frames", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(withRipples(three, false));
+    const radiusAt = () => {
+      r3f.frame!();
+      const m = new Matrix4();
+      fanMesh(SCENE_OBJECT_NAMES.krathongRipples)!.getMatrixAt(0, m);
+      return new Vector3().setFromMatrixScale(m).x;
+    };
+    const first = radiusAt();
+    NOW += 700;
+    expect(radiusAt()).not.toBeCloseTo(first, 4);
+  });
+
+  it("an empty river commits zero rings", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(withRipples([]));
+    r3f.frame!();
+    expect(fanMesh(SCENE_OBJECT_NAMES.krathongRipples)!.count).toBe(0);
   });
 });

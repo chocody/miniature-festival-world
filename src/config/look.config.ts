@@ -15,12 +15,12 @@ export const LOOK_PALETTE = Object.freeze({
   grass: "#A7BA96", // lit land (ref: top-left and right land)
   grassShade: "#5E6D54", // land in contact shade under trees (ref) — reserved for 9.3
   water: "#90AAAE", // river body (ref)
-  waterLight: "#ACC3C7", // river highlight (ref, near-bank sparkle) — reserved for 9.3
-  waterDeep: "#546970", // water in shade by the bank / under the pier (ref) — reserved for 9.3
+  waterLight: "#ACC3C7", // river highlight (ref, near-bank sparkle) — used since MFW-49 (water highlights)
+  waterDeep: "#546970", // water in shade by the bank / under the pier (ref) — used since MFW-49 (window glass)
   wallCream: "#E4D4B3", // house walls (ref)
   roofTeal: "#718C86", // left house roof (ref)
-  roofTerracotta: "#D1936B", // right house roof (ref) — reserved for 9.3 (one roof material today)
-  doorWood: "#B9815A", // doors, crates (ref) — reserved for 9.3; krathong incense sticks (MFW-48)
+  roofTerracotta: "#D1936B", // right house roof (ref) — used since MFW-49 (gable roofs)
+  doorWood: "#B9815A", // doors, crates (ref) — used since MFW-49 (house doors); krathong incense sticks (MFW-48)
   woodLight: "#D4AE82", // pier deck planks (ref)
   woodDark: "#725F46", // pier posts, lamp posts (ref)
   trunk: "#7C5D40", // tree trunks (ref)
@@ -38,6 +38,7 @@ export const LOOK_PALETTE = Object.freeze({
   shadowTint: "#40564A", // blob-shadow tint: dark sage, never black (ref contact shadows #5E6D54 / #475C60)
   daySky: "#D8E4CF", // DAY canvas background (pale sage haze)
   nightSky: "#2E3E63", // NIGHT canvas background (deep periwinkle, not black)
+  stone: "#B9B7A8", // rocks; not in the reference, DRAFT (MFW-49)
 });
 
 export const LIGHT_PRESET_IDS = ["DAY", "NIGHT"] as const;
@@ -179,3 +180,33 @@ export const LOOK_MIN_LIT_LUMINANCE = 0.025;
 
 /** Lead guard for "pastel, no near-black albedo" on environment materials (WCAG relative luminance). */
 export const LOOK_MIN_ALBEDO_LUMINANCE = 0.1;
+
+/** Village light levels per preset (MFW-49, backlog 9.3 AC3). */
+export interface VillageLightLevels {
+  readonly windowEmissiveIntensity: number;
+  readonly lanternEmissiveIntensity: number;
+  readonly lampLightPools: boolean;
+}
+
+/** AC3: lit at NIGHT, off at DAY. Emissive is a uniform, so a preset switch recompiles nothing. DRAFT. */
+export const VILLAGE_LIGHTS: Readonly<Record<LightPresetId, VillageLightLevels>> = Object.freeze({
+  DAY: Object.freeze({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0, lampLightPools: false }),
+  NIGHT: Object.freeze({ windowEmissiveIntensity: 0.9, lanternEmissiveIntensity: 1.2, lampLightPools: true }),
+});
+
+/** Warm additive pool of light on the ground under each lamp, NIGHT only (vertex-alpha fan, no light). DRAFT. */
+export const LAMP_LIGHT_POOL_LOOK = Object.freeze({
+  color: LOOK_PALETTE.lanternGlow,
+  opacity: 0.35,
+  radius: 0.55,
+  liftY: 0.008,
+  additive: true,
+});
+
+/** Stylized water highlights (shore band, drifting glints, krathong ripple rings; MFW-49, AC4). DRAFT. */
+export const WATER_HIGHLIGHT_LOOK = Object.freeze({
+  color: LOOK_PALETTE.waterLight,
+  shoreOpacity: 0.55,
+  glintOpacity: 0.6,
+  rippleOpacity: 0.5,
+});

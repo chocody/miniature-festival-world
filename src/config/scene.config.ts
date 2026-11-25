@@ -39,7 +39,10 @@ export type PartGeometrySpec =
       readonly height: number;
       readonly radialSegments: number;
     }
-  | { readonly kind: "icosahedron"; readonly radius: number; readonly detail?: number } // detail default 0 (20 faces)
+  // detail default 0 (20 faces); scaleY = vertical squash, default 1 (MFW-49 bushes and rocks)
+  | { readonly kind: "icosahedron"; readonly radius: number; readonly detail?: number; readonly scaleY?: number }
+  // Triangular prism (MFW-49 gable roof): ridge along local x, base at y = -height/2, ridge at +height/2.
+  | { readonly kind: "gable"; readonly width: number; readonly depth: number; readonly height: number }
   | {
       readonly kind: "roundedBox";
       readonly width: number;
