@@ -15,6 +15,8 @@ export interface WorldState {
   zoneItems: readonly PublicCreation[];
   /** Creation the camera follows (set by MFW-30 Find My); always rendered even above the tier cap. */
   focusedCreationId: string | null;
+  /** Incremented by MFW-30 Find My on every focus request (selecting the same krathong again flies again). Monotonic per world session. */
+  focusRequestId: number;
 }
 
 export const NO_ZONE_ITEMS: readonly PublicCreation[] = Object.freeze([]);
@@ -27,6 +29,7 @@ export const INITIAL_WORLD_STATE: Readonly<WorldState> = Object.freeze({
   zoneStatus: "idle",
   zoneItems: NO_ZONE_ITEMS,
   focusedCreationId: null,
+  focusRequestId: 0,
 });
 
 export const useWorldStore = create<WorldState>()(() => ({ ...INITIAL_WORLD_STATE }));

@@ -38,3 +38,17 @@ export {
   type CreateCreationRequestBody,
   type CreateCreationResponseBody,
 } from "./createCreationTypes";
+export {
+  createReportSession,
+  getReportSession,
+  type ReportFetch,
+  type ReportSession,
+  type ReportSubmitOutcome,
+} from "./reportClient";
+export {
+  OWNER_WISH_REVEAL_BODY_KEYS,
+  OWNER_WISH_REVEAL_PATH,
+  type OwnerWishRevealErrorBody,
+  type OwnerWishRevealRequestBody,
+  type OwnerWishRevealResponseBody,
+} from "./ownerWishRevealTypes";

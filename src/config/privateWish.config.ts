@@ -29,3 +29,14 @@ export const PRIVATE_WISH_AAD_SEPARATOR = "|";
  * In-memory rows die with the process, and so does this key. Reserved: the env key id may not use it.
  */
 export const PRIVATE_WISH_EPHEMERAL_KEY_ID = "ephemeral";
+
+/**
+ * Server-only env var (never NEXT_PUBLIC) listing RETIRED keys that may still decrypt (owner decision 2: rotation).
+ * Format: "<keyId>:<base64 key>[,<keyId>:<base64 key>…]" — each id matches PRIVATE_WISH_KEY_ID_PATTERN, is not the ephemeral id and differs from the
+ * current PRIVATE_WISH_KEY_ID; each key is standard base64 of 32 bytes. Empty / unset = no retired keys. Retired keys never encrypt.
+ */
+export const PRIVATE_WISH_RETIRED_KEYS_ENV = "PRIVATE_WISH_RETIRED_KEYS";
+export const PRIVATE_WISH_RETIRED_KEYS_SEPARATOR = ",";
+export const PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR = ":";
+/** Technical bound on the retired list (each entry is one key import per process). Lead decision MFW-31. */
+export const PRIVATE_WISH_RETIRED_KEYS_MAX = 8;

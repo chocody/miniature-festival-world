@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrthographicCamera, Vector3 } from "three";
 import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
@@ -17,11 +17,22 @@ import {
 import { getPinchZoomFactor, type CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { useUIStore } from "@/store/useUIStore";
+import { INITIAL_RITUAL_STATE, buildReleaseCoord, type RitualState, type SavedRelease } from "@/core/ritual";
+import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
-import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes } from "@/core/world";
+import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes, getRiverItemPositionAt } from "@/core/world";
+import { getCameraFlightPose } from "@/core/camera";
+import { HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
+import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
+import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
+import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
+import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import {
   getSceneRenderSettings,
@@ -51,11 +62,65 @@ vi.mock("@/components/models/loyKrathong/krathongAssets", async (importOriginal)
   };
 });
 
+const tapStub = vi.hoisted(() => ({ value: { x: 0.5, z: 0 } as { x: number; z: number } | null }));
+
+vi.mock("./effects/tapPoint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./effects/tapPoint")>()),
+  tapPointInParentSpace: () => tapStub.value,
+}));
+
+const release = vi.hoisted(() => ({
+  starts: [] as { name: string; immediate: boolean; from?: { value: number }; onRest?: () => void }[],
+}));
+
+/** Wrap the real release choreography so the test sees what reaches each spring api (and can finish a lowering by hand). */
+vi.mock("@/core/ritual/releaseMotion", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/ritual/releaseMotion")>();
+  return {
+    ...actual,
+    createReleaseMotion: (apis: Parameters<typeof actual.createReleaseMotion>[0], reduced: boolean, base: number) => {
+      const wrap = (name: keyof typeof apis) => ({
+        start: (o: Parameters<(typeof apis)["lower"]["start"]>[0]) => {
+          release.starts.push({ name, immediate: o.immediate, from: o.from, onRest: o.onRest });
+          apis[name].start(o);
+        },
+      });
+      return actual.createReleaseMotion(
+        { lower: wrap("lower"), settle: wrap("settle"), bump: wrap("bump"), candle: wrap("candle") },
+        reduced,
+        base,
+      );
+    },
+  };
+});
+
+const riverRenders = vi.hoisted(() => ({ count: 0 }));
+
+/** Counts how often the scene re-renders RiverFlow (memoised: a drag must not do it per pointer-move). */
+vi.mock("./RiverFlow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./RiverFlow")>();
+  const React = await import("react");
+  return {
+    ...actual,
+    RiverFlow: (props: React.ComponentProps<typeof actual.RiverFlow>) => {
+      riverRenders.count += 1;
+      return React.createElement(actual.RiverFlow, props);
+    },
+  };
+});
+
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
   camera: null as OrthographicCamera | null,
-  flightStarts: [] as { immediate: boolean }[],
+  flightStarts: [] as { immediate: boolean; to?: object }[],
   bounceStarts: [] as { immediate: boolean; from?: { scale: number }; to: { scale: number } }[],
+  gl: {
+    info: {
+      memory: { geometries: 3, textures: 0 },
+      render: { calls: 12, triangles: 400, frame: 7 },
+      programs: [{}, {}],
+    },
+  },
 }));
 
 /**
@@ -75,7 +140,7 @@ vi.mock("@react-three/fiber", async () => {
     shadows?: boolean;
     gl?: { antialias?: boolean };
     dpr: readonly [number, number];
-    onCreated?: (state: { camera: OrthographicCamera; invalidate: () => void }) => void;
+    onCreated?: (state: { camera: OrthographicCamera; invalidate: () => void; gl: typeof r3f.gl }) => void;
   }) {
     const [camera] = React.useState(() => new THREE.OrthographicCamera());
     r3f.cameraProps.push(props.camera);
@@ -85,7 +150,7 @@ vi.mock("@react-three/fiber", async () => {
     }, [camera, props.camera]);
     React.useEffect(() => {
       r3f.camera = camera;
-      onCreated?.({ camera, invalidate: noop });
+      onCreated?.({ camera, invalidate: noop, gl: r3f.gl });
     }, [camera, onCreated]);
     return React.createElement(
       "div",
@@ -170,12 +235,19 @@ const krathongMesh = (c: HTMLElement) => c.querySelector('[name="scene-krathong"
 const krathongTarget = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.krathong}"]`)!;
 const yaw = (c: HTMLElement) => Number(krathongTarget(c).getAttribute("rotation")!.split(",")[1]);
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 beforeEach(() => {
+  tapStub.value = { x: 0.5, z: 0 };
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
+  useUIStore.setState(useUIStore.getInitialState(), true);
+  release.starts.length = 0;
+  riverRenders.count = 0;
   assets.created = 0;
   assets.disposed = 0;
   r3f.cameraProps.length = 0;
@@ -306,12 +378,14 @@ describe("scene pointer flow (stub R3F context)", () => {
   it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("%s taps never select a target or fly the camera", (mode) => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(<SceneViewport mode={mode} />);
+    const before = r3f.flightStarts.length;
+    expect(before).toBe(mode === "RITUAL_RELEASE" ? 1 : 0);
     fireEvent.click(waterMesh(container));
     fireEvent.click(krathongMesh(container));
     fireEvent.click(lampMesh(container));
     expect(viewport()).not.toHaveAttribute("data-selected-target");
     expect(container.querySelector("ringGeometry")).toBeNull();
-    expect(r3f.flightStarts).toHaveLength(0);
+    expect(r3f.flightStarts).toHaveLength(before);
   });
 
   it("only WORLD_EXPLORE taps select a target and fly the camera", () => {
@@ -359,14 +433,16 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(container.querySelector("ringGeometry")).toBeNull();
   });
 
-  it("ritual chip drag releases only past the drag threshold", () => {
+  const rect = () =>
+    vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 256 }));
+  const chipEl = () => screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+
+  it("a drag onto the water releases there", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const onRelease = vi.fn();
-    render(<SceneViewport mode="RITUAL_RELEASE" onGestureRelease={onRelease} />);
-    vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue(
-      DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 256 }),
-    );
-    const chip = screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={onRelease} />);
+    rect();
+    const chip = chipEl();
 
     fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
     fireEvent.pointerMove(chip, { pointerId: 1, clientX: 163, clientY: 144 });
@@ -374,9 +450,201 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(onRelease).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(chip, { pointerId: 2, clientX: 160, clientY: 140 });
-    fireEvent.pointerMove(chip, { pointerId: 2, clientX: 160, clientY: 200 });
-    fireEvent.pointerUp(viewport(), { pointerId: 2, clientX: 160, clientY: 200 });
+    fireEvent.pointerMove(chip, { pointerId: 2, clientX: 160, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 2, clientX: 160, clientY: 100 });
     expect(onRelease).toHaveBeenCalledTimes(1);
+    const want = createRitualDropMapper().mapDrop({ x: 50, y: 50 - (40 / 256) * 100 }, { width: 320, height: 256 }, 1)!.candidate;
+    const got = onRelease.mock.calls[0][0];
+    expect(got.laneId).toBe(want.laneId);
+    expect(got.progress).toBeCloseTo(want.progress, 9);
+    expect(got.lateralOffset).toBeCloseTo(want.lateralOffset, 9);
+  });
+
+  it("a drag of many pointer-moves does not re-render RiverFlow per move", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    act(() => {
+      useWorldStore.setState({
+        eventId: "loy_krathong",
+        currentZoneId: 1,
+        zoneCount: 1,
+        zoneStatus: "ready",
+        zoneItems: [storeItemFor(1)],
+      });
+    });
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={vi.fn()} />);
+    rect();
+    const chip = chipEl();
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 130 });
+    const afterStart = riverRenders.count;
+    expect(afterStart).toBeGreaterThan(0);
+    for (let i = 1; i <= 20; i++) fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 130 - i });
+    expect(riverRenders.count).toBe(afterStart);
+    expect(chipEl().style.top).not.toBe("50%"); // the chip follows by direct DOM writes
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 160, clientY: 110 });
+  });
+
+  it("reserves a slot for the own krathong on the pier (80 shared items give 79)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    act(() => {
+      useWorldStore.setState({
+        eventId: "loy_krathong",
+        currentZoneId: 1,
+        zoneCount: 1,
+        zoneStatus: "ready",
+        zoneItems: Array.from({ length: 80 }, (_, i) => storeItemFor(i + 1)),
+      });
+    });
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(79);
+  });
+
+  it("a drop on the bank does not release", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const onRelease = vi.fn();
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={onRelease} />);
+    rect();
+    const chip = chipEl();
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerMove(chip, { pointerId: 1, clientX: 160, clientY: 200 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 160, clientY: 200 });
+    expect(onRelease).not.toHaveBeenCalled();
+    expect(useUIStore.getState().ritual.hint).toBe("DROP_ON_WATER");
+    expect(chipEl()).toHaveStyle({ left: "50%", top: "50%" });
+  });
+});
+
+const storeItemFor = (i: number): PublicCreation => ({
+  id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+  eventId: "loy_krathong",
+  zoneId: 1,
+  appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+  coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+  publicWishText: null,
+  createdAt: "2026-11-24T12:00:00.000Z",
+  expiresAt: "2099-01-01T00:00:00.000Z",
+});
+
+const savedRelease = (patch: Partial<SavedRelease> = {}): SavedRelease => ({
+  id: "own-creation",
+  zoneId: 1,
+  coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT),
+  createdAtMs: 1_700_000_000_000,
+  serverClockOffsetMs: 0,
+  movedByServer: false,
+  ...patch,
+});
+const setRitual = (patch: Partial<RitualState>) =>
+  act(() => {
+    useUIStore.setState({ ritual: { ...INITIAL_RITUAL_STATE, ...patch } });
+  });
+const ritualStart = () =>
+  act(() => {
+    useUIStore.getState().dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });
+  });
+
+describe("make and release ritual", () => {
+  it("RITUAL_RELEASE frames the pier once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts[0].immediate).toBe(false);
+    expect(container.querySelector("ringGeometry")).toBeNull();
+    expect(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierFocus}"]`)).not.toBeNull();
+    cleanup();
+    r3f.flightStarts.length = 0;
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts[0].immediate).toBe(true);
+  });
+
+  it("ritual preview: the own krathong stands on the pier with the only point light", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "PIER");
+    expect(container.querySelector('[name="scene-krathong-pose"] [name="scene-krathong"] pointLight')).not.toBeNull();
+    expect(container.querySelectorAll("pointLight, spotLight")).toHaveLength(1);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      expect(viewport().getAttribute(attr)).not.toContain("own-creation");
+    }
+  });
+
+  it("the chip hides while releasing", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(screen.getByRole("img", { name: "กระทง ลากลงน้ำ" })).toBeInTheDocument();
+    ritualStart();
+    expect(screen.queryByRole("img", { name: "กระทง ลากลงน้ำ" })).toBeNull();
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RELEASING");
+  });
+
+  it("touchdown ripples once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useDeviceStore.getState().setReducedMotion(true);
+    const { rerender } = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    ritualStart();
+    expect(useUIStore.getState().ritual.touchedDown).toBe(true);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    rerender(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+  });
+
+  it("the candle brightens at touchdown (instantly under reduced motion) and returns on failure", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    release.starts.length = 0;
+    ritualStart();
+    const candle = release.starts.filter((o) => o.name === "candle");
+    expect(candle).toHaveLength(1);
+    expect(candle[0].immediate).toBe(true);
+    act(() => {
+      useUIStore.getState().dispatchRitual({ type: "SAVE_FAILED", attempt: 1, error: { kind: "network" } });
+    });
+    expect(release.starts.filter((o) => o.name === "candle")).toHaveLength(2);
+  });
+
+  it("bump plays once", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    ritualStart();
+    act(() => {
+      useUIStore.getState().dispatchRitual({
+        type: "LANDING_RESOLVED",
+        attempt: 1,
+        landing: LOY_KRATHONG_PIER_RELEASE_SPOT,
+        collided: true,
+      });
+    });
+    const bumps = () => release.starts.filter((o) => o.name === "bump" && o.from !== undefined);
+    expect(bumps()).toHaveLength(0);
+    const lower = release.starts.filter((o) => o.name === "lower" && o.from !== undefined).at(-1)!;
+    act(() => lower.onRest!());
+    expect(bumps()).toHaveLength(1);
+    act(() => {
+      useUIStore.getState().dispatchRitual({ type: "SAVED", attempt: 1, saved: savedRelease({ movedByServer: true }) });
+    });
+    expect(bumps()).toHaveLength(1);
+  });
+
+  it("after the release the own krathong rides the river", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() });
+    const own = {
+      id: "own-creation",
+      coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT),
+      createdAtMs: 1_700_000_000_000,
+      appearance: DEFAULT_KRATHONG_APPEARANCE,
+    };
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[own]} />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RIVER");
+    expect(container.querySelector('[name="river-item-own-creation"]')).toBeNull();
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 2, zoneCount: 2, zoneStatus: "ready" });
+    });
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "HIDDEN");
   });
 });
 
@@ -589,5 +857,355 @@ describe("river flow in the scene", () => {
     };
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[x]} />);
     expect(riverGroups(container).map((g) => g.getAttribute("name"))).toEqual(["river-item-x"]);
+  });
+});
+
+describe("scene gimmicks (MFW-28)", () => {
+  const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const WISH = "ขอให้ครอบครัวมีความสุข";
+  const item = () => ({
+    id: ITEM_ID,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+    publicWishText: WISH,
+  });
+  const hit = (c: HTMLElement) => c.querySelector(`[name="river-hit-${ITEM_ID}"]`)!;
+
+  beforeEach(() => useDeviceStore.getState().setQualityTier("HIGH"));
+
+  it("water tap in WORLD_EXPLORE spawns a ripple", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+  });
+
+  it("a water tap without a hit point selects but spawns nothing", () => {
+    tapStub.value = null;
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(viewport()).not.toHaveAttribute("data-last-gimmick");
+  });
+
+  it("lamp tap lights the lamp", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const flights = r3f.flightStarts.length;
+    fireEvent.click(lampMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "lamp-glow");
+    expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
+    expect(r3f.flightStarts.length).toBe(flights + 1);
+  });
+
+  it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("%s taps spawn no gimmick", (mode) => {
+    const { container } = render(<SceneViewport mode={mode} riverItems={[item()]} />);
+    fireEvent.click(waterMesh(container));
+    fireEvent.click(lampMesh(container));
+    expect(viewport()).not.toHaveAttribute("data-last-gimmick");
+    expect(container.querySelectorAll('[name^="river-hit-"]')).toHaveLength(0);
+  });
+
+  it("river krathong tap opens the inspect popup", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+    fireEvent.click(hit(container));
+    const dialog = screen.getByRole("dialog", { name: INSPECT_POPUP_COPY.dialogTitle });
+    expect(dialog).toHaveTextContent(WISH);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "inspect");
+    expect(viewport().contains(dialog)).toBe(false);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      const value = viewport().getAttribute(attr)!;
+      expect(value).not.toContain(ITEM_ID);
+      expect(value).not.toContain(WISH);
+    }
+    fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the popup closes on mode change and when the item leaves", () => {
+    const items = [item()];
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<SceneViewport mode="RITUAL_RELEASE" riverItems={items} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("owner private wish reveal in the popup (MFW-31)", () => {
+  const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const item = (publicWishText: string | null) => ({
+    id: ITEM_ID,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+    publicWishText,
+  });
+  const hit = (c: HTMLElement) => c.querySelector(`[name="river-hit-${ITEM_ID}"]`)!;
+  let unregister: (() => void) | null = null;
+  beforeEach(() => useDeviceStore.getState().setQualityTier("HIGH"));
+  afterEach(() => {
+    unregister?.();
+    unregister = null;
+    vi.restoreAllMocks();
+  });
+
+  it("AC1: someone else's private krathong shows no reveal", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toHaveTextContent(INSPECT_POPUP_COPY.noPublicWish);
+    expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
+  });
+
+  it("AC2: own private krathong offers the reveal, with no request before the tap", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    unregister = registerOwnedCreationPredicate((id) => id === ITEM_ID);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
+    fireEvent.click(hit(container));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("own public krathong shows no reveal", () => {
+    unregister = registerOwnedCreationPredicate((id) => id === ITEM_ID);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item("ขอให้ทุกคนมีความสุข")]} />);
+    fireEvent.click(hit(container));
+    expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
+  });
+});
+
+describe("Find My (MFW-30)", () => {
+  const storeItem = (zoneId: number, i: number): PublicCreation => ({
+    id: `00000000-0000-4000-8000-${String(zoneId * 1000 + i).padStart(12, "0")}`,
+    eventId: "loy_krathong",
+    zoneId,
+    appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+    coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    publicWishText: null,
+    createdAt: "2026-11-24T12:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  const setWorld = (zoneId: number, items: PublicCreation[]) =>
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: zoneId, zoneCount: 3, zoneStatus: "ready", zoneItems: items });
+    });
+  const focus = (id: string | null, request: number) =>
+    act(() => useWorldStore.setState({ focusedCreationId: id, focusRequestId: request }));
+  const riverGroups = (c: HTMLElement) => [...c.querySelectorAll('[name^="river-item-"]')];
+  const anchor = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.findMyAnchor}"]`);
+  const expectedWorld = (c: PublicCreation) => {
+    const lanes = getLoyKrathongRiverLanes();
+    const [prepared] = prepareRiverItems([{ id: c.id, coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) }], lanes);
+    return getRiverItemPositionAt(prepared, lanes, Date.now())!.world;
+  };
+  const useAttributePositions = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(this: Element, target: Vector3) {
+        const [x = 0, y = 0, z = 0] = (this.getAttribute("position") ?? "0,0,0").split(",").map(Number);
+        target.set(x, y, z);
+        return target;
+      },
+    });
+  const restoreStub = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(target: Vector3) {
+        target.set(0, 0, 0);
+        return target;
+      },
+    });
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-9);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-11-24T12:00:30.000Z"));
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useAttributePositions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreStub();
+  });
+
+  it("a focus request flies to the krathong's current position", () => {
+    const items = [storeItem(2, 1), storeItem(2, 2)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[1].id, 1);
+    expect(viewport()).toHaveAttribute("data-selected-target", "riverKrathong");
+    expect(viewport()).toHaveAttribute("data-find-my", "following");
+    const node = anchor(container)!;
+    expect(container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!.contains(node)).toBe(true);
+    const world = expectedWorld(items[1]);
+    const [x, y, z] = node.getAttribute("position")!.split(",").map(Number);
+    near(x, world.x);
+    near(y, world.y);
+    near(z, world.z);
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    const flight = r3f.flightStarts[before];
+    expect(flight.immediate).toBe(false);
+    const pose = getCameraFlightPose(world);
+    for (const [k, v] of Object.entries(pose)) near((flight.to as Record<string, number>)[k], v);
+  });
+
+  it("reduced motion: the Find My flight is an instant cut", () => {
+    useDeviceStore.setState({ reducedMotion: true });
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    expect(r3f.flightStarts[before].immediate).toBe(true);
+  });
+
+  it("selecting the same krathong again flies again", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    focus(items[0].id, 2);
+    expect(r3f.flightStarts).toHaveLength(before + 2);
+  });
+
+  it("the highlight targets the focused krathong", () => {
+    const items = [storeItem(2, 1), storeItem(2, 2)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(container.querySelector("ringgeometry")).toBeNull();
+    focus(items[1].id, 1);
+    expect(viewport()).toHaveAttribute("data-selected-target", "riverKrathong");
+    const ring = container.querySelector("ringgeometry")!;
+    const { innerRadius, outerRadius } = HIGHLIGHT_RING_SIZES.riverKrathong;
+    expect(ring.getAttribute("args")!.startsWith(`${innerRadius},${outerRadius},`)).toBe(true);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(viewport()).not.toHaveAttribute("data-find-my");
+    expect(container.querySelector(`[name="river-item-${items[1].id}"]`)).not.toBeNull();
+  });
+
+  it("a zone switch drops the focus", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(items[0].id, 1);
+    expect(anchor(container)).not.toBeNull();
+    act(() => useWorldStore.setState({ focusedCreationId: null, zoneItems: [storeItem(3, 1)], currentZoneId: 3 }));
+    expect(anchor(container)).toBeNull();
+    expect(viewport()).not.toHaveAttribute("data-selected-target");
+    expect(viewport()).not.toHaveAttribute("data-find-my");
+  });
+
+  it("an unknown id does not fly", () => {
+    setWorld(2, [storeItem(2, 1)]);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus("00000000-0000-4000-8000-999999999999", 1);
+    expect(r3f.flightStarts).toHaveLength(before);
+    expect(anchor(container)).toBeNull();
+  });
+
+  it("outside WORLD_EXPLORE nothing happens", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    expect(anchor(container)).toBeNull();
+    expect(r3f.flightStarts).toHaveLength(before);
+  });
+
+  it("a tier-hidden focus is pinned and followed", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const items = Array.from({ length: 80 }, (_, i) => storeItem(2, i + 1));
+    const cap = TIER_BUDGETS.LOW.riverItemCap;
+    const prepared = prepareRiverItems(
+      items.map((c) => ({ id: c.id, coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) })),
+      getLoyKrathongRiverLanes(),
+    );
+    const shown = new Set(selectVisibleRiverItems(prepared, cap).map((i) => i.id));
+    const hidden = items.find((c) => !shown.has(c.id))!;
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(hidden.id, 1);
+    expect(container.querySelector(`[name="river-item-${hidden.id}"]`)).not.toBeNull();
+    expect(anchor(container)).not.toBeNull();
+    expect(riverGroups(container)).toHaveLength(cap);
+  });
+
+  it("no data-* attribute contains the focused id", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(items[0].id, 1);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      expect(viewport().getAttribute(attr)).not.toContain(items[0].id);
+    }
+  });
+});
+
+describe("river batch and perf probe (MFW-34)", () => {
+  const riverItem = (id: string) => ({
+    id,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+  });
+  const probe = (c: HTMLElement) => c.querySelector('[data-testid="perf-probe"]');
+  const probeHook = () =>
+    (window as unknown as Record<string, { sample(): Record<string, unknown> | null } | undefined>)[PERF_PROBE_GLOBAL_NAME];
+
+  it("river krathongs render through one persistent batch", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const items = [riverItem("a"), riverItem("b"), riverItem("c")];
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    const groups = container.querySelectorAll('[name^="river-item-"]');
+    expect(groups).toHaveLength(3);
+    for (const g of groups) expect(g.querySelector('mesh:not([name^="river-hit-"])')).toBeNull(); // only MFW-28 hit proxies remain
+    const batch = container.querySelectorAll('[name="river-krathong-batch"]');
+    expect(batch).toHaveLength(1);
+    expect(batch[0].querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
+    expect(container.querySelector('[name="river-krathong-batch"]')).toBe(batch[0]);
+  });
+
+  it("perf probe is off by default", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(probe(container)).toBeNull();
+    expect(probeHook()).toBeUndefined();
+  });
+
+  it("perf probe with ?perfProbe=1 sits beside the viewport and reads the renderer", () => {
+    window.history.replaceState(null, "", "/?perfProbe=1");
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const panel = probe(container)!;
+    expect(panel).not.toBeNull();
+    expect(viewport().contains(panel)).toBe(false);
+    expect(probeHook()!.sample()).toMatchObject({ geometries: 3, calls: 12, programs: 2 });
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    rerender(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(probe(container)).toBeNull();
+    expect(screen.queryByTestId("r3f-canvas")).toBeNull();
+  });
+
+  it("the soak button exists only in WORLD_EXPLORE", () => {
+    window.history.replaceState(null, "", "/?perfProbe=1");
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { rerender } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(screen.queryByRole("button", { name: "Run zone-switch soak" })).toBeNull();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(screen.getByRole("button", { name: "Run zone-switch soak" })).toBeTruthy();
   });
 });

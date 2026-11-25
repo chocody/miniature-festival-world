@@ -6,8 +6,9 @@ export const PINCH_ZOOM_MAX = 1.6;
 export const ROTATION_RADIANS_PER_PIXEL = 0.01;
 export const PAN_WORLD_UNITS_PER_PIXEL = 0.01;
 
-/** RITUAL_RELEASE "กระทง" chip start position, percent of the viewport (MFW-16 values, moved in MFW-27). */
-export const RITUAL_CHIP_START_PERCENT = Object.freeze({ x: 50, y: 55 });
+/** RITUAL_RELEASE "กระทง" chip start position, percent of the viewport. The ritual camera centres the pier tip (MFW-23), so the
+ * drag handle starts on the preview krathong. */
+export const RITUAL_CHIP_START_PERCENT = Object.freeze({ x: 50, y: 50 });
 /** The chip is clamped to this percent range on both axes so it stays reachable. */
 export const RITUAL_CHIP_MIN_PERCENT = 8;
 export const RITUAL_CHIP_MAX_PERCENT = 92;

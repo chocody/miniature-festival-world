@@ -34,7 +34,8 @@ test("360 px: explicit choice, PII blocked publicly, private allowed, no request
   const apiUrls: string[] = [];
   page.on("request", (r) => {
     const { pathname } = new URL(r.url());
-    if (pathname.startsWith("/api/")) apiUrls.push(r.url());
+    // The ritual loads the shared world with GETs (MFW-23); the wish itself must never be sent here (no write request).
+    if (pathname.startsWith("/api/") && r.method() !== "GET") apiUrls.push(r.url());
   });
 
   await expect(page.getByRole("dialog", { name: WISH_DIALOG_TITLE })).toBeVisible();

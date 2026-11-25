@@ -45,3 +45,6 @@ export const INSERT_CREATION_GUARDED_RPC_PATH = "rpc/mfw_insert_creation_guarded
 /** Vercel sets VERCEL_ENV to "production" | "preview" | "development". Writes never use the in-memory backend in production. */
 export const DEPLOYMENT_ENV = "VERCEL_ENV";
 export const PRODUCTION_DEPLOYMENT = "production";
+
+/** MFW-31 owner read (relative to SUPABASE_REST_PATH). Name equals the SQL function of 20261125000000_mfw31_creation_ownership_read.sql. */
+export const CREATION_OWNERSHIP_RPC_PATH = "rpc/mfw_creation_ownership";

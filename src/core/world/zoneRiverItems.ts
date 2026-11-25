@@ -1,13 +1,15 @@
 import type { FestivalEventId } from "@/config/events/types";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
-import { isValidRiverPlacement, parsePersistableCoord, type SplinePathCoord } from "@/core/coordinates";
+import { parsePersistableCoord } from "@/core/coordinates/validateCoord"; // three-free (MFW-33): the 2D fallback imports this module
+import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
 import { parseEventAppearance, type KrathongAppearance } from "@/core/customization";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import type { RiverRenderSource } from "./riverFlow";
 
-/** One renderable krathong of the visible zone. Public fields only (invariant C). Structurally a RiverFlowItem. */
+/** One renderable krathong of the visible zone. Public fields only (invariant C). Copies the public wish (a public field) for the InspectPopup (MFW-28). Never copy expiresAt or any non-public field. Structurally a RiverFlowItem. */
 export interface ZoneRiverItem extends RiverRenderSource {
   readonly appearance: KrathongAppearance;
+  readonly publicWishText: string | null;
 }
 export interface ZoneRiverItemsQuery {
   readonly eventId: FestivalEventId;
@@ -29,11 +31,11 @@ export function publicCreationsToRiverItems(
     const parsed = parsePersistableCoord(c.coord);
     if (!parsed.ok || parsed.coord.mode !== "SPLINE_PATH") continue;
     const coord: SplinePathCoord = parsed.coord;
-    if (!isValidRiverPlacement({ coord, createdAtMs })) continue;
+    if (!Number.isFinite(createdAtMs)) continue;
     const appearance = parseEventAppearance(query.eventId, c.appearance);
     if (!appearance.ok) continue;
     seen.add(c.id);
-    out.push(Object.freeze({ id: c.id, coord, createdAtMs, appearance: appearance.appearance }));
+    out.push(Object.freeze({ id: c.id, coord, createdAtMs, appearance: appearance.appearance, publicWishText: c.publicWishText }));
   }
   return Object.freeze(out);
 }

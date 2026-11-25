@@ -81,4 +81,41 @@ describe("selectVisibleRiverItems", () => {
     expect(ids(selectVisibleRiverItems(items, 1))).toEqual(["a"]);
     expect(ids(selectVisibleRiverItems([...items].reverse(), 1))).toEqual(["a"]);
   });
+
+  describe("stable pins (MFW-30)", () => {
+    const items = many(80);
+    const base = ids(selectVisibleRiverItems(items, 24));
+    const diff = (a: readonly string[], b: readonly string[]) => a.filter((x) => !b.includes(x));
+    it("pinning one hidden item changes exactly one unpinned pick", () => {
+      for (const h of items.filter((i) => !base.includes(i.id))) {
+        const out = ids(selectVisibleRiverItems(items, 24, [h.id]));
+        expect(out).toHaveLength(24);
+        expect(out).toContain(h.id);
+        expect(diff(base, out)).toHaveLength(1);
+        expect(diff(out, base)).toEqual([h.id]);
+      }
+    });
+    it("two pins change at most two picks", () => {
+      for (let a = 0; a < 80; a += 7) {
+        for (let b = 3; b < 80; b += 11) {
+          const out = ids(selectVisibleRiverItems(items, 24, [items[a].id, items[b].id]));
+          expect(diff(base, out).length).toBeLessThanOrEqual(2);
+          expect(out).toContain(items[a].id);
+          expect(out).toContain(items[b].id);
+        }
+      }
+    });
+    it("a pin that is already shown changes nothing", () => {
+      for (const p of base) expect(ids(selectVisibleRiverItems(items, 24, [p]))).toEqual(base);
+    });
+    it("spread stays bounded with a pin", () => {
+      const out = selectVisibleRiverItems(items, 24, [items[1].id]);
+      const phases = out.map((i) => riverPhaseOf(i.coord, i.createdAtMs)).sort((x, y) => x - y);
+      const limit = (2 * Math.ceil(80 / 24)) / 80 + 1e-9;
+      for (let i = 0; i < phases.length; i++) {
+        const next = i + 1 < phases.length ? phases[i + 1] : phases[0] + 1;
+        expect(next - phases[i]).toBeLessThanOrEqual(limit);
+      }
+    });
+  });
 });

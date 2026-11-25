@@ -120,6 +120,7 @@ describe("GET /api/creations", () => {
       zoneItemCounts: async () => [],
       listZoneOccupants: async () => [],
       insertCreationGuarded: async () => ({ status: "zone_changed" as const }),
+      readOwnership: () => Promise.reject(new Error("unused")),
     };
     const res = await call("event=loy_krathong&zone=1", () => failing);
     expect(res.status).toBe(503);

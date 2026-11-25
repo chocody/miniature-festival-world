@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createCipheriv } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PRIVATE_WISH_CIPHERTEXT_PATTERN } from "@/config/privateWish.config";
+import { PRIVATE_WISH_CIPHERTEXT_PATTERN, PRIVATE_WISH_RETIRED_KEYS_MAX } from "@/config/privateWish.config";
 import type { OwnerTokenHash } from "@/services/auth";
 import { OWNER_HASH_FIXTURE } from "./__fixtures__/creations";
 import { TEST_KEY_BYTES, TEST_KEY_ID, makeTestCipher } from "./__fixtures__/createCreation";
@@ -14,7 +14,9 @@ import {
   decryptPrivateWish,
   importPrivateWishKey,
   privateWishAdditionalData,
+  createPrivateWishReaderFromEnv,
   readPrivateWishKeyEnv,
+  readRetiredPrivateWishKeysEnv,
 } from "./privateWishCipher";
 
 const HASH = OWNER_HASH_FIXTURE;
@@ -134,5 +136,130 @@ describe("private wish key env", () => {
     await expect(second.getPrivateWishCipher("supabase")).rejects.toBeInstanceOf(second.PrivateWishKeyError);
     vi.stubEnv("PRIVATE_WISH_KEY", KEY_B64);
     await expect(second.getPrivateWishCipher("supabase")).resolves.toMatchObject({ keyId: "k2026a" });
+  });
+});
+
+const keyB64 = (n: number): string => Buffer.alloc(32, n).toString("base64");
+const rawKey = (n: number): Uint8Array<ArrayBuffer> => new Uint8Array(32).fill(n);
+const unusedCipher = () => vi.fn(async (): Promise<never> => {
+  throw new Error("must not be called");
+});
+
+describe("cipher.decrypt (MFW-31)", () => {
+  it("round trips, and fails for another owner hash or a relabelled key id", async () => {
+    const { cipher } = await makeTestCipher();
+    const wish = await cipher.encrypt("ความลับ", HASH);
+    expect(await cipher.decrypt(wish, HASH)).toBe("ความลับ");
+    expect(await cipher.decrypt(wish, "f".repeat(64) as OwnerTokenHash)).toBeNull();
+    expect(await cipher.decrypt({ ...wish, keyId: "other" }, HASH)).toBeNull();
+  });
+});
+
+describe("readRetiredPrivateWishKeysEnv (MFW-31)", () => {
+  it("unset or blank is ok and empty", () => {
+    expect(readRetiredPrivateWishKeysEnv({})).toEqual({ ok: true, keys: [] });
+    expect(readRetiredPrivateWishKeysEnv({ PRIVATE_WISH_RETIRED_KEYS: "  " })).toEqual({ ok: true, keys: [] });
+  });
+
+  it("parses id:key pairs in order", () => {
+    const r = readRetiredPrivateWishKeysEnv({ PRIVATE_WISH_RETIRED_KEYS: `old1:${keyB64(1)},old2:${keyB64(2)}` });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.keys.map((k) => k.keyId)).toEqual(["old1", "old2"]);
+      expect(r.keys.every((k) => k.rawKey.byteLength === 32)).toBe(true);
+    }
+  });
+
+  it("rejects malformed lists", () => {
+    const k = keyB64(1);
+    const many = Array.from({ length: PRIVATE_WISH_RETIRED_KEYS_MAX + 1 }, (_, i) => `id${i}:${k}`).join(",");
+    const bad = [
+      k,
+      `a:b:${k}`,
+      `:${k}`,
+      `Old1:${k}`,
+      `ephemeral:${k}`,
+      `a:${k},a:${keyB64(2)}`,
+      `a:${Buffer.alloc(31, 1).toString("base64")}`,
+      "a:AAAA",
+      many,
+    ];
+    for (const value of bad) expect(readRetiredPrivateWishKeysEnv({ PRIVATE_WISH_RETIRED_KEYS: value })).toEqual({ ok: false });
+  });
+});
+
+describe("private wish reader (MFW-31)", () => {
+  it("reader with the current key", async () => {
+    const cipher = createPrivateWishCipher({ keyId: "k2026b", key: await importPrivateWishKey(rawKey(2)) });
+    const wish = await cipher.encrypt("hello", HASH);
+    const unused = unusedCipher();
+    const reader = await createPrivateWishReaderFromEnv({ PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b" }, "supabase", unused);
+    expect(await reader.decrypt(wish, HASH)).toBe("hello");
+    expect(unused).not.toHaveBeenCalled();
+  });
+
+  it("reader decrypts retired keys", async () => {
+    const old = createPrivateWishCipher({ keyId: "k2026a", key: await importPrivateWishKey(rawKey(1)) });
+    const wish = await old.encrypt("old wish", HASH);
+    const base = { PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b" };
+    const withRetired = await createPrivateWishReaderFromEnv(
+      { ...base, PRIVATE_WISH_RETIRED_KEYS: `k2026a:${keyB64(1)}` },
+      "supabase",
+      unusedCipher(),
+    );
+    expect(await withRetired.decrypt(wish, HASH)).toBe("old wish");
+    const without = await createPrivateWishReaderFromEnv(base, "supabase", unusedCipher());
+    expect(await without.decrypt(wish, HASH)).toBeNull();
+  });
+
+  it("never accepts the ephemeral id outside the memory backend", async () => {
+    const eph = createPrivateWishCipher({ keyId: "ephemeral", key: await importPrivateWishKey(rawKey(2)) });
+    const wish = await eph.encrypt("x", HASH);
+    const reader = await createPrivateWishReaderFromEnv({ PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b" }, "supabase", unusedCipher());
+    expect(await reader.decrypt(wish, HASH)).toBeNull();
+  });
+
+  it("memory without env uses the write cipher only", async () => {
+    const write = await createPrivateWishCipherFromEnv({}, "memory");
+    const reader = await createPrivateWishReaderFromEnv({}, "memory", async () => write);
+    expect(await reader.decrypt(await write.encrypt("mem", HASH), HASH)).toBe("mem");
+    const { cipher } = await makeTestCipher();
+    expect(await reader.decrypt(await cipher.encrypt("mem", HASH), HASH)).toBeNull();
+  });
+
+  it("fails closed with PrivateWishKeyError and no env value in the message", async () => {
+    const cipher = async () => createPrivateWishCipherFromEnv({}, "memory");
+    const cases: Array<[Record<string, string>, "memory" | "supabase", string]> = [
+      [{}, "supabase", "missing"],
+      [{ PRIVATE_WISH_KEY: keyB64(2) }, "memory", "invalid"],
+      [{ PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b", PRIVATE_WISH_RETIRED_KEYS: "bad" }, "supabase", "invalid"],
+      [{ PRIVATE_WISH_RETIRED_KEYS: `k2026a:${keyB64(1)}` }, "memory", "invalid"],
+      [{ PRIVATE_WISH_RETIRED_KEYS: `k2026a:${keyB64(1)}` }, "supabase", "invalid"],
+      [{ PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b", PRIVATE_WISH_RETIRED_KEYS: `k2026b:${keyB64(1)}` }, "supabase", "invalid"],
+    ];
+    for (const [env, backend, reason] of cases) {
+      const err = (await createPrivateWishReaderFromEnv(env, backend, cipher).catch((e: unknown) => e)) as PrivateWishKeyError;
+      expect(err).toBeInstanceOf(PrivateWishKeyError);
+      expect(err.reason).toBe(reason);
+      expect(err.message).not.toContain(keyB64(1));
+      expect(err.message).not.toContain(keyB64(2));
+    }
+  });
+
+  it("getPrivateWishReader caches success, not failure", async () => {
+    vi.resetModules();
+    vi.stubEnv("PRIVATE_WISH_KEY", "");
+    vi.stubEnv("PRIVATE_WISH_KEY_ID", "");
+    vi.stubEnv("PRIVATE_WISH_RETIRED_KEYS", "");
+    const first = await import("./privateWishCipher");
+    expect(first.getPrivateWishReader("memory")).toBe(first.getPrivateWishReader("memory"));
+    vi.resetModules();
+    vi.stubEnv("PRIVATE_WISH_KEY", "AAAA");
+    vi.stubEnv("PRIVATE_WISH_KEY_ID", "k2026a");
+    const second = await import("./privateWishCipher");
+    await expect(second.getPrivateWishReader("supabase")).rejects.toBeInstanceOf(second.PrivateWishKeyError);
+    await expect(second.getPrivateWishReader("supabase")).rejects.toBeInstanceOf(second.PrivateWishKeyError);
+    vi.stubEnv("PRIVATE_WISH_KEY", KEY_B64);
+    await expect(second.getPrivateWishReader("supabase")).resolves.toHaveProperty("decrypt");
   });
 });

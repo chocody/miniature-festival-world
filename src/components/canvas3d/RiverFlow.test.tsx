@@ -1,9 +1,13 @@
-import { act, cleanup, render } from "@testing-library/react";
-import { Euler, Vector3 } from "three";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { BufferGeometry, Euler, Matrix4, Quaternion, Vector3 } from "three";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { GIMMICK_BOUNCE } from "@/config/gimmicks.config";
+import { createBounceFrame, writeBounceAt } from "@/core/effects";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import type { SplinePathCoord } from "@/core/coordinates";
-import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
+import { assembleKrathong, DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { bobbingPhaseFromId, createBobbingOut, getLoyKrathongRiverLanes, getRiverItemPositionAt, writeBobbingAt } from "@/core/world";
 import { TIER_BUDGETS } from "@/config/performance.config";
 import { prepareRiverItems, selectVisibleRiverItems } from "@/core/world";
@@ -19,20 +23,34 @@ vi.mock("@react-three/fiber", () => ({
   useThree: (sel: (s: { invalidate: () => void }) => unknown) => sel({ invalidate: r3f.invalidate }),
 }));
 
-vi.mock("@/components/models/loyKrathong", async () => {
+const batch = vi.hoisted(() => ({
+  props: null as null | { plan: { items: readonly unknown[] }; shadows: boolean },
+  writeItem: vi.fn(),
+  commit: vi.fn(),
+}));
+
+vi.mock("@/components/models/loyKrathong", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/models/loyKrathong")>();
   const React = await import("react");
   return {
-    KrathongModel: (p: { appearance: { base: string }; shadows: boolean }) =>
-      React.createElement("mesh", {
-        name: "krathong-model",
-        "data-base": p.appearance.base,
+    ...actual,
+    RiverKrathongBatch: (p: { plan: { items: readonly unknown[] }; shadows: boolean; ref?: React.Ref<unknown> }) => {
+      batch.props = p;
+      React.useImperativeHandle(p.ref, () => ({ meshes: [], writeItem: batch.writeItem, commit: batch.commit }));
+      return React.createElement("group", {
+        name: "river-krathong-batch",
+        "data-items": String(p.plan.items.length),
         "data-shadows": String(p.shadows),
-      }),
+      });
+    },
   };
 });
 
 const vectors = new WeakMap<object, Vector3>();
 const eulers = new WeakMap<object, Euler>();
+const scales = new WeakMap<object, Vector3>();
+const quaternions = new WeakMap<object, Quaternion>();
+const matrices = new WeakMap<object, Matrix4>();
 
 beforeAll(() => {
   Object.defineProperty(HTMLUnknownElement.prototype, "position", {
@@ -42,6 +60,13 @@ beforeAll(() => {
       return vectors.get(this);
     },
   });
+  Object.defineProperty(HTMLUnknownElement.prototype, "scale", {
+    configurable: true,
+    get() {
+      if (!scales.has(this)) scales.set(this, new Vector3(1, 1, 1));
+      return scales.get(this);
+    },
+  });
   Object.defineProperty(HTMLUnknownElement.prototype, "rotation", {
     configurable: true,
     get() {
@@ -49,11 +74,36 @@ beforeAll(() => {
       return eulers.get(this);
     },
   });
+  Object.defineProperty(HTMLUnknownElement.prototype, "quaternion", {
+    configurable: true,
+    get() {
+      if (!quaternions.has(this)) quaternions.set(this, new Quaternion());
+      return quaternions.get(this);
+    },
+  });
+  Object.defineProperty(HTMLUnknownElement.prototype, "matrix", {
+    configurable: true,
+    get() {
+      if (!matrices.has(this)) matrices.set(this, new Matrix4());
+      return matrices.get(this);
+    },
+  });
+  Object.defineProperty(HTMLUnknownElement.prototype, "updateMatrix", {
+    configurable: true,
+    value(this: { quaternion: Quaternion; rotation: Euler; matrix: Matrix4; position: Vector3; getAttribute(n: string): string | null }) {
+      this.quaternion.setFromEuler(this.rotation);
+      this.matrix.compose(this.position, this.quaternion, new Vector3().setScalar(Number(this.getAttribute("scale"))));
+    },
+  });
 });
 
 afterAll(() => {
   delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).position;
   delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).rotation;
+  delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).scale;
+  delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).quaternion;
+  delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).matrix;
+  delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).updateMatrix;
 });
 
 let NOW = 1_700_000_000_000 + 30_000;
@@ -68,32 +118,40 @@ const mk = (id: string, laneId = 1, spawnProgress = 0.2): RiverFlowItem => ({
 const itemA = mk("a");
 const items = [itemA, mk("b", 1, 0.6), mk("bad", 99)];
 const el = (c: HTMLElement, id: string) => c.querySelector(`[name="river-item-${id}"]`) as unknown as { position: Vector3; rotation: Euler };
-const ui = (props: { items?: readonly RiverFlowItem[]; reducedMotion?: boolean; shadows?: boolean } = {}) => (
-  <RiverFlow items={props.items ?? items} lanes={lanes} shadows={props.shadows ?? true} reducedMotion={props.reducedMotion ?? false} now={() => NOW} />
+const ui = (props: { items?: readonly RiverFlowItem[]; reducedMotion?: boolean; shadows?: boolean; onItemTapped?: (id: string) => void } = {}) => (
+  <RiverFlow items={props.items ?? items} lanes={lanes} shadows={props.shadows ?? true} reducedMotion={props.reducedMotion ?? false} now={() => NOW} onItemTapped={props.onItemTapped} />
 );
 
 beforeEach(() => {
   r3f.frame = null;
   r3f.invalidate.mockClear();
+  batch.writeItem.mockReset();
+  batch.commit.mockReset();
+  batch.props = null;
   NOW = CREATED + 30_000;
 });
 afterEach(cleanup);
 
 describe("RiverFlow", () => {
-  it("renders one model per valid item, scaled, skipping invalid ones", () => {
+  it("renders one anchor per valid item, scaled, skipping invalid ones", () => {
     const { container } = render(ui());
     expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(2);
     for (const id of ["a", "b"]) {
       const g = container.querySelector(`[name="river-item-${id}"]`)!;
-      expect(g.querySelectorAll('mesh[name="krathong-model"]')).toHaveLength(1);
+      expect(g.querySelector("mesh")).toBeNull(); // only MFW-28's empty bounce group is left inside
+      expect(g.querySelector(`[name="river-bounce-${id}"]`)!.children).toHaveLength(0);
       expect(g.getAttribute("scale")).toBe(String(RIVER_KRATHONG_SCALE));
-      expect(g.querySelector("mesh")!.getAttribute("data-base")).toBe(DEFAULT_KRATHONG_APPEARANCE.base);
     }
+    expect(container.querySelector('[name="river-krathong-batch"]')!.getAttribute("data-items")).toBe("2");
+    const assembly = assembleKrathong(DEFAULT_KRATHONG_APPEARANCE);
+    const planned = batch.props!.plan.items[0] as { parts: readonly unknown[] };
+    expect(planned.parts).toHaveLength(assembly.body.length + assembly.centerAnchor.parts.length);
   });
 
   it("renders nothing and stays idle without items", () => {
     const { container } = render(ui({ items: [] }));
     expect(container.querySelector('[name="river-flow"]')).toBeNull();
+    expect(container.querySelector('[name="river-krathong-batch"]')!.getAttribute("data-items")).toBe("0");
     expect(() => r3f.frame!()).not.toThrow();
     expect(r3f.invalidate).not.toHaveBeenCalled();
   });
@@ -141,7 +199,7 @@ describe("RiverFlow", () => {
 
   it("survives a stale frame after unmount and passes shadows through", () => {
     const view = render(ui({ shadows: false }));
-    expect(view.container.querySelector("mesh")!.getAttribute("data-shadows")).toBe("false");
+    expect(view.container.querySelector('[name="river-krathong-batch"]')!.getAttribute("data-shadows")).toBe("false");
     view.unmount();
     expect(() => r3f.frame!()).not.toThrow();
   });
@@ -160,7 +218,6 @@ describe("river render budget (MFW-25)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(ui({ items: many(85) }));
     expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(80);
-    expect(container.querySelector('[name="river-flow"]')!.getAttribute("data-visible-cap")).toBe("80");
   });
 
   it("LOW renders at most its tier cap", () => {
@@ -181,9 +238,7 @@ describe("river render budget (MFW-25)", () => {
     for (const [tier, expected] of [["HIGH", "true"], ["MEDIUM", "false"], ["LOW", "false"]] as const) {
       useDeviceStore.getState().setQualityTier(tier);
       const { container, unmount } = render(ui({ shadows: true }));
-      const meshes = container.querySelectorAll("mesh");
-      expect(meshes.length).toBeGreaterThan(0);
-      for (const m of meshes) expect(m.getAttribute("data-shadows")).toBe(expected);
+      expect(container.querySelector('[name="river-krathong-batch"]')!.getAttribute("data-shadows")).toBe(expected);
       unmount();
     }
   });
@@ -229,5 +284,193 @@ describe("river render budget (MFW-25)", () => {
     useDeviceStore.getState().setQualityTier("FALLBACK_2D");
     const { container } = render(ui({ items: many(5) }));
     expect(container.querySelector('[name="river-flow"]')).toBeNull();
+  });
+});
+
+describe("river krathong batch (MFW-34)", () => {
+  afterEach(() => useDeviceStore.setState(useDeviceStore.getInitialState(), true));
+  const three = [mk("a"), mk("b", 1, 0.5), mk("c", 1, 0.8)];
+
+  it("items are anchors, parts are one batch", () => {
+    const { container } = render(ui({ items: three }));
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(3);
+    for (const g of container.querySelectorAll('[name^="river-item-"]')) {
+      expect(g.querySelector("mesh")).toBeNull();
+      expect(g.querySelector('[name^="river-bounce-"]')!.children).toHaveLength(0);
+    }
+    expect(container.querySelectorAll('[name="river-krathong-batch"]')).toHaveLength(1);
+    expect(batch.props!.plan.items).toHaveLength(3);
+    expect(container.querySelector('mesh[name="krathong-model"]')).toBeNull();
+  });
+
+  it("each frame writes every rendered item, then commits once", () => {
+    const { container } = render(ui({ items: three }));
+    r3f.frame!();
+    expect(batch.writeItem).toHaveBeenCalledTimes(3);
+    ["a", "b", "c"].forEach((id, i) => {
+      const node = container.querySelector(`[name="river-item-${id}"]`) as unknown as { matrix: Matrix4; quaternion: Quaternion };
+      expect(batch.writeItem.mock.calls[i][0]).toBe(i);
+      expect(batch.writeItem.mock.calls[i][1]).toBe(node.matrix);
+      expect(batch.writeItem.mock.calls[i][2]).toBe(node.quaternion);
+    });
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+    expect(batch.commit.mock.invocationCallOrder[0]).toBeGreaterThan(batch.writeItem.mock.invocationCallOrder[2]);
+  });
+
+  it("reduced motion: the batch receives untilted transforms", () => {
+    render(ui({ items: three, reducedMotion: true }));
+    r3f.frame!();
+    expect(batch.writeItem).toHaveBeenCalledTimes(3);
+    for (const call of batch.writeItem.mock.calls) {
+      const up = new Vector3(0, 1, 0).applyQuaternion(call[2] as Quaternion);
+      expect(up.x).toBeCloseTo(0, 9);
+      expect(up.y).toBeCloseTo(1, 9);
+      expect(up.z).toBeCloseTo(0, 9);
+    }
+  });
+
+  it("the batch survives an empty zone", () => {
+    const view = render(ui({ items: three }));
+    const node = view.container.querySelector('[name="river-krathong-batch"]');
+    view.rerender(ui({ items: [] }));
+    expect(view.container.querySelector('[name="river-flow"]')).toBeNull();
+    expect(view.container.querySelector('[name="river-krathong-batch"]')).toBe(node);
+    view.rerender(ui({ items: three }));
+    expect(view.container.querySelector('[name="river-flow"]')).not.toBeNull();
+    expect(view.container.querySelector('[name="river-krathong-batch"]')).toBe(node);
+  });
+
+  it("never plans more than ZONE_ITEM_CAP", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const many = Array.from({ length: 85 }, (_, k) => mk(`m-${String(k).padStart(3, "0")}`, 1, k / 85));
+    render(ui({ items: many }));
+    expect(batch.props!.plan.items).toHaveLength(80);
+  });
+
+  it("a bouncing krathong reaches the batch scaled about its anchor", () => {
+    const { container } = render(ui({ items: three, onItemTapped: vi.fn() }));
+    fireEvent.click(container.querySelector('[name="river-hit-a"]')!);
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    const node = container.querySelector('[name="river-item-a"]') as unknown as { matrix: Matrix4 };
+    const factor = writeBounceAt(GIMMICK_BOUNCE.periodMs / 4, false, createBounceFrame()).scale;
+    const sent = batch.writeItem.mock.calls[0][1] as Matrix4;
+    expect(sent).not.toBe(node.matrix);
+    expect(sent.elements[0]).toBeCloseTo(node.matrix.elements[0] * factor, 9);
+    expect(batch.writeItem.mock.calls[1][1]).toBe(
+      (container.querySelector('[name="river-item-b"]') as unknown as { matrix: Matrix4 }).matrix,
+    );
+  });
+});
+
+describe("bounce reaches the batch (MFW-34)", () => {
+  const three = [mk("a"), mk("b", 1, 0.5), mk("c", 1, 0.8)];
+  const matrixOf = (c: HTMLElement, id: string) => (c.querySelector(`[name="river-item-${id}"]`) as unknown as { matrix: Matrix4 }).matrix;
+  const byIndex = (i: number) => batch.writeItem.mock.calls.filter((call) => call[0] === i).at(-1)![1] as Matrix4;
+
+  it("a tap on a then b: a is plain, b is scaled", () => {
+    const { container } = render(ui({ items: three, onItemTapped: vi.fn() }));
+    fireEvent.click(container.querySelector('[name="river-hit-a"]')!);
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    fireEvent.click(container.querySelector('[name="river-hit-b"]')!);
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    batch.writeItem.mockClear();
+    r3f.frame!();
+    expect(byIndex(0)).toBe(matrixOf(container, "a"));
+    expect(byIndex(1)).not.toBe(matrixOf(container, "b"));
+    const factor = writeBounceAt(GIMMICK_BOUNCE.periodMs / 4, false, createBounceFrame()).scale;
+    expect(byIndex(1).elements[0]).toBeCloseTo(matrixOf(container, "b").elements[0] * factor, 9);
+  });
+
+  it("the last frame of a bounce sends factor 1", () => {
+    const { container } = render(ui({ items: three, onItemTapped: vi.fn() }));
+    fireEvent.click(container.querySelector('[name="river-hit-a"]')!);
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    expect(byIndex(0).elements[0]).toBeCloseTo(matrixOf(container, "a").elements[0], 9);
+    r3f.frame!();
+    expect(byIndex(0)).toBe(matrixOf(container, "a"));
+  });
+});
+
+describe("river krathong tap (MFW-28)", () => {
+  const scaleX = (c: HTMLElement, id: string) => (c.querySelector(`[name="river-bounce-${id}"]`) as unknown as { scale: Vector3 }).scale.x;
+  const tap = (c: HTMLElement, id: string) => fireEvent.click(c.querySelector(`[name="river-hit-${id}"]`)!);
+
+  it("has no hit proxies without onItemTapped", () => {
+    const { container } = render(ui());
+    expect(container.querySelectorAll('[name^="river-hit-"]')).toHaveLength(0);
+  });
+
+  it("renders one invisible hit proxy per item after the bounce group", () => {
+    const { container } = render(ui({ onItemTapped: vi.fn() }));
+    const proxies = container.querySelectorAll('[name^="river-hit-"]');
+    expect(proxies).toHaveLength(2);
+    for (const p of proxies) {
+      expect(p.previousElementSibling?.getAttribute("name")).toMatch(/^river-bounce-/);
+    }
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(2);
+    // React's DOM stub drops visible={false}, so the invisibility is pinned in the source instead.
+    expect(readFileSync(join(process.cwd(), "src/components/canvas3d/RiverFlow.tsx"), "utf8")).toMatch(/name=\{`river-hit-[^`]*`\}[\s\S]{0,200}visible=\{false\}/);
+  });
+
+  it("bounces once and inspects", () => {
+    const onItemTapped = vi.fn();
+    const { container } = render(ui({ onItemTapped }));
+    r3f.invalidate.mockClear();
+    tap(container, "a");
+    expect(onItemTapped).toHaveBeenCalledTimes(1);
+    expect(onItemTapped).toHaveBeenCalledWith("a");
+    expect(r3f.invalidate).toHaveBeenCalled();
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(writeBounceAt(GIMMICK_BOUNCE.periodMs / 4, false, createBounceFrame()).scale);
+    expect(scaleX(container, "a")).toBeGreaterThan(1);
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("reduced motion: inspects but never scales", () => {
+    const onItemTapped = vi.fn();
+    const { container } = render(ui({ onItemTapped, reducedMotion: true }));
+    tap(container, "a");
+    expect(onItemTapped).toHaveBeenCalledWith("a");
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("a tap on another krathong settles the first", () => {
+    const { container } = render(ui({ onItemTapped: vi.fn() }));
+    tap(container, "a");
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBeGreaterThan(1);
+    tap(container, "b");
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("creates the proxy assets once and disposes them on unmount", () => {
+    const spy = vi.spyOn(BufferGeometry.prototype, "dispose");
+    const view = render(ui({ onItemTapped: vi.fn() }));
+    view.rerender(ui({ onItemTapped: vi.fn(), items: [itemA, mk("c", 1, 0.8)] }));
+    expect(spy).toHaveBeenCalledTimes(0);
+    view.unmount();
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});
+
+describe("R3F props (QA crash regression)", () => {
+  it("RiverFlow puts no dashed data-* prop on a three.js element (R3F reads dashes as a pierce path and crashes)", () => {
+    const src = readFileSync(join(__dirname, "RiverFlow.tsx"), "utf8");
+    expect(src).not.toMatch(/\sdata-[a-z-]+=\{/);
   });
 });

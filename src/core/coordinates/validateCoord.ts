@@ -1,4 +1,4 @@
-import { SPEED_FACTOR_MAX, SPEED_FACTOR_MIN } from "./SplinePathCoord";
+import { SPEED_FACTOR_MAX, SPEED_FACTOR_MIN } from "./splineConstants";
 import { COORD_MODES, type CoordMode, type PersistableCoord } from "./types";
 
 /** Exact key set per mode. Anything else (x, y, z, position, ...) is rejected: invariant A. */

@@ -17,8 +17,9 @@ export function riverPhaseOf(coord: SplinePathCoord, createdAtMs: number): numbe
 
 /**
  * Which river items to RENDER when the tier cap is below the zone size (MFW-24 perf review). Deterministic and time-invariant:
- * 1) pinned ids present in `items` (e.g. the Find My target) first, in `items` order, up to `cap`;
- * 2) the remaining slots are spread evenly along the lane: sort the rest by (phase asc, id asc), take indices ⌊i·n/m⌋.
+ * 1) base pick: spread evenly along the lane over ALL items, sorted by (phase asc, id asc), indices floor(i*n/cap). Pins never move it;
+ * 2) each pinned id present in `items` (e.g. the Find My target) that is not in the base replaces the NEAREST unpinned base pick
+ *    (circular distance in phase order, tie goes to the lower index). Pinning k ids changes at most k unpinned picks (MFW-30).
  * Returns `items` itself (same reference) when items.length <= cap; otherwise a frozen subset in the original `items` order.
  * Hidden items stay in the store, so Find My can still locate them (getRiverItemPositionAt) and pin them.
  */
@@ -27,15 +28,38 @@ export function selectVisibleRiverItems<
 >(items: readonly T[], cap: number, pinnedIds: readonly string[] = NO_PINNED_RIVER_IDS): readonly T[] {
   if (!Number.isSafeInteger(cap) || cap <= 0) return Object.freeze([]) as readonly T[];
   if (items.length <= cap) return items;
+  const sorted = items
+    .map((it) => ({ id: it.id, phase: riverPhaseOf(it.coord, it.createdAtMs) }))
+    .sort((a, b) => a.phase - b.phase || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const n = sorted.length;
+  const chosen = new Set<number>(); // indices into `sorted`
+  for (let i = 0; i < cap; i++) chosen.add(Math.floor((i * n) / cap));
   const pinned = new Set(pinnedIds);
-  const chosen = new Set<string>();
-  for (const it of items) if (chosen.size < cap && pinned.has(it.id)) chosen.add(it.id);
-  const rest = items
-    .filter((it) => !chosen.has(it.id))
-    .map((it) => ({ id: it.id, phase: riverPhaseOf(it.coord, it.createdAtMs) }));
-  rest.sort((a, b) => a.phase - b.phase || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const m = cap - chosen.size;
-  const n = rest.length;
-  for (let i = 0; i < m; i++) chosen.add(rest[Math.floor((i * n) / m)].id);
-  return Object.freeze(items.filter((it) => chosen.has(it.id)));
+  const indexOf = new Map(sorted.map((s, k) => [s.id, k] as const));
+  const pins: number[] = [];
+  for (const it of items) {
+    if (pins.length >= cap) break;
+    if (!pinned.has(it.id)) continue;
+    const k = indexOf.get(it.id);
+    if (k !== undefined && !pins.includes(k)) pins.push(k);
+  }
+  const pinSet = new Set(pins);
+  for (const p of pins) {
+    if (chosen.has(p)) continue;
+    let best = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const c of chosen) {
+      if (pinSet.has(c)) continue;
+      const d = Math.abs(c - p);
+      const dist = Math.min(d, n - d);
+      if (dist < bestDist || (dist === bestDist && c < best)) {
+        best = c;
+        bestDist = dist;
+      }
+    }
+    chosen.delete(best); // always found: unpinned picks >= pins still missing (|pins| <= cap)
+    chosen.add(p);
+  }
+  const ids = new Set([...chosen].map((k) => sorted[k].id));
+  return Object.freeze(items.filter((it) => ids.has(it.id)));
 }

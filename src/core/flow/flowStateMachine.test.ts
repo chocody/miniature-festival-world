@@ -22,6 +22,7 @@ const VALID: ReadonlyArray<readonly [FlowState, FlowEventType, FlowState]> = [
   ["CUSTOMIZE_OBJECT", "FINISH_CUSTOMIZE", "WRITE_WISH"],
   ["WRITE_WISH", "SUBMIT_WISH", "RITUAL_RELEASE"],
   ["RITUAL_RELEASE", "FINISH_RITUAL", "SHARED_WORLD_EXPLORE"],
+  ["RITUAL_RELEASE", "REVISE_WISH", "WRITE_WISH"],
 ];
 
 describe("flow state machine", () => {
@@ -47,7 +48,7 @@ describe("flow state machine", () => {
         checked++;
       }
     }
-    expect(checked).toBe(16);
+    expect(checked).toBe(20);
   });
 
   it("SHARED_WORLD_EXPLORE has no outgoing events", () => {

@@ -75,3 +75,22 @@ export const TIER_ANTIALIAS: Readonly<Record<RenderTier, boolean>> = Object.free
   MEDIUM: true,
   LOW: false,
 });
+
+// Technical numbers (lead decision, MFW-28). Values PLACEHOLDER (spec silent); the owner may tune them (MFW-28 plan §11 Q3).
+
+/** Pooled scene effects (spec §3 core/effects: "ObjectPoolManager (Ripples, Fireworks, Confetti, Glow)"). Phase 1 uses ripple + glow only. */
+export const EFFECT_KINDS = ["ripple", "glow"] as const;
+export type EffectKind = (typeof EFFECT_KINDS)[number];
+export type EffectPoolCaps = Readonly<Record<EffectKind, number>>;
+
+/** Max concurrent pooled effects per 3D tier (invariant E: fixed cap; a new tap recycles the oldest). PLACEHOLDER (spec silent). */
+export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Object.freeze({
+  HIGH: Object.freeze({ ripple: 8, glow: 6 }),
+  MEDIUM: Object.freeze({ ripple: 6, glow: 4 }),
+  LOW: Object.freeze({ ripple: 3, glow: 2 }),
+});
+
+// Technical numbers (lead decision, MFW-33)
+
+/** Pooled 2D effects on FALLBACK_2D (invariant E): the weakest 3D tier's caps, so a weak device never runs more effects in 2D than on LOW. */
+export const FALLBACK_2D_EFFECT_POOL_CAPS: EffectPoolCaps = EFFECT_POOL_CAPS.LOW;

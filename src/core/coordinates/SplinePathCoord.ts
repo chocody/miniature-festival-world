@@ -2,6 +2,29 @@ import { CatmullRomCurve3, Vector3 } from "three";
 import { clamp01 } from "@/core/math/clamp01";
 import { wrap01 } from "@/core/math/wrap01";
 import type { WorldVec3, WorldXZ } from "./types";
+export {
+  SPAWN_PROGRESS_RANGE,
+  LATERAL_OFFSET_RANGE,
+  SPEED_FACTOR_MIN,
+  SPEED_FACTOR_MAX,
+  MS_PER_SECOND,
+  SPLINE_CURVE_TYPE,
+  TANGENT_DELTA,
+  HORIZONTAL_TANGENT_EPSILON,
+  LOCATE_COARSE_SAMPLES,
+  LOCATE_BISECTION_ITERATIONS,
+} from "./splineConstants";
+export { currentProgress, spawnProgressFromCurrent } from "./splineProgress";
+import {
+  HORIZONTAL_TANGENT_EPSILON,
+  LOCATE_BISECTION_ITERATIONS,
+  LOCATE_COARSE_SAMPLES,
+  SPEED_FACTOR_MAX,
+  SPEED_FACTOR_MIN,
+  SPLINE_CURVE_TYPE,
+  TANGENT_DELTA,
+} from "./splineConstants";
+import { currentProgress, spawnProgressFromCurrent } from "./splineProgress";
 
 /**
  * Spec §4.1. Persisted placement on a river lane. World positions are derived, never stored.
@@ -14,21 +37,6 @@ export interface SplinePathCoord {
   readonly speedFactor: number; // >= 0, progress per SECOND (open question 6)
   readonly lateralOffset: number; // [-0.5, 0.5], fraction of lane width
 }
-
-export const SPAWN_PROGRESS_RANGE = [0, 1] as const; // spec §4.1
-export const LATERAL_OFFSET_RANGE = [-0.5, 0.5] as const; // spec §4.1
-export const SPEED_FACTOR_MIN = 0; // MFW-8 decision: no upstream flow.
-/**
- * Sanity cap: at most one full lane per second (spec example 0.008 = 125 s per lane).
- * Spec gives no upper bound; MFW-8 decision. Prevents overflow to NaN in currentProgress.
- */
-export const SPEED_FACTOR_MAX = 1;
-export const MS_PER_SECOND = 1000; // speedFactor unit = per second (open question 6)
-export const SPLINE_CURVE_TYPE = "centripetal" as const;
-export const TANGENT_DELTA = 1e-4; // in arc-length progress units
-export const HORIZONTAL_TANGENT_EPSILON = 1e-9;
-export const LOCATE_COARSE_SAMPLES = 512;
-export const LOCATE_BISECTION_ITERATIONS = 60;
 
 /** Lane geometry: scene config, not a placement. */
 export interface RiverLaneDefinition {
@@ -57,40 +65,6 @@ export interface SplineWorldPlacement {
 export interface SplineLaneLocation {
   readonly progress: number;
   readonly lateralOffset: number;
-}
-
-function elapsedMsOf(createdAtMs: number, nowMs: number): number {
-  const elapsedMs = nowMs - createdAtMs;
-  return !Number.isFinite(elapsedMs) || elapsedMs < 0 ? 0 : elapsedMs;
-}
-
-/**
- * Spec §4.1: CurrentProgress(t) = (spawnProgress + (now − createdAt) × speedFactor) % 1.0,
- * with time in seconds (createdAtMs / nowMs are Unix epoch ms). Negative or non-finite elapsed counts as 0.
- * Only + − × ÷ % are used, so identical inputs give bit-identical output on every client.
- */
-export function currentProgress(
-  coord: Pick<SplinePathCoord, "spawnProgress" | "speedFactor">,
-  createdAtMs: number,
-  nowMs: number,
-): number {
-  const elapsedMs = elapsedMsOf(createdAtMs, nowMs);
-  const raw = wrap01((elapsedMs / MS_PER_SECOND) * coord.speedFactor);
-  const travelled = Number.isFinite(raw) ? raw : 0; // defence in depth for unvalidated input
-  return wrap01(coord.spawnProgress + travelled);
-}
-
-/** Inverse of {@link currentProgress}: the spawnProgress that yields `progress` at `nowMs`. */
-export function spawnProgressFromCurrent(
-  progress: number,
-  speedFactor: number,
-  createdAtMs: number,
-  nowMs: number,
-): number {
-  const elapsedMs = elapsedMsOf(createdAtMs, nowMs);
-  const raw = wrap01((elapsedMs / MS_PER_SECOND) * speedFactor);
-  const travelled = Number.isFinite(raw) ? raw : 0; // defence in depth for unvalidated input
-  return wrap01(progress - travelled);
 }
 
 export function createRiverLane(def: RiverLaneDefinition): RiverLane {

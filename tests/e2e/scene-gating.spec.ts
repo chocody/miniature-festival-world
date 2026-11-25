@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 
 test.use({ hasTouch: true });
@@ -33,6 +34,7 @@ const nextFrames = (page: Page) =>
   page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 test("3D tier: landing ships no WebGL chunk; canvas only in canvas modes; ritual taps never select", async ({ page }) => {
+  await mockCreateCreation(page);
   const scriptBodies = collectScriptBodies(page);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
@@ -68,6 +70,7 @@ test("3D tier: landing ships no WebGL chunk; canvas only in canvas modes; ritual
 });
 
 test("FALLBACK_2D: no canvas and no WebGL chunk across the whole flow", async ({ page }) => {
+  await mockCreateCreation(page);
   const scriptBodies = collectScriptBodies(page);
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;

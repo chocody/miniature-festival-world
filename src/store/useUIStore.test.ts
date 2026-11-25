@@ -34,3 +34,33 @@ describe("useUIStore", () => {
     expect(useUIStore.getState()).toBe(before);
   });
 });
+
+describe("useUIStore ritual", () => {
+  it("dispatchRitual applies the reducer and skips no-ops (same state reference)", () => {
+    const { dispatchRitual } = useUIStore.getState();
+    dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });
+    expect(useUIStore.getState().ritual.phase).toBe("RELEASING");
+    const before = useUIStore.getState();
+    dispatchRitual({ type: "TOUCHED_DOWN", attempt: 9 });
+    expect(useUIStore.getState()).toBe(before);
+  });
+
+  it("REVISE_WISH returns to WRITE_WISH and resets the ritual but keeps attempt", () => {
+    const { dispatch, dispatchRitual } = useUIStore.getState();
+    dispatch({ type: "SELECT_EVENT", eventId: "loy_krathong" });
+    dispatch({ type: "FINISH_CUSTOMIZE" });
+    dispatch({ type: "SUBMIT_WISH" });
+    dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });
+    dispatch({ type: "REVISE_WISH" });
+    const s = useUIStore.getState();
+    expect(s.flowState).toBe("WRITE_WISH");
+    expect(s.ritual.phase).toBe("IDLE");
+    expect(s.ritual.attempt).toBe(1);
+  });
+
+  it("REVISE_WISH outside RITUAL_RELEASE changes nothing", () => {
+    const before = useUIStore.getState();
+    before.dispatch({ type: "REVISE_WISH" });
+    expect(useUIStore.getState()).toBe(before);
+  });
+});

@@ -6,7 +6,7 @@ export interface CameraTargetPosition {
   readonly z: number;
 }
 
-export type CameraTargetKind = "water" | "krathong" | "lamp";
+export type CameraTargetKind = "water" | "krathong" | "lamp" | "riverKrathong";
 
 export interface CameraFlightPose {
   readonly cameraX: number;
