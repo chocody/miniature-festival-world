@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const files = [
-  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "appearanceRegistry", "krathongChoices", "partChangeBounce", "index"].map(
+  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "krathongInstanceBuckets", "appearanceRegistry", "krathongChoices", "partChangeBounce", "index"].map(
     (name) => `src/core/customization/${name}.ts`,
   ),
   "src/config/events/loyKrathong.config.ts",

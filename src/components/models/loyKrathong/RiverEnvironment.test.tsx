@@ -48,6 +48,13 @@ describe("RiverEnvironment", () => {
     expect(container.querySelectorAll("instancedMesh")).toHaveLength(7);
   });
 
+  it("riverside trees are instanced (backlog 8.2 AC1)", () => {
+    const { container } = render(<RiverEnvironment {...makeProps()} />);
+    expect(container.querySelectorAll(`instancedMesh[name="${SCENE_OBJECT_NAMES.treeTrunks}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`instancedMesh[name="${SCENE_OBJECT_NAMES.treeCanopies}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll('mesh[name^="scene-tree"]')).toHaveLength(0);
+  });
+
   it("is static", () => {
     render(<RiverEnvironment {...makeProps()} />);
     expect(useFrameSpy).not.toHaveBeenCalled();
