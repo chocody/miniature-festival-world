@@ -1,5 +1,7 @@
 import type { RiverLaneDefinition, WorldVec3 } from "@/core/coordinates";
 import type { RiverEnvironmentDefinition } from "@/core/world";
+import { RIVER_COLLISION_RADIUS } from "@/config/riverFlow.config";
+import { SPLINE_LATERAL_OFFSET_LIMIT } from "@/config/ritual.config";
 import { CANDLE_COLOR_PALETTE, LEAF_COLOR_PALETTE } from "@/config/events/loyKrathong.config";
 import { KRATHONG_BASE_MODELS, KRATHONG_FLOWER_MODELS } from "@/config/krathongModel.config";
 import { type MatteMaterialSpec, type ScenePartSpec } from "@/config/scene.config";
@@ -73,6 +75,23 @@ export const LOY_KRATHONG_PIER = {
   releaseInset: 0.3,
   pileAlongFractions: [0.5, 1],
 } as const;
+
+/**
+ * Lane location of the pier release point (LOY_KRATHONG_RIVER_LAYOUT.pier.releasePoint), clamped to the krathong body limit
+ * (riverSpotLateralLimit). Three-free so the FALLBACK_2D release needs no lane math (MFW-23). Valid because the single lane shares the channel
+ * centreline in xz, so the pier's channel progress is its lane progress. Pinned by loyKrathong.river.release.test.ts.
+ */
+const PIER_RELEASE_LATERAL_OFFSET =
+  (LOY_KRATHONG_PIER.side *
+    (LOY_KRATHONG_RIVER_CHANNEL.width / 2 - LOY_KRATHONG_PIER.overWaterLength - LOY_KRATHONG_PIER.releaseInset)) /
+  LOY_KRATHONG_RIVER_LANE_WIDTH;
+const KRATHONG_LATERAL_LIMIT = SPLINE_LATERAL_OFFSET_LIMIT - RIVER_COLLISION_RADIUS / LOY_KRATHONG_RIVER_LANE_WIDTH;
+
+export const LOY_KRATHONG_PIER_RELEASE_SPOT = Object.freeze({
+  laneId: LOY_KRATHONG_RIVER_LANE_ID,
+  progress: LOY_KRATHONG_PIER.progress,
+  lateralOffset: Math.min(KRATHONG_LATERAL_LIMIT, Math.max(-KRATHONG_LATERAL_LIMIT, PIER_RELEASE_LATERAL_OFFSET)),
+});
 
 /** Repeated parts, one InstancedMesh each. PLACEHOLDER (spec silent) sizes/colours. */
 export const RIVER_ENVIRONMENT_PARTS = {

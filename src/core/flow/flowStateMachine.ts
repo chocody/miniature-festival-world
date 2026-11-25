@@ -16,7 +16,8 @@ export type FlowEvent =
   | { type: "SELECT_EVENT"; eventId: FestivalEventId }
   | { type: "FINISH_CUSTOMIZE" }
   | { type: "SUBMIT_WISH" }
-  | { type: "FINISH_RITUAL" };
+  | { type: "FINISH_RITUAL" }
+  | { type: "REVISE_WISH" };
 
 export type FlowEventType = FlowEvent["type"];
 
@@ -25,6 +26,7 @@ export const FLOW_EVENT_TYPES: readonly FlowEventType[] = Object.freeze([
   "FINISH_CUSTOMIZE",
   "SUBMIT_WISH",
   "FINISH_RITUAL",
+  "REVISE_WISH",
 ]);
 
 export interface FlowSnapshot {
@@ -37,13 +39,13 @@ export const INITIAL_FLOW: FlowSnapshot = Object.freeze({
   eventId: null,
 });
 
-/** Forward-only transition table; SHARED_WORLD_EXPLORE is terminal. */
+/** Forward-only, except REVISE_WISH: a server-side moderation block sends the user back to the wish (MFW-23). SHARED_WORLD_EXPLORE is terminal. */
 export const FLOW_TRANSITIONS: Readonly<Record<FlowState, Partial<Record<FlowEventType, FlowState>>>> =
   Object.freeze({
     LANDING_EVENT_SELECT: Object.freeze({ SELECT_EVENT: "CUSTOMIZE_OBJECT" }),
     CUSTOMIZE_OBJECT: Object.freeze({ FINISH_CUSTOMIZE: "WRITE_WISH" }),
     WRITE_WISH: Object.freeze({ SUBMIT_WISH: "RITUAL_RELEASE" }),
-    RITUAL_RELEASE: Object.freeze({ FINISH_RITUAL: "SHARED_WORLD_EXPLORE" }),
+    RITUAL_RELEASE: Object.freeze({ FINISH_RITUAL: "SHARED_WORLD_EXPLORE", REVISE_WISH: "WRITE_WISH" }),
     SHARED_WORLD_EXPLORE: Object.freeze({}),
   });
 

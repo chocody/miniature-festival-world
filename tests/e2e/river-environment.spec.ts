@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 
 test.use({ hasTouch: true });
@@ -14,6 +15,7 @@ const TIERS = [
 
 for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
   test(`${tier} tier: the river environment renders in every canvas mode without errors`, async ({ page }) => {
+    await mockCreateCreation(page);
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
