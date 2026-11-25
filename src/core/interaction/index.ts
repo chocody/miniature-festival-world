@@ -34,6 +34,8 @@ export interface InputSeparator {
   pointerMove(sample: PointerSample): void;
   pointerUp(sample: PointerSample): void;
   pointerCancel(pointerId: number): void;
+  /** True once the pointer has moved past DRAG_START_DISTANCE_PX (or pinched). False for unknown or released ids. */
+  isDragging(pointerId: number): boolean;
 }
 
 interface TrackedPointer extends PointerSample {
@@ -55,6 +57,14 @@ export function getInteractionMode(state: FlowState): InteractionMode | null {
     default:
       return null;
   }
+}
+
+/**
+ * WORLD_EXPLORE captures only once a drag starts. Capturing on pointerdown sends the click to the section, and R3F
+ * never sees it (MFW-59).
+ */
+export function capturesOnPointerDown(mode: InteractionMode): boolean {
+  return mode !== "WORLD_EXPLORE";
 }
 
 export function isCameraLocked(mode: InteractionMode): boolean {
@@ -186,6 +196,9 @@ export function createInputSeparator(
     pointerCancel(pointerId) {
       pointers.delete(pointerId);
       if (pointers.size < 2) previousPinchDistance = null;
+    },
+    isDragging(pointerId) {
+      return pointers.get(pointerId)?.moved ?? false;
     },
   };
 }

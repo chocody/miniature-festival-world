@@ -1,6 +1,6 @@
 import { SCENE_CAMERA_ZOOM } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
-import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE, RIVER_MIN_CENTER_SPACING } from "./riverFlow.config";
+import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
 /** Scene tap gimmicks (spec §6.6 Task 6.2). Looks and timings are PLACEHOLDER (spec silent) unless marked. */
 
@@ -39,15 +39,30 @@ export const GIMMICK_BOUNCE = Object.freeze({ amplitude: 0.12, periodMs: 280, de
 /** Lead decision: the residual bounce at durationMs is below this, so ending at exactly 1 is not a visible snap. */
 export const BOUNCE_SETTLE_EPSILON = 0.005;
 
+/** Inradius / circumradius of a regular icosahedron: the detail-0 tap-proxy shape (riverTapProxy.ts). Geometry, not a product number. */
+export const TAP_PROXY_INRADIUS_RATIO = Math.sqrt((5 + 2 * Math.sqrt(5)) / 15); // ≈ 0.7947
+
+/** World radius whose on-screen diameter is MIN_TOUCH_TARGET_PX at the scene zoom (WORLD_EXPLORE has no zoom gesture). */
+export const MIN_TOUCH_TARGET_WORLD_RADIUS = MIN_TOUCH_TARGET_PX / 2 / SCENE_CAMERA_ZOOM;
+
+/** Lamp hit-proxy circumradius in WORLD units: its inscribed sphere projects to ≥ MIN_TOUCH_TARGET_PX. */
+export const LAMP_TAP_RADIUS = MIN_TOUCH_TARGET_WORLD_RADIUS / TAP_PROXY_INRADIUS_RATIO;
+
 /**
- * Hit-proxy radius of a river krathong, in MODEL units (inside the group scaled by RIVER_KRATHONG_SCALE). Lead decision, derived only
- * from existing constants: aim for a MIN_TOUCH_TARGET_PX-wide target at the default zoom, never smaller than the model footprint, and
- * never larger than half the no-overlap spacing (owner decision 25), so two proxies never overlap.
+ * Hit-proxy radius of a river krathong, in MODEL units (inside the group scaled by RIVER_KRATHONG_SCALE). Derived only from existing
+ * constants: the proxy's inscribed sphere projects to MIN_TOUCH_TARGET_PX at the default zoom (AC3, MFW-59), never smaller than the
+ * model footprint. Proxies may overlap neighbours at minimum spacing; pickNearestRiverHitId resolves which krathong was tapped.
  */
 export const RIVER_KRATHONG_TAP_RADIUS = Math.max(
   KRATHONG_MODEL_FOOTPRINT_RADIUS,
-  Math.min(
-    MIN_TOUCH_TARGET_PX / 2 / SCENE_CAMERA_ZOOM / RIVER_KRATHONG_SCALE,
-    RIVER_MIN_CENTER_SPACING / 2 / RIVER_KRATHONG_SCALE,
-  ),
+  MIN_TOUCH_TARGET_WORLD_RADIUS / TAP_PROXY_INRADIUS_RATIO / RIVER_KRATHONG_SCALE,
 );
+
+/** Remembers on this device that the scene-tap hint was dismissed. A UI flag, not a placement or personal data. */
+export const SCENE_TAP_HINT_STORAGE_KEY = "mfw:sceneTapHintSeen:v1";
+export const SCENE_TAP_HINT_SEEN_VALUE = "1";
+/** DRAFT copy (spec silent; owner to review). */
+export const SCENE_TAP_HINT_COPY = Object.freeze({
+  scene3d: "แตะผิวน้ำ โคมไฟ หรือกระทง เพื่อเล่นได้เลย",
+  flat2d: "แตะผิวน้ำหรือกระทง เพื่อเล่นได้เลย",
+});

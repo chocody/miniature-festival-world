@@ -34,12 +34,16 @@ import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.confi
 import type { WorldXZ } from "@/core/coordinates";
 import { InspectPopup } from "@/components/ui/InspectPopup";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
+import { SceneTapHint } from "@/components/ui/SceneTapHint";
+import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
+import { SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
 import { createCameraController, updateHighlightPosition } from "@/core/camera";
 import type { CameraTargetKind } from "@/core/camera";
 import {
+  capturesOnPointerDown,
   createInputSeparator,
   getPinchZoomFactor,
   getRotationAfterDrag,
@@ -526,6 +530,9 @@ export function SceneViewport({
     }
   }, []);
 
+  const tapHint = useSceneTapHint(mode === "WORLD_EXPLORE");
+  const dismissTapHint = tapHint.dismiss;
+
   const onAction = useCallback((action: InteractionAction) => {
     switch (action.type) {
       case "ROTATE_KRATHONG":
@@ -574,9 +581,10 @@ export function SceneViewport({
         break;
       case "TAP_INTERACT":
         setLastInteraction(action.target);
+        dismissTapHint();
         break;
     }
-  }, [applyZoomFactor, onReleaseDrop, getMapper, resetChip, writeChipPosition]);
+  }, [applyZoomFactor, onReleaseDrop, getMapper, resetChip, writeChipPosition, dismissTapHint]);
 
   useImperativeHandle(viewControlRef, () => ({
     rotate(direction) {
@@ -597,12 +605,20 @@ export function SceneViewport({
     const target = readTarget(event.target);
     if (mode === "RITUAL_RELEASE" && target !== "krathong") return;
     inputSeparatorRef.current.input.pointerDown(pointSample(event, target ?? (mode === "WORLD_EXPLORE" ? "water" : null)));
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (capturesOnPointerDown(mode)) event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: PointerEvent<HTMLElement>) {
     if (inputSeparatorRef.current?.mode === mode) {
-      inputSeparatorRef.current.input.pointerMove(pointSample(event, readTarget(event.target)));
+      const { input } = inputSeparatorRef.current;
+      input.pointerMove(pointSample(event, readTarget(event.target)));
+      if (mode === "WORLD_EXPLORE" && input.isDragging(event.pointerId) && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId); // pan keeps tracking outside the viewport
+        } catch {
+          // the pointer is no longer active (e.g. released between events): nothing to capture
+        }
+      }
     }
   }
 
@@ -744,6 +760,7 @@ export function SceneViewport({
           <span className="sr-only">กระทง</span>
         </div>
       )}
+      {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.scene3d} reducedMotion={reducedMotion} />}
       <span className="sr-only" aria-live="polite">
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>

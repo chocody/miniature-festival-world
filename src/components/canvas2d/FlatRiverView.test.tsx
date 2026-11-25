@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FLAT_RIVER_FRAME_INTERVAL_MS } from "@/config/fallback2d.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT, LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
-import { RIPPLE_LOOK } from "@/config/gimmicks.config";
+import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
+import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { FALLBACK_2D_EFFECT_POOL_CAPS } from "@/config/performance.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
@@ -104,6 +105,38 @@ afterEach(() => {
   cleanup();
   // @ts-expect-error test cleanup of the jsdom gap
   delete HTMLElement.prototype.scrollTo;
+});
+
+describe("FlatRiverView tap targets and hint (MFW-59)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("krathong hit circles are at least MIN_TOUCH_TARGET_PX wide", () => {
+    const { container } = mount();
+    const circles = container.querySelectorAll('[data-input-target="krathong"]');
+    expect(circles.length).toBeGreaterThan(0);
+    for (const c of circles) expect(2 * Number(c.getAttribute("r"))).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  });
+
+  it("tap hint shows in WORLD_EXPLORE, is tap-through, and goes after a water tap", () => {
+    const { container } = mount();
+    const hint = screen.getByTestId("scene-tap-hint");
+    expect(hint).toHaveTextContent(SCENE_TAP_HINT_COPY.flat2d);
+    expect(hint.className).toContain("pointer-events-none");
+    expect(hint).toHaveAttribute("data-motion", "pulse");
+    tap(water(container));
+    expect(screen.queryByTestId("scene-tap-hint")).toBeNull();
+  });
+
+  it("tap hint is static under reduced motion", () => {
+    useDeviceStore.getState().setReducedMotion(true);
+    mount();
+    expect(screen.getByTestId("scene-tap-hint")).toHaveAttribute("data-motion", "static");
+  });
+
+  it("tap hint is absent in RITUAL_RELEASE", () => {
+    mount("RITUAL_RELEASE");
+    expect(screen.queryByTestId("scene-tap-hint")).toBeNull();
+  });
 });
 
 describe("FlatRiverView", () => {

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createRef, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -5,11 +7,19 @@ import { BufferGeometry, Material } from "three";
 import type { Group, Mesh } from "three";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import { LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverEnvironment } from "./RiverEnvironment";
-import { LOY_KRATHONG_RIVER_LAYOUT, lampIndexFromInstanceId } from "./riverLayout";
+import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
 
 const useFrameSpy = vi.hoisted(() => vi.fn());
+const proxyHit = vi.hoisted(() => ({ value: false }));
+// The DOM stub's click cannot carry R3F's `intersections`: this makes the water's deferral to a proxy testable.
+vi.mock("@/components/canvas3d/effects/riverHitPick", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/canvas3d/effects/riverHitPick")>();
+  return { ...actual, hasTapProxyHit: (i: unknown) => proxyHit.value || actual.hasTapProxyHit(i) };
+});
+
 vi.mock("@react-three/fiber", () => ({
   useThree: (selector: (state: { invalidate: () => void }) => unknown) => selector({ invalidate: () => {} }),
   useFrame: useFrameSpy,
@@ -79,6 +89,45 @@ describe("RiverEnvironment", () => {
     expect(props.onLampSelected).toHaveBeenCalledWith(0);
   });
 
+  it("renders one invisible tap proxy per lamp over the head", () => {
+    const { container } = render(<RiverEnvironment {...makeProps()} />);
+    const proxies = container.querySelectorAll(`[name^="${SCENE_OBJECT_NAMES.lampTapPrefix}"]`);
+    expect(proxies).toHaveLength(LOY_KRATHONG_RIVER_LAYOUT.lamps.length);
+    proxies.forEach((el, i) => {
+      expect(el.getAttribute("position")).toBe(
+        lampHeadPosition(LOY_KRATHONG_RIVER_LAYOUT.lamps[i], RIVER_ENVIRONMENT_PARTS.lampHead.yOffset).join(","),
+      );
+    });
+    // React's DOM stub drops visible={false}, so the invisibility is pinned in the source instead.
+    expect(readFileSync(join(__dirname, "RiverEnvironment.tsx"), "utf8")).toMatch(/lampTapPrefix[\s\S]{0,200}visible=\{false\}/);
+  });
+
+  it("the water defers to a tap proxy under the click (MFW-59)", () => {
+    const props = makeProps();
+    const { container } = render(<RiverEnvironment {...props} />);
+    proxyHit.value = true;
+    try {
+      fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.water}"]`)!);
+    } finally {
+      proxyHit.value = false;
+    }
+    expect(props.onWaterSelected).not.toHaveBeenCalled();
+  });
+
+  it("a lamp proxy tap reports its lamp", () => {
+    const props = makeProps();
+    const { container } = render(<RiverEnvironment {...props} />);
+    fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.lampTapPrefix}2"]`)!);
+    expect(props.onLampSelected).toHaveBeenCalledWith(2);
+  });
+
+  it("lamp proxy encloses the lamp head", () => {
+    const geometry = RIVER_ENVIRONMENT_PARTS.lampHead.geometry;
+    if (geometry.kind !== "icosahedron") throw new Error("lamp head is expected to be an icosahedron");
+    const maxScale = Math.max(...LOY_KRATHONG_RIVER_LAYOUT.lamps.map((l) => l.scale));
+    expect(LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO).toBeGreaterThanOrEqual(geometry.radius * maxScale);
+  });
+
   it("maps instance ids to lamp indices", () => {
     expect(lampIndexFromInstanceId(2, 6)).toBe(2);
     expect(lampIndexFromInstanceId(undefined, 6)).toBe(0);
@@ -110,7 +159,7 @@ describe("RiverEnvironment", () => {
     expect(geometryDispose).not.toHaveBeenCalled();
     expect(materialDispose).not.toHaveBeenCalled();
     view.unmount();
-    expect(geometryDispose).toHaveBeenCalledTimes(3 + 7);
-    expect(materialDispose).toHaveBeenCalledTimes(7);
+    expect(geometryDispose).toHaveBeenCalledTimes(3 + 7 + 1); // +1: the shared lamp tap-proxy geometry (MFW-59)
+    expect(materialDispose).toHaveBeenCalledTimes(7 + 1); // +1: its material
   });
 });

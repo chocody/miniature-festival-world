@@ -11,7 +11,7 @@ export interface RiverTapProxy {
   dispose(): void;
 }
 
-export function createRiverTapProxy(radius: number = RIVER_KRATHONG_TAP_RADIUS): RiverTapProxy {
+export function createTapProxy(radius: number): RiverTapProxy {
   const geometry = new IcosahedronGeometry(radius, ICOSAHEDRON_DETAIL);
   const material = new MeshBasicMaterial();
   return {
@@ -22,4 +22,8 @@ export function createRiverTapProxy(radius: number = RIVER_KRATHONG_TAP_RADIUS):
       material.dispose();
     },
   };
+}
+
+export function createRiverTapProxy(radius: number = RIVER_KRATHONG_TAP_RADIUS): RiverTapProxy {
+  return createTapProxy(radius);
 }

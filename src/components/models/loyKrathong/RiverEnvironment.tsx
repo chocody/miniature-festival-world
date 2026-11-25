@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, type RefObject } from "react";
 import type { Group, Mesh } from "three";
-import { tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
+import { hasTapProxyHit } from "@/components/canvas3d/effects/riverHitPick";
+import { createTapProxy } from "@/components/canvas3d/effects/riverTapProxy";
+import { isTapClick, tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
 import { InstancedPart } from "@/components/canvas3d/InstancedPart";
 import { createRibbonGeometry } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
@@ -11,10 +13,11 @@ import {
   RIVER_BANK_MATERIAL,
   RIVER_ENVIRONMENT_PARTS,
 } from "@/config/events/loyKrathong.river.config";
+import { LAMP_TAP_RADIUS } from "@/config/gimmicks.config";
 import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
 import type { RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
-import { lampIndexFromInstanceId } from "./riverLayout";
+import { lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
 
 export interface RiverEnvironmentProps {
   readonly layout: RiverEnvironmentLayout;
@@ -40,6 +43,12 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
   const bankLeft = useRibbonGeometry(layout.banks.left);
   const bankRight = useRibbonGeometry(layout.banks.right);
   const parts = RIVER_ENVIRONMENT_PARTS;
+  const lampProxy = useMemo(() => createTapProxy(LAMP_TAP_RADIUS), []);
+  useEffect(() => () => lampProxy.dispose(), [lampProxy]);
+  const lampProxyPositions = useMemo(
+    () => layout.lamps.map((lamp) => lampHeadPosition(lamp, parts.lampHead.yOffset)),
+    [layout.lamps, parts.lampHead.yOffset],
+  );
   const focusLamp = layout.lamps[selectedLampIndex] ?? layout.lamps[0];
   const { pier } = layout;
   return (
@@ -51,6 +60,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         position={[0, layout.waterSurfaceY, 0]}
         receiveShadow={shadows}
         onClick={(event) => {
+          if (hasTapProxyHit(event.intersections)) return; // the proxy under the water takes this tap (MFW-59)
           event.stopPropagation();
           onWaterSelected(tapPointInParentSpace(event));
         }}
@@ -78,6 +88,21 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
           onLampSelected(lampIndexFromInstanceId(event.instanceId, layout.lamps.length));
         }}
       />
+      {lampProxyPositions.map((position, i) => (
+        <mesh
+          key={i}
+          name={`${SCENE_OBJECT_NAMES.lampTapPrefix}${i}`}
+          geometry={lampProxy.geometry}
+          material={lampProxy.material}
+          visible={false}
+          position={position}
+          onClick={(event) => {
+            if (!isTapClick(event)) return;
+            event.stopPropagation();
+            onLampSelected(i);
+          }}
+        />
+      ))}
       <mesh
         name={SCENE_OBJECT_NAMES.pierDeck}
         position={[pier.deckCenter.x, pier.deckCenter.y, pier.deckCenter.z]}
@@ -93,7 +118,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         <group
           ref={lampFocusRef}
           name={SCENE_OBJECT_NAMES.lampFocus}
-          position={[focusLamp.position.x, focusLamp.position.y + parts.lampHead.yOffset * focusLamp.scale, focusLamp.position.z]}
+          position={lampHeadPosition(focusLamp, parts.lampHead.yOffset)}
         />
       )}
     </>
