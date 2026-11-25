@@ -1,4 +1,4 @@
-import { createRiverLane, locateOnLane, splineProgressToWorld } from "@/core/coordinates";
+import { createRiverLane, splineProgressToWorld } from "@/core/coordinates";
 import type { RiverLane, WorldVec3, WorldXZ } from "@/core/coordinates";
 import {
   assertBankProfile,
@@ -54,19 +54,19 @@ export interface HouseFacadeDefinition {
   readonly windows: readonly LocalOffset[];
 }
 /**
- * Flat ground under the whole diorama (below the water), so no viewport shows the background. It is a ring: its hole is
- * centred on the origin and lies entirely under the water and the banks, so the ground never shades pixels they cover.
+ * Flat ground under the whole diorama (below the water), so no viewport shows the background. It has a hole shaped like the
+ * river + banks outline (pulled in by holeMargin), so the ground never shades pixels the water or banks cover.
  */
 export interface RiverGroundDefinition {
   readonly radius: number; // finite > 0
   readonly y: number; // < min(waterSurfaceY, bankProfile[0].y)
   readonly segments: number; // integer >= 3
-  /** The hole edge stays this far (world units) inside the banks' outer boundary, so no gap shows under a bank edge. >= 0. */
+  /** The hole edge stays this far (world units) inside the banks' outer boundary, so no gap shows under a bank edge. [0, bankWidth). */
   readonly holeMargin: number;
 }
-/** Resolved ground ring: innerRadius is derived from the bank outline (0 = a full disc). */
+/** Resolved ground: a disc of `radius` with a hole following the bank outline (`buildGroundHoleOutline`; empty = no hole). */
 export interface RiverGroundLayout extends RiverGroundDefinition {
-  readonly innerRadius: number;
+  readonly hole: readonly WorldXZ[];
 }
 export interface RiverEnvironmentDefinition {
   readonly channel: RiverChannelDefinition;
@@ -328,47 +328,35 @@ function assertGround(def: RiverEnvironmentDefinition): void {
   requirePositive(ground.radius, "ground radius");
   requireFinite(ground.y, "ground y");
   requireFinite(ground.holeMargin, "ground holeMargin");
-  if (ground.holeMargin < 0) throw new RangeError("ground holeMargin must be >= 0");
+  if (ground.holeMargin < 0 || ground.holeMargin >= def.bankWidth) throw new RangeError("ground holeMargin must be >= 0 and < bankWidth");
   if (!Number.isInteger(ground.segments) || ground.segments < 3) throw new RangeError("ground segments must be an integer >= 3");
   if (!(ground.y < Math.min(def.waterSurfaceY, def.bankProfile[0].y))) {
     throw new RangeError("ground y must be below the water surface and the bank profile");
   }
 }
 
-function distanceToSegmentXZ(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
-  const dx = bx - ax;
-  const dz = bz - az;
-  const len2 = dx * dx + dz * dz;
-  const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, ((px - ax) * dx + (pz - az) * dz) / len2));
-  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
-}
-
 /**
- * Largest ground-hole radius around the origin that stays inside the water + banks outline (both outer bank edges and the
- * two end caps), minus `holeMargin`. 0 when the origin is not inside the outline.
+ * Outline of the ground's hole (xz, counter-clockwise or clockwise, closed implicitly): the banks' outer edges pulled in by
+ * `holeMargin`, from channel row 1 to row segments − 1 on the left bank and back on the right bank. The hole therefore lies under
+ * the water and banks (rows 0 and `segments` stay covered by the ground under the river ends), so the ground never shades a pixel
+ * the water or a bank covers. Empty (no hole) with fewer than 3 segments.
  */
-export function groundHoleRadius(
+export function buildGroundHoleOutline(
   channel: RiverLane,
-  left: BankGeometryData,
-  right: BankGeometryData,
   bankWidth: number,
   holeMargin: number,
-): number {
-  const origin = locateOnLane(channel, { x: 0, z: 0 });
-  if (Math.abs(origin.lateralOffset) * channel.width > channel.width / 2 + bankWidth) return 0;
-  const outer = (bank: BankGeometryData, row: number) => (row * bank.rowSize + bank.rowSize - 1) * 3;
-  const rows = left.vertexCount / left.rowSize;
-  let best = Infinity;
-  const edge = (a: Float32Array, i: number, b: Float32Array, j: number) => {
-    best = Math.min(best, distanceToSegmentXZ(0, 0, a[i], a[i + 2], b[j], b[j + 2]));
+  segments: number,
+): WorldXZ[] {
+  if (!Number.isInteger(segments) || segments < 3) return [];
+  const lateral = channel.width / 2 + bankWidth - holeMargin;
+  const out: WorldXZ[] = [];
+  const at = (i: number, side: BankSide) => {
+    const { centerline: c, right } = riverFrameAt(channel, i / segments);
+    out.push({ x: c.x + right.x * side * lateral, z: c.z + right.z * side * lateral });
   };
-  for (let r = 0; r + 1 < rows; r++) {
-    edge(left.positions, outer(left, r), left.positions, outer(left, r + 1));
-    edge(right.positions, outer(right, r), right.positions, outer(right, r + 1));
-  }
-  edge(left.positions, outer(left, 0), right.positions, outer(right, 0)); // upstream end cap
-  edge(left.positions, outer(left, rows - 1), right.positions, outer(right, rows - 1)); // downstream end cap
-  return Math.max(0, best - holeMargin);
+  for (let i = 1; i < segments; i++) at(i, -1);
+  for (let i = segments - 1; i >= 1; i--) at(i, 1);
+  return out;
 }
 
 export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverEnvironmentLayout {
@@ -405,6 +393,8 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
   const water = buildRibbonGeometryData(channel, -(half + def.waterUnderlap), half + def.waterUnderlap, def.ribbonSegments);
   const left = buildBankProfileGeometryData(channel, -1, def.bankProfile, def.ribbonSegments);
   const right = buildBankProfileGeometryData(channel, 1, def.bankProfile, def.ribbonSegments);
+  const ground = buildGroundHoleOutline(channel, def.bankWidth, def.ground.holeMargin, def.ribbonSegments);
+  if (ground.some((p) => Math.hypot(p.x, p.z) >= def.ground.radius)) throw new RangeError("ground radius must enclose the river outline");
   const resolve = (list: readonly BankPlacement[]) =>
     list.map((p) => resolveBankPlacement(channel, p, bankSurfaceY(def.bankProfile, p.setback)));
   const houses = resolve(def.houses);
@@ -416,10 +406,7 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
     bankTopY: def.bankTopY,
     ribbonSegments: def.ribbonSegments,
     bankProfile: def.bankProfile,
-    ground: {
-      ...def.ground,
-      innerRadius: Math.min(groundHoleRadius(channel, left, right, def.bankWidth, def.ground.holeMargin), def.ground.radius),
-    },
+    ground: { ...def.ground, hole: ground },
     water,
     banks: { left, right },
     houses,

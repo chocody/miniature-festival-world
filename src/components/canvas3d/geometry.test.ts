@@ -134,19 +134,26 @@ describe("riverside v2 parts (MFW-49)", () => {
     }
   });
 
-  it("createGroundGeometry is a ring from the derived hole to the outer radius", () => {
+  it("createGroundGeometry is the ground disc minus the river + banks hole (no overdraw)", () => {
     const ground = LOY_KRATHONG_RIVER_LAYOUT.ground;
     const g = createGroundGeometry(ground);
-    expect(countTriangles(g)).toBe(2 * ground.segments);
     const pos = g.getAttribute("position");
-    let min = Infinity;
-    let max = 0;
-    for (let i = 0; i < pos.count; i++) {
-      const r = Math.hypot(pos.getX(i), pos.getY(i));
-      min = Math.min(min, r);
-      max = Math.max(max, r);
+    const idx = g.index!;
+    let area = 0;
+    const v = (i: number) => new Vector3().fromBufferAttribute(pos, idx.getX(i));
+    for (let t = 0; t < idx.count; t += 3) {
+      const [a, b, c] = [v(t), v(t + 1), v(t + 2)];
+      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      expect(cross).toBeGreaterThan(0); // faces local +z (up after the mesh rotation)
+      area += cross / 2;
     }
-    expect(min).toBeCloseTo(ground.innerRadius, 5);
-    expect(max).toBeCloseTo(ground.radius, 5);
+    const n = ground.segments;
+    const disc = (n / 2) * ground.radius ** 2 * Math.sin((2 * Math.PI) / n);
+    let hole = 0;
+    ground.hole.forEach((p, i) => {
+      const q = ground.hole[(i + 1) % ground.hole.length];
+      hole += (p.x * q.z - q.x * p.z) / 2;
+    });
+    expect(area).toBeCloseTo(disc - Math.abs(hole), 3);
   });
 });

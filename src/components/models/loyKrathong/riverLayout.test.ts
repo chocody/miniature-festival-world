@@ -32,6 +32,7 @@ import {
   type ScenePartSpec,
 } from "@/config/scene.config";
 import { createRiverLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
+import { getFramedCameraZoom } from "@/core/camera";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
 import { bankSurfaceY, estimateLitLuminance, type InstanceTransform, type Vec3Tuple } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "./riverLayout";
@@ -73,6 +74,17 @@ function makeCamera(width: number, height: number, factor: number, zoom: number 
 }
 const ndc = (camera: OrthographicCamera, p: WorldVec3) => new Vector3(p.x, p.y, p.z).project(camera);
 const onScreen = (v: Vector3) => Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
+/** Even-odd point-in-polygon test against the ground's hole outline (xz). */
+function insideHole(p: { readonly x: number; readonly z: number }): boolean {
+  const hole = layout.ground.hole;
+  let inside = false;
+  for (let i = 0, j = hole.length - 1; i < hole.length; j = i++) {
+    const a = hole[i];
+    const b = hole[j];
+    if (a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+}
 
 describe("river layout", () => {
   it("has houses, trees, lamps and a pier", () => {
@@ -281,8 +293,9 @@ describe("river layout", () => {
     const views: [number, number, number][] = [
       [320, 256, SCENE_CAMERA_ZOOM],
       [704, 256, SCENE_CAMERA_ZOOM],
-      [390, 844, 54.1667],
-      [1440, 900, 104],
+      [390, 844, getFramedCameraZoom({ width: 390, height: 844 })], // MFW-54 full-screen framed zoom
+      [1440, 900, getFramedCameraZoom({ width: 1440, height: 900 })],
+      [360, 640, getFramedCameraZoom({ width: 360, height: 640 })],
     ];
     const GRID = 5;
     for (const [w, h, zoom] of views) {
@@ -302,8 +315,8 @@ describe("river layout", () => {
           if (depth < SCENE_CAMERA_NEAR) continue;
           const r = Math.hypot(hit.x, hit.z);
           expect(r, `${w}x${h} ${factor} ${x},${y}`).toBeLessThanOrEqual(layout.ground.radius);
-          // Inside the ring's hole the point is under the water or a bank (MFW-49 ground ring).
-          if (r < layout.ground.innerRadius) {
+          // Inside the ground's hole the point is under the water or a bank (MFW-49 ground hole).
+          if (insideHole(hit)) {
             const lateral = Math.abs(locateOnLane(layout.channel, hit).lateralOffset) * layout.channel.width;
             expect(lateral).toBeLessThanOrEqual(layout.channel.width / 2 + LOY_KRATHONG_RIVER_ENVIRONMENT.bankWidth);
           }
@@ -316,18 +329,15 @@ describe("river layout", () => {
     expect(layout.ground.y).toBeLessThan(layout.waterSurfaceY);
   });
 
-  it("R2b: the ground ring's hole stays under the water and banks, deep enough that no gap shows under a bank edge", () => {
+  it("R2b: the ground's hole stays under the water and banks, deep enough that no gap shows under a bank edge", () => {
     const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
-    expect(layout.ground.innerRadius).toBeGreaterThan(0);
-    expect(layout.ground.innerRadius).toBeLessThan(layout.ground.radius);
+    expect(layout.ground.hole.length).toBeGreaterThanOrEqual(3);
     // A camera ray can pass under the highest bank edge by at most (edge height − ground y) / tan(camera elevation).
     const elevation = Math.atan2(CAMERA_FLIGHT_OFFSET[1], Math.hypot(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]));
     const step = Math.max(...def.bankProfile.map((p) => p.y)) - layout.ground.y;
     expect(def.ground.holeMargin).toBeGreaterThanOrEqual(step / Math.tan(elevation));
-    const SAMPLES_AROUND = 72;
-    for (let i = 0; i < SAMPLES_AROUND; i++) {
-      const a = (2 * Math.PI * i) / SAMPLES_AROUND;
-      const p = { x: Math.cos(a) * layout.ground.innerRadius, z: Math.sin(a) * layout.ground.innerRadius };
+    for (const p of layout.ground.hole) {
+      expect(Math.hypot(p.x, p.z)).toBeLessThan(layout.ground.radius);
       const lateral = Math.abs(locateOnLane(layout.channel, p).lateralOffset) * layout.channel.width;
       expect(lateral + def.ground.holeMargin).toBeLessThanOrEqual(layout.channel.width / 2 + def.bankWidth + 1e-6);
     }

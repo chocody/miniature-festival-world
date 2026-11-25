@@ -1,7 +1,7 @@
 /** = SCENE_CAMERA_ZOOM: the zoom the px offsets of older specs were probed at. stage-e2e-fixtures.test.ts checks every literal here. */
 export const E2E_PROBED_CAMERA_ZOOM = 52;
 /** = SCENE_FRAME_VIEW_SIZE / SCENE_CAMERA_ZOOM_MAX (src/config/camera.config.ts). */
-export const E2E_SCENE_FRAME_VIEW_SIZE = { width: 7.2, height: 4.9 } as const;
+export const E2E_SCENE_FRAME_VIEW_SIZE = { width: 7.4, height: 4.9 } as const;
 export const E2E_SCENE_CAMERA_ZOOM_MAX = 104;
 /** = FLAT_RIVER_VIEW_HEIGHT_PX: the 2D map height the Find My tolerance was set at. */
 export const E2E_FLAT_RIVER_PROBED_HEIGHT_PX = 256;

@@ -134,10 +134,10 @@ export const RIVER_BANK_PROFILE: readonly BankProfilePoint[] = Object.freeze([
 
 /**
  * Ground under everything so no viewport shows background; below the water so it never shows through. DRAFT (MFW-49).
- * A ring, not the spec's full disc (MFW-49 dev, measured): SwiftShader shades the disc pixels hidden under the water and
- * banks, which cost about 25 % of the HIGH frame on the e2e runner. The hole (derived from the bank outline, see
- * groundHoleRadius) lies under the water and banks; holeMargin 1 keeps it ≥ 0.6 inside the near-bank edge, the most a
- * camera ray can pass under that edge (0.4 step / tan 33.5° camera elevation). Dev technical value.
+ * Not the spec's full disc (MFW-49 dev, measured): SwiftShader shades the disc pixels hidden under the water and banks. The
+ * ground has a hole shaped like the river + banks outline (buildGroundHoleOutline), so it overdraws nothing; holeMargin 1
+ * keeps the hole edge ≥ 0.6 inside the outer bank edge, the most a camera ray can pass under that edge
+ * (0.4 step / tan 33.5° camera elevation). Dev technical value.
  */
 export const RIVER_GROUND: RiverGroundDefinition = Object.freeze({ radius: 30, y: -0.32, segments: 32, holeMargin: 1 });
 
@@ -152,7 +152,7 @@ export const HOUSE_FACADE: HouseFacadeDefinition = Object.freeze({
 
 /**
  * Riverside walking paths: MFW-50 villagers walk here (config + riversidePathPoseInto only, not drawn). See the contract in
- * docs/design/loy-krathong-look.md §10.4. Both lie on the flat village terrace, clear of every prop and the pier
+ * docs/design/loy-krathong-look.md §11.4. Both lie on the flat village terrace, clear of every prop and the pier
  * (riverLayout.test.ts R6). DRAFT (MFW-49).
  */
 export const LOY_KRATHONG_RIVERSIDE_PATHS: readonly RiversidePathDefinition[] = Object.freeze([

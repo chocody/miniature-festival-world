@@ -1829,7 +1829,11 @@ describe("camera drag-to-travel (MFW-57)", () => {
     render(<SceneViewport mode="WORLD_EXPLORE" />);
     drag([100, 100], outward);
     const reduced = focusOfCamera();
-    expect(isInsidePanBounds(reduced.x, reduced.z, BOUNDS)).toBe(true);
+    // The focus is read back as camera position − offset, so allow float round-off at the snapped edge (MFW-49: with the wider
+    // channel the bound is −2.9, read back as −2.9000000000000004).
+    const EPS = 1e-9;
+    const loose = { minX: BOUNDS.minX - EPS, maxX: BOUNDS.maxX + EPS, minZ: BOUNDS.minZ - EPS, maxZ: BOUNDS.maxZ + EPS };
+    expect(isInsidePanBounds(reduced.x, reduced.z, loose)).toBe(true);
     cleanup();
 
     useDeviceStore.getState().setReducedMotion(false);
