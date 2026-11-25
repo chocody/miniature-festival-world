@@ -34,12 +34,19 @@ describe("publicCreationsToRiverItems", () => {
     const input = creation(1);
     const out = publicCreationsToRiverItems([input], QUERY);
     expect(out).toHaveLength(1);
-    expect(Object.keys(out[0]).sort()).toEqual(["appearance", "coord", "createdAtMs", "id"]);
+    expect(Object.keys(out[0]).sort()).toEqual(["appearance", "coord", "createdAtMs", "id", "publicWishText"]);
     expect(out[0].coord).toEqual(input.coord);
     expect(out[0].coord).not.toBe(input.coord);
     expect(out[0].createdAtMs).toBe(Date.parse(input.createdAt));
     expect(Object.isFrozen(out)).toBe(true);
     expect(Object.isFrozen(out[0])).toBe(true);
+  });
+  it("copies the public wish text (MFW-28)", () => {
+    const out = publicCreationsToRiverItems(
+      [creation(1, { publicWishText: "ขอให้สุขภาพแข็งแรง" }), creation(2, { publicWishText: null })],
+      QUERY,
+    );
+    expect(out.map((x) => x.publicWishText)).toEqual(["ขอให้สุขภาพแข็งแรง", null]);
   });
   it("caps at 80 valid items", () => {
     const valid = Array.from({ length: 85 }, (_, i) => creation(i + 1));
@@ -65,9 +72,10 @@ describe("publicCreationsToRiverItems", () => {
     const dup = [creation(10), creation(10)];
     expect(publicCreationsToRiverItems(dup, QUERY)).toHaveLength(1);
   });
-  it("never copies the public wish; empty in, empty out", () => {
+  it("copies the public wish but never expiresAt; empty in, empty out (MFW-28 changed the wish rule)", () => {
     const out = publicCreationsToRiverItems([creation(1)], QUERY);
-    expect(JSON.stringify(out)).not.toContain("secret-ish");
+    expect(JSON.stringify(out)).toContain("secret-ish");
+    expect(JSON.stringify(out)).not.toContain("expiresAt");
     expect(publicCreationsToRiverItems([], QUERY)).toEqual([]);
   });
 });

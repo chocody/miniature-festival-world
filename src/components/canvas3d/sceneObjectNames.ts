@@ -14,4 +14,6 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   lampFocus: "scene-lamp-focus",
   pierDeck: "scene-pier-deck",
   pierPiles: "scene-pier-piles",
+  ripples: "scene-ripples",
+  lampGlows: "scene-lamp-glows",
 });

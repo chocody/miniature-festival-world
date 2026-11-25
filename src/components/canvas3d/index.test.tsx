@@ -22,6 +22,7 @@ import type { PublicCreation } from "@/services/api/creationTypes";
 import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes } from "@/core/world";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
+import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import {
   getSceneRenderSettings,
@@ -50,6 +51,13 @@ vi.mock("@/components/models/loyKrathong/krathongAssets", async (importOriginal)
     },
   };
 });
+
+const tapStub = vi.hoisted(() => ({ value: { x: 0.5, z: 0 } as { x: number; z: number } | null }));
+
+vi.mock("./effects/tapPoint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./effects/tapPoint")>()),
+  tapPointInParentSpace: () => tapStub.value,
+}));
 
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
@@ -173,6 +181,7 @@ const yaw = (c: HTMLElement) => Number(krathongTarget(c).getAttribute("rotation"
 afterEach(cleanup);
 
 beforeEach(() => {
+  tapStub.value = { x: 0.5, z: 0 };
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
@@ -589,5 +598,84 @@ describe("river flow in the scene", () => {
     };
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[x]} />);
     expect(riverGroups(container).map((g) => g.getAttribute("name"))).toEqual(["river-item-x"]);
+  });
+});
+
+describe("scene gimmicks (MFW-28)", () => {
+  const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const WISH = "ขอให้ครอบครัวมีความสุข";
+  const item = () => ({
+    id: ITEM_ID,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+    publicWishText: WISH,
+  });
+  const hit = (c: HTMLElement) => c.querySelector(`[name="river-hit-${ITEM_ID}"]`)!;
+
+  beforeEach(() => useDeviceStore.getState().setQualityTier("HIGH"));
+
+  it("water tap in WORLD_EXPLORE spawns a ripple", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+  });
+
+  it("a water tap without a hit point selects but spawns nothing", () => {
+    tapStub.value = null;
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(viewport()).not.toHaveAttribute("data-last-gimmick");
+  });
+
+  it("lamp tap lights the lamp", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const flights = r3f.flightStarts.length;
+    fireEvent.click(lampMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "lamp-glow");
+    expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
+    expect(r3f.flightStarts.length).toBe(flights + 1);
+  });
+
+  it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("%s taps spawn no gimmick", (mode) => {
+    const { container } = render(<SceneViewport mode={mode} riverItems={[item()]} />);
+    fireEvent.click(waterMesh(container));
+    fireEvent.click(lampMesh(container));
+    expect(viewport()).not.toHaveAttribute("data-last-gimmick");
+    expect(container.querySelectorAll('[name^="river-hit-"]')).toHaveLength(0);
+  });
+
+  it("river krathong tap opens the inspect popup", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+    fireEvent.click(hit(container));
+    const dialog = screen.getByRole("dialog", { name: INSPECT_POPUP_COPY.dialogTitle });
+    expect(dialog).toHaveTextContent(WISH);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "inspect");
+    expect(viewport().contains(dialog)).toBe(false);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      const value = viewport().getAttribute(attr)!;
+      expect(value).not.toContain(ITEM_ID);
+      expect(value).not.toContain(WISH);
+    }
+    fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the popup closes on mode change and when the item leaves", () => {
+    const items = [item()];
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<SceneViewport mode="RITUAL_RELEASE" riverItems={items} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

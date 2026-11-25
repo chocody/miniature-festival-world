@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, type RefObject } from "react";
 import type { Group, Mesh } from "three";
+import { tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
 import { InstancedPart } from "@/components/canvas3d/InstancedPart";
 import { createRibbonGeometry } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
@@ -11,6 +12,7 @@ import {
   RIVER_ENVIRONMENT_PARTS,
 } from "@/config/events/loyKrathong.river.config";
 import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
+import type { WorldXZ } from "@/core/coordinates";
 import type { RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
 import { lampIndexFromInstanceId } from "./riverLayout";
 
@@ -18,7 +20,8 @@ export interface RiverEnvironmentProps {
   readonly layout: RiverEnvironmentLayout;
   readonly shadows: boolean;
   readonly waterRef: RefObject<Mesh | null>;
-  readonly onWaterSelected: () => void;
+  /** tap = hit point in the parent (world-view group) space, or null when unavailable / the click ended a drag. */
+  readonly onWaterSelected: (tap: WorldXZ | null) => void;
   readonly lampFocusRef: RefObject<Group | null>;
   readonly selectedLampIndex: number;
   readonly onLampSelected: (lampIndex: number) => void;
@@ -49,7 +52,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         receiveShadow={shadows}
         onClick={(event) => {
           event.stopPropagation();
-          onWaterSelected();
+          onWaterSelected(tapPointInParentSpace(event));
         }}
       >
         <meshStandardMaterial {...TOY_MATTE_MATERIALS.water} />

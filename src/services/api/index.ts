@@ -38,3 +38,10 @@ export {
   type CreateCreationRequestBody,
   type CreateCreationResponseBody,
 } from "./createCreationTypes";
+export {
+  createReportSession,
+  getReportSession,
+  type ReportFetch,
+  type ReportSession,
+  type ReportSubmitOutcome,
+} from "./reportClient";
