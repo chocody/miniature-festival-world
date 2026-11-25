@@ -77,7 +77,7 @@ async function releaseThenMoveAway(page: Page, withOwnItem: boolean) {
 
 async function openAndSelect(page: Page) {
   await page.getByRole("button", { name: "ค้นหาของฉัน" }).click();
-  const entries = page.locator('[data-testid="my-creations-list"] li button');
+  const entries = page.locator('[data-testid="my-creations-list"] li > button');
   await expect(entries).toHaveCount(1);
   await expect(entries.first()).toContainText("คุ้งน้ำที่ 2");
   await entries.first().click();
@@ -150,7 +150,7 @@ test.describe("360 px", () => {
     const open = page.getByRole("button", { name: "ค้นหาของฉัน" });
     await expect(open).toBeInViewport();
     await open.click();
-    const entry = page.locator('[data-testid="my-creations-list"] li button').first();
+    const entry = page.locator('[data-testid="my-creations-list"] li > button').first();
     await expect(entry).toBeVisible();
     const box = (await entry.boundingBox())!;
     expect(box.width).toBeLessThanOrEqual(360);

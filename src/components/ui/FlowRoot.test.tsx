@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -11,6 +11,7 @@ import { RITUAL_COPY } from "@/config/ritual.config";
 import { buildReleaseCoord } from "@/core/ritual";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY, MY_CREATIONS_STORAGE_KEY } from "@/config/ownership.config";
 import { MY_CREATION_ENTRY_KEYS, MY_CREATIONS_COPY } from "@/config/myCreations.config";
+import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 
@@ -370,5 +371,18 @@ describe("FlowRoot", () => {
     fireEvent.click(open);
     const list = await screen.findByTestId("my-creations-list");
     expect(list).toHaveTextContent("คุ้งน้ำที่ 1");
+  });
+
+  it("the drawer entry offers the private wish reveal (MFW-31)", async () => {
+    const { container } = render(<FlowRoot />);
+    walkToRitual();
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    fireEvent.click(await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton }));
+    const list = await screen.findByTestId("my-creations-list");
+    expect(within(list).getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
   });
 });

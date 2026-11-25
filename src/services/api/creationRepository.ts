@@ -1,5 +1,6 @@
 import type { FestivalEventId } from "@/config/events/types";
 import type {
+  CreationOwnershipRecord,
   GuardedInsertResult,
   GuardedNewCreation,
   NewCreation,
@@ -15,7 +16,7 @@ export type CreationRepositoryErrorCode =
   | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name, incl. "createdAt" | "expectedOccupantIds")
   | "backend_misconfigured" // env / options wrong (detail = env var name or option name, never its value)
   | "backend_request_failed" // network error or non-2xx (detail = "network" | "status <n>")
-  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone" | "occupant")
+  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone" | "occupant" | "ownership")
 
 /** counted = report_count was incremented; ignored = unknown, private-only, expired or already hidden/flagged creation. */
 export type ReportOutcome = "counted" | "ignored";
@@ -69,4 +70,9 @@ export interface CreationRepository {
    * { status: "zone_changed" } and nothing is written. Validates with validateGuardedNewCreation first.
    */
   insertCreationGuarded(input: GuardedNewCreation): Promise<GuardedInsertResult>;
+  /**
+   * Server-only owner read (MFW-31): the stored owner hash and encrypted private wish of a NON-EXPIRED creation, or null (unknown or expired).
+   * Ignores moderation status (not a public read). Never takes or sends a token or a hash. Rejects invalid_input "creationId" for a non-uuid before any I/O.
+   */
+  readOwnership(creationId: string): Promise<CreationOwnershipRecord | null>;
 }

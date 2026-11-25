@@ -13,6 +13,7 @@ import type { OwnerTokenHash } from "@/services/auth";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type {
   AppearanceJson,
+  CreationOwnershipRecord,
   EncryptedPrivateWish,
   GuardedInsertResult,
   GuardedNewCreation,
@@ -252,6 +253,19 @@ export function createInMemoryCreationRepository(
       priv.reportCount = reportCount;
       if (reportCount >= AUTO_HIDE_REPORT_THRESHOLD) priv.moderationStatus = AUTO_HIDE_MODERATION_STATUS;
       return "counted";
+    },
+
+    async readOwnership(creationId: string): Promise<CreationOwnershipRecord | null> {
+      if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+        throw new CreationRepositoryError("invalid_input", "creationId");
+      }
+      const pub = publicRows.get(creationId);
+      const priv = privateRows.get(creationId);
+      if (pub === undefined || priv === undefined || pub.expiresAtMs <= now()) return null;
+      return {
+        ownerTokenHash: priv.ownerTokenHash,
+        privateWish: priv.privateWish === null ? null : { ciphertext: priv.privateWish.ciphertext, keyId: priv.privateWish.keyId },
+      };
     },
 
     getModerationState(id: string): CreationModerationState | null {

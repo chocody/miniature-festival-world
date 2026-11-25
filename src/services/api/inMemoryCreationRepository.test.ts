@@ -324,3 +324,50 @@ describe("MFW-45 zone occupancy and guarded insert", () => {
     expect(await repo.zoneItemCounts("loy_krathong")).toEqual([]);
   });
 });
+
+describe("in-memory repository: readOwnership (MFW-31)", () => {
+  it("returns the stored hash and encrypted wish", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() }));
+    expect(await repo.readOwnership(c.id)).toEqual({ ownerTokenHash: OWNER_HASH_FIXTURE, privateWish: makePrivateWish() });
+  });
+
+  it("public creation has no private wish; unknown id is null", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation());
+    expect(await repo.readOwnership(c.id)).toEqual({ ownerTokenHash: OWNER_HASH_FIXTURE, privateWish: null });
+    expect(await repo.readOwnership("00000000-0000-4000-8000-000000000000")).toBeNull();
+  });
+
+  it("expired creation is null once the clock passes expiresAt", async () => {
+    let t = START;
+    const repo = createInMemoryCreationRepository({ now: () => t });
+    const c = await repo.insertCreation(makeNewCreation({ expiresAt: new Date(START + STEP) }));
+    expect(await repo.readOwnership(c.id)).not.toBeNull();
+    t = START + STEP;
+    expect(await repo.readOwnership(c.id)).toBeNull();
+  });
+
+  it("ignores moderation status", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() }));
+    expect(repo.setModeration(c.id, { moderationStatus: "hidden" })).toBe(true);
+    expect(await repo.readOwnership(c.id)).not.toBeNull();
+  });
+
+  it("rejects an uppercase or non-uuid id", async () => {
+    const { repo } = setup();
+    for (const id of ["nope", "950118CE-7D93-4CB6-BD84-44D91C5DE9E3"]) {
+      await expect(repo.readOwnership(id)).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+      await expect(repo.readOwnership(id)).rejects.toBeInstanceOf(CreationRepositoryError);
+    }
+  });
+
+  it("returns a copy", async () => {
+    const { repo } = setup();
+    const c = await repo.insertCreation(makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() }));
+    const first = await repo.readOwnership(c.id);
+    (first!.privateWish as { keyId: string }).keyId = "mutated";
+    expect((await repo.readOwnership(c.id))!.privateWish!.keyId).toBe(KEY_ID_FIXTURE);
+  });
+});

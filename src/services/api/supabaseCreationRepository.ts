@@ -1,4 +1,5 @@
 import {
+  CREATION_OWNERSHIP_RPC_PATH,
   CREATIONS_PUBLIC_VISIBLE_VIEW,
   HIGHEST_ZONE_ORDER,
   INSERT_CREATION_GUARDED_RPC_PATH,
@@ -16,15 +17,19 @@ import {
   ZONE_OCCUPANTS_RPC_PATH,
 } from "@/config/database.config";
 import type { FestivalEventId } from "@/config/events/types";
+import { PRIVATE_WISH_CIPHERTEXT_PATTERN, PRIVATE_WISH_KEY_ID_PATTERN } from "@/config/privateWish.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
 import { parsePersistableCoord } from "@/core/coordinates/validateCoord";
+import { isOwnerTokenHash } from "@/services/auth";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type {
   AppearanceJson,
+  CreationOwnershipRecord,
   GuardedInsertResult,
   GuardedNewCreation,
   NewCreation,
+  PrivateWishCiphertext,
   PublicCreation,
   ZoneItemCount,
   ZoneOccupant,
@@ -39,6 +44,25 @@ import {
 } from "./creationValidation";
 import { isPlainObject } from "./json";
 import { publicRowToCreation } from "./publicCreation";
+
+/** Body of POST /rest/v1/rpc/mfw_creation_ownership; key equals the SQL parameter name. Carries no token and no hash. */
+export interface CreationOwnershipRpcBody {
+  readonly p_creation_id: string;
+}
+
+/** One mfw_creation_ownership row → record, or null if malformed (named keys only, no spreading). */
+function ownershipRowToRecord(row: unknown): CreationOwnershipRecord | null {
+  if (!isPlainObject(row)) return null;
+  const { owner_token_hash, private_wish_text, private_wish_key_id } = row;
+  if (!isOwnerTokenHash(owner_token_hash)) return null;
+  if (private_wish_text === null && private_wish_key_id === null) return { ownerTokenHash: owner_token_hash, privateWish: null };
+  if (typeof private_wish_text !== "string" || !PRIVATE_WISH_CIPHERTEXT_PATTERN.test(private_wish_text)) return null;
+  if (typeof private_wish_key_id !== "string" || !PRIVATE_WISH_KEY_ID_PATTERN.test(private_wish_key_id)) return null;
+  return {
+    ownerTokenHash: owner_token_hash,
+    privateWish: { ciphertext: private_wish_text as PrivateWishCiphertext, keyId: private_wish_key_id },
+  };
+}
 
 export interface SupabaseCreationRepositoryOptions {
   readonly url: string; // project URL, https (http only for LOCAL_SUPABASE_HOSTNAMES)
@@ -264,6 +288,19 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
       if (data === true) return "counted";
       if (data === false) return "ignored";
       throw new CreationRepositoryError("invalid_backend_response", "report");
+    },
+
+    async readOwnership(creationId: string): Promise<CreationOwnershipRecord | null> {
+      if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+        throw new CreationRepositoryError("invalid_input", "creationId"); // before any request
+      }
+      const body: CreationOwnershipRpcBody = { p_creation_id: creationId };
+      const data = await send(new URL(CREATION_OWNERSHIP_RPC_PATH, restBase), "POST", JSON.stringify(body));
+      if (!Array.isArray(data) || data.length > 1) throw new CreationRepositoryError("invalid_backend_response", "ownership");
+      if (data.length === 0) return null;
+      const record = ownershipRowToRecord(data[0]);
+      if (record === null) throw new CreationRepositoryError("invalid_backend_response", "ownership"); // fail closed → 503
+      return record;
     },
   };
 }

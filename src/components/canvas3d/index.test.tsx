@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrthographicCamera, Vector3 } from "three";
 import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
@@ -31,6 +31,8 @@ import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
 import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
+import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
+import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import {
   getSceneRenderSettings,
@@ -934,6 +936,48 @@ describe("scene gimmicks (MFW-28)", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("owner private wish reveal in the popup (MFW-31)", () => {
+  const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const item = (publicWishText: string | null) => ({
+    id: ITEM_ID,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+    publicWishText,
+  });
+  const hit = (c: HTMLElement) => c.querySelector(`[name="river-hit-${ITEM_ID}"]`)!;
+  let unregister: (() => void) | null = null;
+  beforeEach(() => useDeviceStore.getState().setQualityTier("HIGH"));
+  afterEach(() => {
+    unregister?.();
+    unregister = null;
+    vi.restoreAllMocks();
+  });
+
+  it("AC1: someone else's private krathong shows no reveal", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
+    fireEvent.click(hit(container));
+    expect(screen.getByRole("dialog")).toHaveTextContent(INSPECT_POPUP_COPY.noPublicWish);
+    expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
+  });
+
+  it("AC2: own private krathong offers the reveal, with no request before the tap", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    unregister = registerOwnedCreationPredicate((id) => id === ITEM_ID);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
+    fireEvent.click(hit(container));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("own public krathong shows no reveal", () => {
+    unregister = registerOwnedCreationPredicate((id) => id === ITEM_ID);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item("ขอให้ทุกคนมีความสุข")]} />);
+    fireEvent.click(hit(container));
+    expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
   });
 });
 
