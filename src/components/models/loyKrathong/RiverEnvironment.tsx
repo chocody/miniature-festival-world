@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, type RefObject } from "react";
-import type { Group, Mesh } from "three";
+import type { Group, InstancedMesh, Mesh } from "three";
 import { hasTapProxyHit } from "@/components/canvas3d/effects/riverHitPick";
 import { createTapProxy } from "@/components/canvas3d/effects/riverTapProxy";
 import { isTapClick, tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
@@ -33,6 +33,8 @@ export interface RiverEnvironmentProps {
   readonly onLampSelected: (lampIndex: number) => void;
   /** Village windows and lanterns are lit at NIGHT and off at DAY (VILLAGE_LIGHTS, MFW-49 AC3). */
   readonly lightPreset: LightPresetId;
+  /** MFW-50: receives the lamp-head InstancedMesh (lantern flicker), via the InstancedPart meshRef. Optional. */
+  readonly lampHeadMeshRef?: RefObject<InstancedMesh | null>;
 }
 
 function useRibbonGeometry(data: RibbonGeometryData) {
@@ -54,6 +56,7 @@ function useBankGeometry(data: BankGeometryData) {
  */
 export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { layout, shadows, waterRef, lampFocusRef, selectedLampIndex, onWaterSelected, onLampSelected, lightPreset } = props;
+  const { lampHeadMeshRef } = props;
   const water = useRibbonGeometry(layout.water);
   const bankLeft = useBankGeometry(layout.banks.left);
   const bankRight = useBankGeometry(layout.banks.right);
@@ -132,6 +135,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         transforms={layout.lamps}
         shadows={shadows}
         emissiveIntensity={village.lanternEmissiveIntensity}
+        meshRef={lampHeadMeshRef}
         onClick={(event) => {
           event.stopPropagation();
           onLampSelected(lampIndexFromInstanceId(event.instanceId, layout.lamps.length));

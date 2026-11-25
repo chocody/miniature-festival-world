@@ -2,7 +2,7 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrthographicCamera, type Vector3 } from "three";
-import { TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
+import { LIVING_WORLD_TIERS, TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS } from "@/config/look.config";
 import { CANVAS_GL_OPTIONS } from "./sceneLook";
@@ -1635,6 +1635,41 @@ describe("krathong model v2 (MFW-48)", () => {
     expect(spy.mock.calls.some((call) => call[1] === FLAME_FLICKER_REDRAW_INTERVAL_MS.HIGH)).toBe(false);
     spy.mockRestore();
   });
+
+  it("IX1 the living world (MFW-50) renders inside the world-view group on HIGH", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const worldView = container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!;
+    expect(worldView.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagers}"]`)).toHaveLength(1);
+    expect(worldView.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagerBlobShadows}"]`)).toHaveLength(1);
+    expect(worldView.querySelectorAll("primitive").length).toBeGreaterThan(0);
+  });
+
+  it("IX2 the living-world idle redraw runs in the shared world view and follows reduced motion (MFW-50 AC4)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const spy = vi.spyOn(window, "setInterval");
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(spy.mock.calls.some((call) => call[1] === LIVING_WORLD_TIERS.HIGH.idleRedrawIntervalMs)).toBe(true);
+    cleanup();
+    spy.mockClear();
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(spy.mock.calls.some((call) => call[1] === LIVING_WORLD_TIERS.HIGH.idleRedrawIntervalMs)).toBe(false);
+    spy.mockRestore();
+  });
+
+  it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)(
+    "IX3 %s: no living-world idle redraw; only the shared ticker at the flame cadence (MFW-50 fix round)",
+    (mode) => {
+      useDeviceStore.getState().setQualityTier("HIGH");
+      const spy = vi.spyOn(window, "setInterval");
+      render(<SceneViewport mode={mode} />);
+      const intervals = spy.mock.calls.map((call) => call[1]);
+      expect(intervals).not.toContain(LIVING_WORLD_TIERS.HIGH.idleRedrawIntervalMs);
+      expect(intervals.filter((ms) => ms === FLAME_FLICKER_REDRAW_INTERVAL_MS.HIGH)).toHaveLength(1);
+      spy.mockRestore();
+    },
+  );
 });
 
 describe("camera drag-to-travel (MFW-57)", () => {

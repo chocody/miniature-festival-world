@@ -5,6 +5,8 @@ import {
   EFFECT_POOL_CAPS,
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
+  LIVING_WORLD_RENDER_BUDGETS,
+  LIVING_WORLD_TIERS,
   FALLBACK_FPS_THRESHOLD,
   FOLIAGE_TIERS,
   FPS_SAMPLE_WINDOW_MS,
@@ -22,6 +24,7 @@ import {
   WATER_EFFECT_TIERS,
 } from "./performance.config";
 import { ZONE_ITEM_CAP } from "./world.config";
+import { LOY_KRATHONG_VILLAGERS } from "./events/loyKrathong.life.config";
 
 describe("performance.config (owner numbers, open question #5)", () => {
   it("has the owner thresholds", () => {
@@ -122,5 +125,47 @@ describe("foliage per tier (lead decision, MFW-70)", () => {
     expect(FOLIAGE_TIERS.LOW).toEqual({ variant: "LIGHT", sway: false });
     expect(Object.isFrozen(FOLIAGE_TIERS)).toBe(true);
     for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) expect(Object.isFrozen(FOLIAGE_TIERS[tier])).toBe(true);
+  });
+});
+
+describe("living world per tier (lead decision, MFW-50)", () => {
+  const ORDER = ["HIGH", "MEDIUM", "LOW"] as const;
+  it("P1 counts never grow from HIGH to LOW", () => {
+    for (let i = 1; i < ORDER.length; i++) {
+      const [hi, lo] = [LIVING_WORLD_TIERS[ORDER[i - 1]], LIVING_WORLD_TIERS[ORDER[i]]];
+      expect(hi.villagerCount).toBeGreaterThanOrEqual(lo.villagerCount);
+      expect(hi.moteCount).toBeGreaterThanOrEqual(lo.moteCount);
+    }
+  });
+  it("P2 LOW: fewest villagers, standing still, no ambient motion, no idle redraw", () => {
+    expect(LIVING_WORLD_TIERS.LOW).toMatchObject({
+      villagersWalk: false,
+      moteCount: 0,
+      lanternFlicker: false,
+      idleRedrawIntervalMs: null,
+    });
+    expect(LIVING_WORLD_TIERS.LOW.villagerCount).toBeLessThan(LIVING_WORLD_TIERS.MEDIUM.villagerCount);
+    expect(LIVING_WORLD_TIERS.MEDIUM.villagerCount).toBeLessThan(LIVING_WORLD_TIERS.HIGH.villagerCount);
+  });
+  it("P3 counts fit the villager list; a tier that moves has an integer redraw interval", () => {
+    for (const tier of ORDER) {
+      const t = LIVING_WORLD_TIERS[tier];
+      expect(Number.isInteger(t.villagerCount) && t.villagerCount >= 0).toBe(true);
+      expect(Number.isInteger(t.moteCount) && t.moteCount >= 0).toBe(true);
+      expect(t.villagerCount).toBeLessThanOrEqual(LOY_KRATHONG_VILLAGERS.length);
+      if (t.idleRedrawIntervalMs !== null) expect(Number.isInteger(t.idleRedrawIntervalMs) && t.idleRedrawIntervalMs > 0).toBe(true);
+      const moves = t.villagersWalk || t.moteCount > 0 || t.lanternFlicker;
+      if (moves) expect(t.idleRedrawIntervalMs).not.toBeNull();
+    }
+  });
+  it("P4 frozen, budgets positive", () => {
+    expect(Object.isFrozen(LIVING_WORLD_TIERS)).toBe(true);
+    expect(Object.isFrozen(LIVING_WORLD_RENDER_BUDGETS)).toBe(true);
+    for (const tier of ORDER) {
+      expect(Object.isFrozen(LIVING_WORLD_TIERS[tier])).toBe(true);
+      expect(Object.isFrozen(LIVING_WORLD_RENDER_BUDGETS[tier])).toBe(true);
+      expect(LIVING_WORLD_RENDER_BUDGETS[tier].maxDrawCalls).toBeGreaterThan(0);
+      expect(LIVING_WORLD_RENDER_BUDGETS[tier].maxTriangles).toBeGreaterThan(0);
+    }
   });
 });

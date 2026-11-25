@@ -39,6 +39,30 @@ function functionSource(source: string, name: string): string {
   return source.slice(start, end + 2);
 }
 
+/** MFW-50 living world: villagers and ambient life (meshes come from factories, no console). */
+const LIVING_WORLD_FILES = [
+  "src/components/canvas3d/villagerMeshes.ts",
+  "src/components/canvas3d/ambientMeshes.ts",
+  "src/components/canvas3d/Villagers.tsx",
+  "src/components/canvas3d/AmbientLife.tsx",
+  "src/core/world/villagers.ts",
+  "src/core/world/ambientLife.ts",
+];
+
+/** Every `useFrame(() => {` … `\n  });\n` body of a file (inline bodies use a 2-space indent). */
+function frameCallbackBodies(source: string): string[] {
+  const bodies: string[] = [];
+  let from = 0;
+  for (;;) {
+    const start = source.indexOf("useFrame(() => {", from);
+    if (start < 0) return bodies;
+    const end = source.indexOf("\n  });\n", start);
+    expect(end).toBeGreaterThan(start);
+    bodies.push(source.slice(start, end + 6));
+    from = end;
+  }
+}
+
 /** From `useFrame(() => {` to the matching `});` at the same indentation. */
 function useFrameBody(source: string): string {
   const start = source.indexOf("useFrame(() => {");
@@ -82,9 +106,34 @@ describe("instancing audit (backlog 8.2)", () => {
   });
 
   it("no console in the new files", () => {
-    for (const file of [...RIVER_FILES, "src/core/customization/krathongInstanceBuckets.ts"]) {
+    for (const file of [...RIVER_FILES, ...LIVING_WORLD_FILES, "src/core/customization/krathongInstanceBuckets.ts"]) {
       expect(read(file), file).not.toMatch(CONSOLE);
     }
+  });
+
+  it("the living world allocates nothing per frame (MFW-50 AC2)", () => {
+    const writers: [string, string[]][] = [
+      ["src/components/canvas3d/villagerMeshes.ts", ["writeVillagerInstances"]],
+      ["src/components/canvas3d/ambientMeshes.ts", ["writeMoteInstances", "writeLanternFlicker"]],
+      ["src/core/world/villagers.ts", ["villagerPoseInto"]],
+      ["src/core/world/ambientLife.ts", ["moteFrameInto", "lanternFlickerFactor"]],
+    ];
+    for (const [file, names] of writers) {
+      const source = read(file);
+      for (const name of names) {
+        expect(functionSource(source, name), name).not.toMatch(ALLOCATION);
+        expect(functionSource(source, name), name).not.toMatch(RANGE_ALLOCATION);
+      }
+    }
+    for (const file of ["src/components/canvas3d/Villagers.tsx", "src/components/canvas3d/AmbientLife.tsx"]) {
+      const source = read(file);
+      const bodies = frameCallbackBodies(source);
+      expect(bodies.length, file).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) expect(body, file).not.toMatch(ALLOCATION);
+      expect(source, file).not.toMatch(NEW_RESOURCE);
+      expect(source, file).not.toMatch(TEXTURE_API);
+    }
+    expect(frameCallbackBodies(read("src/components/canvas3d/AmbientLife.tsx")).length).toBe(2); // motes, flicker
   });
 
   it("perf probe stays in the 3D chunk", () => {

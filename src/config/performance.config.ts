@@ -152,3 +152,41 @@ export const FOLIAGE_TIERS: Readonly<Record<RenderTier, Readonly<{ variant: Foli
   MEDIUM: Object.freeze({ variant: "FULL", sway: true }),
   LOW: Object.freeze({ variant: "LIGHT", sway: false }),
 });
+
+// Technical numbers (lead decision, MFW-50). DRAFT values.
+
+export interface LivingWorldTier {
+  /** Villagers rendered: the first N of LOY_KRATHONG_VILLAGERS. */
+  readonly villagerCount: number;
+  /** false = villagers stand still (the static STAND pose). */
+  readonly villagersWalk: boolean;
+  /** Floating light motes; 0 = none. */
+  readonly moteCount: number;
+  readonly lanternFlicker: boolean;
+  /**
+   * Idle-redraw cadence registered with the shared idle-redraw ticker (idleRedraw.ts) while villagers, motes or lanterns move,
+   * ONLY in the shared world view (WORLD_EXPLORE, e.g. an empty river). null = never. In CUSTOMIZE and RITUAL the living world
+   * registers nothing and advances only on frames drawn anyway (the flame-flicker cadence). When krathongs drift, RiverFlow
+   * already redraws every frame and this adds nothing.
+   */
+  readonly idleRedrawIntervalMs: number | null;
+}
+
+/** Living world per 3D tier (backlog 9.4 AC2). LOW: fewest villagers, standing, no ambient motion, no idle redraw. DRAFT. */
+export const LIVING_WORLD_TIERS: Readonly<Record<RenderTier, Readonly<LivingWorldTier>>> = Object.freeze({
+  HIGH: Object.freeze({ villagerCount: 8, villagersWalk: true, moteCount: 16, lanternFlicker: true, idleRedrawIntervalMs: 50 }),
+  MEDIUM: Object.freeze({ villagerCount: 5, villagersWalk: true, moteCount: 10, lanternFlicker: true, idleRedrawIntervalMs: 67 }),
+  LOW: Object.freeze({ villagerCount: 2, villagersWalk: false, moteCount: 0, lanternFlicker: false, idleRedrawIntervalMs: null }),
+});
+
+/**
+ * Living-world render budget per tier, main pass: villager bodies, heads, hats (one shared silhouette material), villager blob
+ * shadows and motes. Lantern flicker adds no draw call. Lead regression guard (MFW-50), checked by
+ * livingWorldBudget.test.tsx.
+ */
+export const LIVING_WORLD_RENDER_BUDGETS: Readonly<Record<RenderTier, Readonly<{ maxDrawCalls: number; maxTriangles: number }>>> =
+  Object.freeze({
+    HIGH: Object.freeze({ maxDrawCalls: 5, maxTriangles: 1_250 }),
+    MEDIUM: Object.freeze({ maxDrawCalls: 5, maxTriangles: 750 }),
+    LOW: Object.freeze({ maxDrawCalls: 4, maxTriangles: 200 }),
+  });

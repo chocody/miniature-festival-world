@@ -15,7 +15,7 @@ import {
   type RefObject,
 } from "react";
 import { OrthographicCamera } from "three";
-import type { Group, Mesh } from "three";
+import type { Group, InstancedMesh, Mesh } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
   SCENE_CAMERA_FAR,
@@ -93,6 +93,8 @@ import { SceneLighting } from "./SceneLighting";
 import { EnvironmentBlobShadows } from "./BlobShadows";
 import { ShoreHighlights, WaterGlints } from "./WaterHighlights";
 import { getSceneMarks } from "./sceneMarks";
+import { Villagers } from "./Villagers";
+import { AmbientLife } from "./AmbientLife";
 import { useResolvedLightPreset } from "./useLightPreset";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -177,6 +179,8 @@ interface ToyNightSceneProps {
   findMyAnchorRef: RefObject<Group | null>;
   markedRiverId: string | null;
   ownMarked: boolean;
+  /** MFW-50: the living world may keep an idle-redraw cadence (true only in WORLD_EXPLORE). A primitive keeps the memo effective. */
+  livingWorldIdleRedraw: boolean;
 }
 
 const ToyNightScene = memo(function ToyNightScene({
@@ -211,8 +215,10 @@ const ToyNightScene = memo(function ToyNightScene({
   findMyAnchorRef,
   markedRiverId,
   ownMarked,
+  livingWorldIdleRedraw,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
+  const lampHeadMeshRef = useRef<InstancedMesh | null>(null);
   return (
     <>
       {/* World-fixed lights: NOT inside the world container, so pan/rotate never changes the key-light direction. */}
@@ -229,10 +235,19 @@ const ToyNightScene = memo(function ToyNightScene({
           selectedLampIndex={selectedLampIndex}
           onLampSelected={onLampSelected}
           lightPreset={lightPreset}
+          lampHeadMeshRef={lampHeadMeshRef}
         />
         <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <ShoreHighlights layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <WaterGlints layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
+        <Villagers layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
+        <AmbientLife
+          layout={LOY_KRATHONG_RIVER_LAYOUT}
+          now={riverNow}
+          lightPreset={lightPreset}
+          lampHeadMeshRef={lampHeadMeshRef}
+          idleRedraw={livingWorldIdleRedraw}
+        />
         <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
         <OwnKrathong
           targetRef={krathongTargetRef}
@@ -780,6 +795,7 @@ export function SceneViewport({
             findMyAnchorRef={findMyAnchorRef}
             markedRiverId={markedRiverId}
             ownMarked={ownMarked}
+            livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
           />
           <CameraRig
             getRig={getRig}
