@@ -17,6 +17,11 @@ export const E2E_INSPECT_DIALOG_TITLE = "กระทงในสายน้ำ
  * renders the world at 12–20 FPS, so without it the FPS profiler (correctly) falls back to 2D mid-test.
  */
 export const E2E_PINNED_TIER_URL = "/?pinTier=1";
+export const E2E_TAP_RIPPLE_NAME = "scene-ripples"; // = SCENE_OBJECT_NAMES.ripples
+export const E2E_LAMP_GLOW_NAME = "scene-lamp-glows"; // = SCENE_OBJECT_NAMES.lampGlows
+export const E2E_KRATHONG_MARK_NAME = "scene-krathong-mark-cue"; // = SCENE_OBJECT_NAMES.krathongMarkCue
+export const E2E_KRATHONG_MARK_SCALE = 1.2; // = KRATHONG_MARK_CUE.scale
+export const E2E_ADDITIVE_BLENDING = 2; // = three AdditiveBlending
 
 const WATER_GRID_X_FROM = 0.1;
 const WATER_GRID_X_TO = 0.9;
@@ -62,6 +67,10 @@ interface SceneObject {
   name: string;
   getWorldPosition(target: Vec3): Vec3;
   __r3f?: { root: { getState(): R3FState } };
+  isMesh?: boolean;
+  geometry?: { type?: string };
+  material?: { blending?: number } | { blending?: number }[];
+  scale?: { x: number };
 }
 interface Intersection {
   distance: number;
@@ -247,4 +256,40 @@ export async function locateStableTarget<K extends keyof SceneTargets>(page: Pag
     })
     .toBe(true);
   return found as unknown as NonNullable<SceneTargets[K]>;
+}
+
+/**
+ * Names of meshes that draw a ring or an additive halo, except the tap ripple and the lamp light-up (MFW-67). null = no frame rendered
+ * yet (poll). Unnamed meshes are reported as "(unnamed)".
+ */
+export async function listRingAndHaloMeshes(page: Page): Promise<string[] | null> {
+  return page.evaluate(
+    ({ allowed, additive }) => {
+      const scene = (window as unknown as ProbeWindow).__mfwProbe?.scene;
+      if (!scene) return null;
+      const found: string[] = [];
+      scene.traverse((o) => {
+        if (!o.isMesh || allowed.includes(o.name)) return;
+        const materials = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        const ring = o.geometry?.type === "RingGeometry";
+        const halo = materials.some((m) => m.blending === additive);
+        if (ring || halo) found.push(o.name || "(unnamed)");
+      });
+      return found;
+    },
+    { allowed: [E2E_TAP_RIPPLE_NAME, E2E_LAMP_GLOW_NAME], additive: E2E_ADDITIVE_BLENDING },
+  );
+}
+
+/** scale.x of the first scene object with this name; null when there is no scene or no such object. */
+export async function readObjectScaleX(page: Page, name: string): Promise<number | null> {
+  return page.evaluate((target) => {
+    const scene = (window as unknown as ProbeWindow).__mfwProbe?.scene;
+    if (!scene) return null;
+    let value: number | null = null;
+    scene.traverse((o) => {
+      if (value === null && o.name === target && o.scale) value = o.scale.x;
+    });
+    return value;
+  }, name);
 }

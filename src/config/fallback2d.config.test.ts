@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_SIZES } from "./camera.config";
+import { CAMERA_FLIGHT_OFFSET } from "./camera.config";
 import * as cfg from "./fallback2d.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
-import { MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
+import { KRATHONG_MARK_CUE, MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
 import { EFFECT_POOL_CAPS, FALLBACK_2D_EFFECT_POOL_CAPS } from "./performance.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
@@ -18,12 +18,11 @@ describe("fallback2d.config", () => {
     );
   });
 
-  it("derives sprite, tap, highlight and frame constants from their formulas", () => {
+  it("derives sprite, tap, mark and frame constants from their formulas", () => {
     expect(cfg.FLAT_RIVER_SPRITE_SCALE).toBe(RIVER_KRATHONG_SCALE);
     expect(cfg.FLAT_RIVER_TAP_RADIUS).toBe(RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE);
     expect(cfg.FLAT_RIVER_FRAME_INTERVAL_MS).toBe(MS_PER_SECOND / cfg.FLAT_RIVER_TARGET_FPS);
-    expect(cfg.FLAT_RIVER_HIGHLIGHT.innerRadius).toBe(HIGHLIGHT_RING_SIZES.krathong.innerRadius * RIVER_KRATHONG_SCALE);
-    expect(cfg.FLAT_RIVER_HIGHLIGHT.outerRadius).toBe(HIGHLIGHT_RING_SIZES.krathong.outerRadius * RIVER_KRATHONG_SCALE);
+    expect(cfg.FLAT_RIVER_MARK_SCALE).toBe(KRATHONG_MARK_CUE.scale);
   });
 
   it("pools FALLBACK_2D effects with the LOW caps", () => {
@@ -52,7 +51,6 @@ describe("fallback2d.config", () => {
     for (const t of Object.values(cfg.FLAT_VIEW_COPY)) expect(t.length).toBeGreaterThan(0);
     for (const o of [
       cfg.FLAT_KRATHONG_PREVIEW_VIEW,
-      cfg.FLAT_RIVER_HIGHLIGHT,
       cfg.FLAT_RIVER_PROP_SIZES,
       cfg.FLAT_VIEW_COLORS,
       cfg.FLAT_VIEW_COPY,

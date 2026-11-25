@@ -7,10 +7,7 @@ import { RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config
 import {
   BLOB_SHADOW_LOOK,
   BLOB_SHADOW_TIER_GEOMETRY,
-  LAMP_LIGHT_POOL_LOOK,
-  VILLAGE_LIGHTS,
   WATER_HIGHLIGHT_LOOK,
-  type LightPresetId,
 } from "@/config/look.config";
 import { WATER_EFFECT_TIERS, type RenderTier } from "@/config/performance.config";
 import { createSplinePoseOut, splineProgressToPoseInto } from "@/core/coordinates";
@@ -33,7 +30,7 @@ import {
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 
 /**
- * Stylized water and village light fans (MFW-49 AC3/AC4). Every mesh is a vertex-alpha InstancedMesh (one
+ * Stylized water fans (MFW-49 AC4; the lamp light pools were removed in MFW-67). Every mesh is a vertex-alpha InstancedMesh (one
  * instance where static), so all of them share the blob-shadow shader program; none takes taps (NO_RAYCAST via
  * createBlobShadowInstances), none casts or receives shadows, each owns and disposes its geometry and material.
  */
@@ -157,36 +154,6 @@ export function WaterGlints({
   });
   if (count === 0) return null;
   return <primitive object={mesh} name={SCENE_OBJECT_NAMES.waterGlints} />;
-}
-
-/**
- * Warm additive pool of light on the ground under every lamp, shown only when VILLAGE_LIGHTS[lightPreset].lampLightPools.
- * The mesh does not depend on the preset, so a DAY ↔ NIGHT switch creates and disposes nothing.
- */
-export function LampLightPools({
-  layout,
-  lightPreset,
-}: {
-  readonly layout: RiverEnvironmentLayout;
-  readonly lightPreset: LightPresetId;
-}): JSX.Element | null {
-  const tier = useRenderTier();
-  const invalidate = useThree((s) => s.invalidate);
-  const geometry = useTierFanGeometry(tier);
-  const material = useMemo(() => createFanMaterial(LAMP_LIGHT_POOL_LOOK), []);
-  const capacity = layout.lamps.length;
-  const mesh = useFanMesh(geometry, material, Math.max(capacity, 1), SCENE_OBJECT_NAMES.lampLightPools);
-  const [scratch] = useState(() => new Matrix4());
-  useLayoutEffect(() => {
-    layout.lamps.forEach((lamp, i) => {
-      const radius = LAMP_LIGHT_POOL_LOOK.radius * lamp.scale;
-      writeBlobShadowAt(mesh, i, lamp.position.x, lamp.position.y + LAMP_LIGHT_POOL_LOOK.liftY, lamp.position.z, radius, scratch);
-    });
-    commitBlobShadows(mesh, capacity);
-    invalidate();
-  }, [mesh, layout, capacity, scratch, invalidate]);
-  if (!VILLAGE_LIGHTS[lightPreset].lampLightPools || capacity === 0) return null;
-  return <primitive object={mesh} name={SCENE_OBJECT_NAMES.lampLightPools} />;
 }
 
 export interface KrathongRipplesHandle {

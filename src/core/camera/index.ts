@@ -1,4 +1,4 @@
-import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
+import { CAMERA_FLIGHT_OFFSET } from "@/config/camera.config";
 import { getCameraRigPose, type CameraRigPose } from "./cameraRig";
 
 export * from "./cameraRig";
@@ -22,10 +22,6 @@ export interface CameraFlightPose {
 
 export interface CameraAnimationApi {
   start: (options: { to: CameraRigPose; immediate: boolean }) => void;
-}
-
-export interface MutablePosition {
-  set: (x: number, y: number, z: number) => unknown;
 }
 
 /** The yaw-0 camera + focus pose; equals `applyCameraRigPose` at yaw 0 (ritualSite.ts and sceneFraming.test.ts use it). */
@@ -52,15 +48,6 @@ export function createCameraController(animation: CameraAnimationApi, reducedMot
       animation.start({ to: pose, immediate: reducedMotion });
     },
   };
-}
-
-/** Keep a ring centered on the target's latest world position without allocating a new vector. */
-export function updateHighlightPosition(
-  target: CameraTargetPosition,
-  ringPosition: MutablePosition,
-  heightOffset: number = HIGHLIGHT_RING_SIZES.water.heightOffset,
-): void {
-  ringPosition.set(target.x, target.y + heightOffset, target.z);
 }
 
 export { getFramedCameraZoom, type ViewportPixelSize } from "./viewportFraming";

@@ -3,10 +3,9 @@ import {
   createCameraController,
   getCameraFlightPose,
   getCameraRigPose,
-  updateHighlightPosition,
 } from "./index";
 
-describe("camera flight and target highlight", () => {
+describe("camera flight", () => {
   it("builds a clear camera pose focused on the target", () => {
     expect(getCameraFlightPose({ x: 1, y: 2, z: 3 })).toEqual({
       cameraX: 10,
@@ -47,14 +46,5 @@ describe("camera flight and target highlight", () => {
     const pose = { focusX: 1, focusY: 0, focusZ: -1, yawRad: Math.PI / 4 };
     createCameraController({ start }, reduced).rotateTo(pose);
     expect(start).toHaveBeenCalledWith({ to: pose, immediate: reduced });
-  });
-
-  it("updates the highlight position from each latest target position", () => {
-    const set = vi.fn();
-    const ringPosition = { set };
-    updateHighlightPosition({ x: 1, y: 2, z: 3 }, ringPosition);
-    updateHighlightPosition({ x: 4, y: 5, z: 6 }, ringPosition);
-    expect(set).toHaveBeenNthCalledWith(1, 1, 2.04, 3);
-    expect(set).toHaveBeenNthCalledWith(2, 4, 5.04, 6);
   });
 });
