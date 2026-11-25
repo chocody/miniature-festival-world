@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { startDeviceProfiler } from "@/core/performance";
+import { getBrowserProfilerEnv, isTierPinRequested, startDeviceProfiler } from "@/core/performance";
 import { getLightPresetPreference } from "@/services/preferences/lightPresetPreference";
 import { useDeviceStore } from "@/store/useDeviceStore";
 
@@ -10,7 +10,8 @@ export function DeviceProfiler(): null {
   useEffect(() => {
     const { setFps, setQualityTier, setReducedMotion, setLightPresetChoice } = useDeviceStore.getState();
     setLightPresetChoice(getLightPresetPreference().read()); // hydrate the per-device light preset once (MFW-47)
-    return startDeviceProfiler({ setFps, setQualityTier, setReducedMotion });
+    const watchFps = !isTierPinRequested(window.location.search); // ?pinTier=1: keep the initial tier (e2e on SwiftShader)
+    return startDeviceProfiler({ setFps, setQualityTier, setReducedMotion }, getBrowserProfilerEnv(), { watchFps });
   }, []);
   return null;
 }

@@ -1,4 +1,5 @@
 import type { QualityTier } from "@/config/performance.config";
+import { TIER_PIN_QUERY_PARAM, TIER_PIN_QUERY_VALUE } from "@/config/perfProbe.config";
 import {
   detectDeviceCapabilities,
   subscribeReducedMotion,
@@ -21,6 +22,16 @@ export interface VisibilityDocumentLike {
 export interface ProfilerEnv extends CapabilityEnv {
   scheduler?: FrameScheduler;
   document?: VisibilityDocumentLike;
+}
+
+export interface DeviceProfilerOptions {
+  /** false = keep the initial tier: no FPS meter, no runtime step-down or 2D fallback (?pinTier=1). Default true. */
+  readonly watchFps?: boolean;
+}
+
+/** Exact, case-sensitive match of the ?pinTier=1 flag. */
+export function isTierPinRequested(search: string): boolean {
+  return new URLSearchParams(search).get(TIER_PIN_QUERY_PARAM) === TIER_PIN_QUERY_VALUE;
 }
 
 /** Browser environment; call only on the client (inside an effect), never at import time. */
@@ -46,6 +57,7 @@ export function getBrowserProfilerEnv(): ProfilerEnv {
 export function startDeviceProfiler(
   sink: DeviceProfileSink,
   env: ProfilerEnv = getBrowserProfilerEnv(),
+  options: DeviceProfilerOptions = {},
 ): () => void {
   const caps = detectDeviceCapabilities(env);
   sink.setReducedMotion(caps.reducedMotion);
@@ -53,7 +65,7 @@ export function startDeviceProfiler(
 
   const tier = pickInitialTier(caps);
   sink.setQualityTier(tier);
-  if (tier === "FALLBACK_2D" || !env.scheduler) return () => unsubRM();
+  if (tier === "FALLBACK_2D" || !env.scheduler || options.watchFps === false) return () => unsubRM();
 
   const controller = createTierController(tier);
   const doc = env.document;

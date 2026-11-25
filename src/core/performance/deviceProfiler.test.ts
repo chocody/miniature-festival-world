@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { startDeviceProfiler, type ProfilerEnv } from "./deviceProfiler";
+import { isTierPinRequested, startDeviceProfiler, type ProfilerEnv } from "./deviceProfiler";
 import { fakeCanvas, fakeDoc, fakeMql, fakeScheduler, runFrames } from "./testFakes";
 
 function setup(
@@ -25,6 +25,34 @@ function setup(
   };
   return { sched, mql, doc, sink, env };
 }
+
+describe("tier pin (?pinTier=1)", () => {
+  it("matches only the exact flag", () => {
+    expect(isTierPinRequested("?pinTier=1")).toBe(true);
+    expect(isTierPinRequested("?perfProbe=1&pinTier=1")).toBe(true);
+    for (const s of ["", "?pinTier=0", "?pinTier=true", "?PinTier=1", "?pintier=1"]) expect(isTierPinRequested(s)).toBe(false);
+  });
+
+  it("watchFps false keeps the initial tier: no meter, no step-down, no 2D fallback", () => {
+    const { sched, sink, env } = setup({ memory: 8, cores: 8 });
+    startDeviceProfiler(sink, env, { watchFps: false });
+    expect(sink.setQualityTier).toHaveBeenCalledTimes(1);
+    expect(sink.setQualityTier).toHaveBeenCalledWith("HIGH");
+    expect(sched.pending).toBe(0);
+    runFrames(sched, 0, 12_000, 5);
+    expect(sink.setQualityTier).toHaveBeenCalledTimes(1);
+    expect(sink.setFps).not.toHaveBeenCalled();
+  });
+
+  it("watchFps false still honours no WebGL and reduced motion", () => {
+    const { mql, sink, env } = setup({ webgl: false, reduced: true });
+    startDeviceProfiler(sink, env, { watchFps: false });
+    expect(sink.setQualityTier).toHaveBeenCalledWith("FALLBACK_2D");
+    expect(sink.setReducedMotion).toHaveBeenCalledWith(true);
+    mql.emit(false);
+    expect(sink.setReducedMotion).toHaveBeenLastCalledWith(false);
+  });
+});
 
 describe("startDeviceProfiler", () => {
   it("no WebGL -> FALLBACK_2D, meter never starts", () => {
