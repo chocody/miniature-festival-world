@@ -28,8 +28,10 @@ export const FLAT_RIVER_VISIBLE_BANK_DEPTH = 1.2;
 /**
  * Lane progress cropped at each end of the map so the % 1 wrap is never drawn (owner decision 22). PLACEHOLDER; must hide a whole
  * sprite (flatRiverScene.test.ts pins margin × lane length > RIVER_COLLISION_RADIUS).
+ * 0.05 → 0.06 in MFW-49: the wider lane (3.0) puts the lane ends nearer the map edge (worst wrap slack 1.4 px at 0.05,
+ * 8.8 px at 0.06), so the 2D map drops 0.01 of river at each end.
  */
-export const FLAT_RIVER_END_MARGIN_PROGRESS = 0.05;
+export const FLAT_RIVER_END_MARGIN_PROGRESS = 0.06;
 /** Frame budget of the 2D river (transform-only writes). PLACEHOLDER lead value. */
 export const FLAT_RIVER_TARGET_FPS = 30;
 export const FLAT_RIVER_FRAME_INTERVAL_MS = MS_PER_SECOND / FLAT_RIVER_TARGET_FPS;

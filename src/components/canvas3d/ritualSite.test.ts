@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import { PINCH_ZOOM_MIN, RITUAL_CHIP_START_PERCENT } from "@/config/interaction.config";
-import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_PIER, LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import { getFramedCameraZoom } from "@/core/camera";
 import { locateOnLane, splineProgressToWorld } from "@/core/coordinates";
 import { clampSpotToLane } from "@/core/world";
@@ -58,9 +58,15 @@ describe("ritual site", () => {
     const at = (dyPx: number) => ({ x: 50, y: 50 + ((dyPx * pxScale) / FIELD.height) * PERCENT_SCALE });
     const up = mapper.mapDrop(at(-40), FIELD, 1)!;
     expect(up.onWater).toBe(true);
-    expect(up.candidate.lateralOffset).toBeCloseTo(0.057, 2);
+    // 0.057 → 0.229 in MFW-49: the ritual view centres the pier tip, which moved with the wider channel (lead probe ritual.mjs).
+    expect(up.candidate.lateralOffset).toBeCloseTo(0.229, 2);
     expect(mapper.mapDrop(at(60), FIELD, 1)!.onWater).toBe(false);
-    expect(mapper.mapDrop(at(-120), FIELD, 1)!.onWater).toBe(false);
+    // MFW-49: 120 px up is now mid-river (channel lateral −0.33); the far bank is checked at channel lateral −0.6 instead
+    // (built from the centreline and right vector: splineProgressToWorld clamps lateral offsets to ±0.5, the water edge).
+    const frame = splineProgressToWorld(site.channel, LOY_KRATHONG_PIER.progress, 0);
+    const d = -0.6 * site.channel.width;
+    const farBank = { x: frame.centerline.x + frame.right.x * d, z: frame.centerline.z + frame.right.z * d };
+    expect(mapper.mapDrop(mapper.toPercent({ ...farBank, y: site.tip.y }, FIELD, 1), FIELD, 1)!.onWater).toBe(false);
   });
 
   it("returns null for an unusable size", () => {

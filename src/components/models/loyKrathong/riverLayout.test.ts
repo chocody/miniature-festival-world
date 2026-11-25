@@ -4,6 +4,8 @@ import { OrthographicCamera, Vector3 } from "three";
 import { createPartGeometry, countTriangles } from "@/components/canvas3d/geometry";
 import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import {
+  HOUSE_FACADE,
+  LOY_KRATHONG_RIVER_ENVIRONMENT,
   LOY_KRATHONG_RIVER_LANES,
   PIER_DECK_MATERIAL,
   PIER_PILE_MATERIAL,
@@ -13,7 +15,15 @@ import {
 } from "@/config/events/loyKrathong.river.config";
 import { PINCH_ZOOM_MIN } from "@/config/interaction.config";
 import { KRATHONG_FLAME_MODEL } from "@/config/krathongModel.config";
-import { LIGHT_PRESET_IDS, LIGHT_PRESETS, LOOK_MIN_ALBEDO_LUMINANCE, LOOK_MIN_LIT_LUMINANCE } from "@/config/look.config";
+import {
+  LAMP_LIGHT_POOL_LOOK,
+  LIGHT_PRESET_IDS,
+  LIGHT_PRESETS,
+  LOOK_MIN_ALBEDO_LUMINANCE,
+  LOOK_MIN_LIT_LUMINANCE,
+  VILLAGE_LIGHTS,
+  type LightPresetId,
+} from "@/config/look.config";
 import {
   ENVIRONMENT_PART_MAX_TRIANGLES,
   TOY_MATTE_MATERIALS,
@@ -23,7 +33,7 @@ import {
 } from "@/config/scene.config";
 import { createRiverLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
-import { estimateLitLuminance, type InstanceTransform, type Vec3Tuple } from "@/core/world";
+import { bankSurfaceY, estimateLitLuminance, type InstanceTransform, type Vec3Tuple } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "./riverLayout";
 
 const parts = RIVER_ENVIRONMENT_PARTS;
@@ -38,11 +48,12 @@ function footprintRadius(g: PartGeometrySpec): number {
     case "cone": return g.radius;
     case "cylinder": return Math.max(g.radiusTop, g.radiusBottom);
     case "icosahedron": return g.radius;
+    case "gable": return Math.hypot(g.width, g.depth) / 2;
   }
 }
 function topY(part: ScenePartSpec): number {
   const g = part.geometry;
-  if (g.kind === "icosahedron") return part.yOffset + g.radius;
+  if (g.kind === "icosahedron") return part.yOffset + g.radius * (g.scaleY ?? 1);
   return part.yOffset + g.height / 2;
 }
 const at = (t: InstanceTransform, height: number): WorldVec3 => ({
@@ -51,9 +62,9 @@ const at = (t: InstanceTransform, height: number): WorldVec3 => ({
   z: t.position.z,
 });
 
-function makeCamera(width: number, height: number, factor: number): OrthographicCamera {
+function makeCamera(width: number, height: number, factor: number, zoom: number = SCENE_CAMERA_ZOOM): OrthographicCamera {
   const camera = new OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, SCENE_CAMERA_NEAR, SCENE_CAMERA_FAR);
-  camera.zoom = SCENE_CAMERA_ZOOM * factor;
+  camera.zoom = zoom * factor;
   camera.position.set(...CAMERA_FLIGHT_OFFSET);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
@@ -102,7 +113,10 @@ describe("river layout", () => {
   it("props stay on the banks", () => {
     const groups = [
       { list: layout.houses, part: parts.houseBody },
+      { list: layout.housesByRoof.gable, part: parts.houseRoofGable },
       { list: layout.trees, part: parts.treeCanopy },
+      { list: layout.bushes, part: parts.bush },
+      { list: layout.rocks, part: parts.rock },
       { list: layout.lamps, part: parts.lampPost },
     ];
     for (const { list, part } of groups) {
@@ -116,8 +130,15 @@ describe("river layout", () => {
   it("solid props never hide a lane in the default view", () => {
     const f = new Vector3(...CAMERA_FLIGHT_OFFSET).negate().normalize();
     const solids = [
-      ...layout.houses.map((t) => ({ t, top: topY(parts.houseRoof), r: footprintRadius(parts.houseBody.geometry) })),
+      ...layout.housesByRoof.pyramid.map((t) => ({ t, top: topY(parts.houseRoof), r: footprintRadius(parts.houseBody.geometry) })),
+      ...layout.housesByRoof.gable.map((t) => ({
+        t,
+        top: topY(parts.houseRoofGable),
+        r: footprintRadius(parts.houseRoofGable.geometry),
+      })),
       ...layout.trees.map((t) => ({ t, top: topY(parts.treeCanopy), r: footprintRadius(parts.treeCanopy.geometry) })),
+      ...layout.bushes.map((t) => ({ t, top: topY(parts.bush), r: footprintRadius(parts.bush.geometry) })),
+      ...layout.rocks.map((t) => ({ t, top: topY(parts.rock), r: footprintRadius(parts.rock.geometry) })),
     ];
     for (const { t, top, r } of solids) {
       const tip = at(t, top);
@@ -202,6 +223,13 @@ describe("river layout", () => {
     }
   });
 
+  /** Runtime emissive intensity per preset: village windows and lanterns follow VILLAGE_LIGHTS (MFW-49), others their spec. */
+  const runtimeEmissive = (m: Pick<MatteMaterialSpec, "emissiveIntensity">, id: LightPresetId): number => {
+    if (m === parts.houseWindow.material) return VILLAGE_LIGHTS[id].windowEmissiveIntensity;
+    if (m === parts.lampHead.material) return VILLAGE_LIGHTS[id].lanternEmissiveIntensity;
+    return m.emissiveIntensity ?? 1;
+  };
+
   it("krathong flame is the brightest surface in both presets", () => {
     for (const id of LIGHT_PRESET_IDS) {
       const flame = relativeLuminance(KRATHONG_FLAME_MODEL.emissive) * LIGHT_PRESETS[id].flame.emissiveIntensity;
@@ -209,10 +237,15 @@ describe("river layout", () => {
         ...environmentMaterials().map(
           (m) =>
             estimateLitLuminance(m.color, LIGHT_PRESETS[id], UP) +
-            (m.emissive ? relativeLuminance(m.emissive) * (m.emissiveIntensity ?? 1) : 0),
+            (m.emissive ? relativeLuminance(m.emissive) * runtimeEmissive(m, id) : 0),
         ),
       );
-      expect(flame, id).toBeGreaterThan(brightest);
+      // The additive lamp light pool adds its light on top of the lit grass at NIGHT.
+      const pool = VILLAGE_LIGHTS[id].lampLightPools
+        ? estimateLitLuminance(RIVER_BANK_MATERIAL.color, LIGHT_PRESETS[id], UP) +
+          relativeLuminance(LAMP_LIGHT_POOL_LOOK.color) * LAMP_LIGHT_POOL_LOOK.opacity
+        : 0;
+      expect(flame, id).toBeGreaterThan(Math.max(brightest, pool));
     }
   });
 
@@ -240,5 +273,149 @@ describe("river layout", () => {
       expect(m.roughness).toBe(1);
       expect(m.metalness).toBe(0);
     }
+  });
+
+  // ---- MFW-49 riverside v2 ----
+
+  it("R1: the ground covers every on-screen ground point", () => {
+    const views: [number, number, number][] = [
+      [320, 256, SCENE_CAMERA_ZOOM],
+      [704, 256, SCENE_CAMERA_ZOOM],
+      [390, 844, 54.1667],
+      [1440, 900, 104],
+    ];
+    const GRID = 5;
+    for (const [w, h, zoom] of views) {
+      for (const factor of [1, PINCH_ZOOM_MIN]) {
+        const camera = makeCamera(w, h, factor, zoom);
+        const ndcs: [number, number][] = [];
+        for (let i = 0; i < GRID; i++) {
+          for (let j = 0; j < GRID; j++) ndcs.push([-1 + (2 * i) / (GRID - 1), -1 + (2 * j) / (GRID - 1)]);
+        }
+        for (const [x, y] of ndcs) {
+          const near = new Vector3(x, y, -1).unproject(camera);
+          const far = new Vector3(x, y, 1).unproject(camera);
+          const dir = far.clone().sub(near);
+          const t = (layout.ground.y - near.y) / dir.y;
+          const hit = near.clone().addScaledVector(dir, t);
+          const depth = hit.clone().applyMatrix4(camera.matrixWorldInverse).z * -1;
+          if (depth < SCENE_CAMERA_NEAR) continue;
+          const r = Math.hypot(hit.x, hit.z);
+          expect(r, `${w}x${h} ${factor} ${x},${y}`).toBeLessThanOrEqual(layout.ground.radius);
+          // Inside the ring's hole the point is under the water or a bank (MFW-49 ground ring).
+          if (r < layout.ground.innerRadius) {
+            const lateral = Math.abs(locateOnLane(layout.channel, hit).lateralOffset) * layout.channel.width;
+            expect(lateral).toBeLessThanOrEqual(layout.channel.width / 2 + LOY_KRATHONG_RIVER_ENVIRONMENT.bankWidth);
+          }
+        }
+      }
+    }
+  });
+
+  it("R2: the ground lies below the water", () => {
+    expect(layout.ground.y).toBeLessThan(layout.waterSurfaceY);
+  });
+
+  it("R2b: the ground ring's hole stays under the water and banks, deep enough that no gap shows under a bank edge", () => {
+    const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
+    expect(layout.ground.innerRadius).toBeGreaterThan(0);
+    expect(layout.ground.innerRadius).toBeLessThan(layout.ground.radius);
+    // A camera ray can pass under the highest bank edge by at most (edge height − ground y) / tan(camera elevation).
+    const elevation = Math.atan2(CAMERA_FLIGHT_OFFSET[1], Math.hypot(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]));
+    const step = Math.max(...def.bankProfile.map((p) => p.y)) - layout.ground.y;
+    expect(def.ground.holeMargin).toBeGreaterThanOrEqual(step / Math.tan(elevation));
+    const SAMPLES_AROUND = 72;
+    for (let i = 0; i < SAMPLES_AROUND; i++) {
+      const a = (2 * Math.PI * i) / SAMPLES_AROUND;
+      const p = { x: Math.cos(a) * layout.ground.innerRadius, z: Math.sin(a) * layout.ground.innerRadius };
+      const lateral = Math.abs(locateOnLane(layout.channel, p).lateralOffset) * layout.channel.width;
+      expect(lateral + def.ground.holeMargin).toBeLessThanOrEqual(layout.channel.width / 2 + def.bankWidth + 1e-6);
+    }
+  });
+
+  it("R3: every prop base sits on the bank profile", () => {
+    const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
+    const lists: [readonly { readonly setback: number }[], readonly InstanceTransform[]][] = [
+      [def.houses, layout.houses],
+      [def.trees, layout.trees],
+      [def.bushes, layout.bushes],
+      [def.rocks, layout.rocks],
+      [def.lamps, layout.lamps],
+    ];
+    for (const [placements, transforms] of lists) {
+      placements.forEach((p, i) => expect(transforms[i].position.y).toBeCloseTo(bankSurfaceY(layout.bankProfile, p.setback), 9));
+    }
+  });
+
+  it("R4: several houses with both roof kinds in different colours", () => {
+    expect(layout.houses.length).toBeGreaterThanOrEqual(5);
+    expect(layout.housesByRoof.pyramid.length).toBeGreaterThan(0);
+    expect(layout.housesByRoof.gable.length).toBeGreaterThan(0);
+    expect(parts.houseRoof.material.color).not.toBe(parts.houseRoofGable.material.color);
+  });
+
+  it("R5: one door and two windows on each house's front face", () => {
+    expect(layout.houseDoors).toHaveLength(layout.houses.length);
+    expect(layout.houseWindows).toHaveLength(HOUSE_FACADE.windows.length * layout.houses.length);
+    expect(HOUSE_FACADE.windows).toHaveLength(2);
+    layout.houses.forEach((house, h) => {
+      HOUSE_FACADE.windows.forEach((w, k) => {
+        const win = layout.houseWindows[h * HOUSE_FACADE.windows.length + k];
+        const dx = win.position.x - house.position.x;
+        const dz = win.position.z - house.position.z;
+        // Un-rotate by the house yaw: local z = dx sin θ + dz cos θ.
+        const localZ = dx * Math.sin(house.yawRad) + dz * Math.cos(house.yawRad);
+        const localX = dx * Math.cos(house.yawRad) - dz * Math.sin(house.yawRad);
+        expect(localZ).toBeCloseTo(w.z * house.scale, 9);
+        expect(localX).toBeCloseTo(w.x * house.scale, 9);
+        // The front face of the body is at local z = depth / 2.
+        const body = parts.houseBody.geometry;
+        if (body.kind === "roundedBox") expect(w.z).toBeGreaterThanOrEqual(body.depth / 2);
+      });
+    });
+  });
+
+  it("R6: the walking paths are clear of every prop and of the pier", () => {
+    const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
+    const lampHead = parts.lampHead.geometry;
+    const lampR = lampHead.kind === "icosahedron" ? lampHead.radius : 0;
+    const props: { readonly side: number; readonly setback: number; readonly r: number }[] = [
+      ...def.houses.map((p) => ({ ...p, r: footprintRadius(parts.houseBody.geometry) * p.scale })),
+      ...def.trees.map((p) => ({ ...p, r: footprintRadius(parts.treeCanopy.geometry) * p.scale })),
+      ...def.bushes.map((p) => ({ ...p, r: footprintRadius(parts.bush.geometry) * p.scale })),
+      ...def.rocks.map((p) => ({ ...p, r: footprintRadius(parts.rock.geometry) * p.scale })),
+      ...def.lamps.map((p) => ({ ...p, r: lampR * p.scale })),
+    ];
+    expect(layout.paths.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(layout.paths.map((p) => p.side))).toEqual(new Set([-1, 1]));
+    for (const path of layout.paths) {
+      const lo = path.setback - path.halfWidth;
+      const hi = path.setback + path.halfWidth;
+      for (const p of props.filter((q) => q.side === path.side)) {
+        const overlaps = p.setback + p.r > lo && p.setback - p.r < hi;
+        expect(overlaps, `path ${path.pathId} vs prop at setback ${p.setback}`).toBe(false);
+      }
+      if (path.side === LOY_KRATHONG_PIER.side) expect(LOY_KRATHONG_PIER.onBankLength).toBeLessThan(lo);
+    }
+  });
+
+  it("R7: bushes and rocks are present; tree canopies are rounded (detail ≥ 1)", () => {
+    expect(layout.bushes.length).toBeGreaterThan(0);
+    expect(layout.rocks.length).toBeGreaterThan(0);
+    const canopy = parts.treeCanopy.geometry;
+    expect(canopy.kind === "icosahedron" && (canopy.detail ?? 0) >= 1).toBe(true);
+  });
+
+  it("R8: every new part is low-poly", () => {
+    for (const part of [parts.houseRoofGable, parts.houseDoor, parts.houseWindow, parts.bush, parts.rock]) {
+      expect(countTriangles(createPartGeometry(part.geometry))).toBeLessThanOrEqual(ENVIRONMENT_PART_MAX_TRIANGLES);
+    }
+  });
+
+  it("R9: the village is lit at NIGHT and off at DAY", () => {
+    expect(VILLAGE_LIGHTS.DAY).toEqual({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0, lampLightPools: false });
+    expect(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity).toBeGreaterThan(0);
+    expect(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity).toBeGreaterThan(0);
+    expect(VILLAGE_LIGHTS.NIGHT.lampLightPools).toBe(true);
   });
 });

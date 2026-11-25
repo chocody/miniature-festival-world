@@ -107,3 +107,31 @@ export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Ob
 
 /** Pooled 2D effects on FALLBACK_2D (invariant E): the weakest 3D tier's caps, so a weak device never runs more effects in 2D than on LOW. */
 export const FALLBACK_2D_EFFECT_POOL_CAPS: EffectPoolCaps = EFFECT_POOL_CAPS.LOW;
+
+// Technical numbers (lead decision, MFW-49)
+
+/**
+ * Water effects per 3D tier. LOW = the AC4 cheap variant: static shore highlights only, no moving glints, no krathong ripples.
+ * HIGH glintCount 10 → 6 (MFW-49 dev, the lead's first ordered cut for the SwiftShader CI frame budget; equals MEDIUM).
+ */
+export const WATER_EFFECT_TIERS: Readonly<Record<RenderTier, Readonly<{ glintCount: number; krathongRipples: boolean }>>> =
+  Object.freeze({
+    HIGH: Object.freeze({ glintCount: 6, krathongRipples: true }),
+    MEDIUM: Object.freeze({ glintCount: 6, krathongRipples: true }),
+    LOW: Object.freeze({ glintCount: 0, krathongRipples: false }),
+  });
+
+/**
+ * Environment render budget per 3D tier: static riverside + water effects, main pass, the heavier NIGHT preset, no river krathongs.
+ * Lead regression guard (not an owner number), MFW-49; guarded by environmentBudget.test.tsx. Krathong ripples are extra:
+ * KRATHONG_RIPPLE_MAX_TRIANGLES per rendered krathong and one draw call (HIGH/MEDIUM only).
+ */
+export const ENVIRONMENT_RENDER_BUDGETS: Readonly<Record<RenderTier, Readonly<{ maxDrawCalls: number; maxTriangles: number }>>> =
+  Object.freeze({
+    HIGH: Object.freeze({ maxDrawCalls: 21, maxTriangles: 6_500 }),
+    MEDIUM: Object.freeze({ maxDrawCalls: 21, maxTriangles: 5_850 }),
+    LOW: Object.freeze({ maxDrawCalls: 20, maxTriangles: 5_400 }),
+  });
+
+/** Max triangles of one krathong ripple ring (the ring fan of RIVER_WATER_HIGHLIGHTS.ripple). Lead regression guard, MFW-49. */
+export const KRATHONG_RIPPLE_MAX_TRIANGLES = 48;

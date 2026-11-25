@@ -3,6 +3,8 @@ import {
   DEFAULT_QUALITY_TIER,
   EFFECT_KINDS,
   EFFECT_POOL_CAPS,
+  ENVIRONMENT_RENDER_BUDGETS,
+  KRATHONG_RIPPLE_MAX_TRIANGLES,
   FALLBACK_FPS_THRESHOLD,
   FPS_SAMPLE_WINDOW_MS,
   FPS_STALL_GAP_MS,
@@ -16,6 +18,7 @@ import {
   TIER_ANTIALIAS,
   TIER_BUDGETS,
   TIER_SETTLE_MS,
+  WATER_EFFECT_TIERS,
 } from "./performance.config";
 import { ZONE_ITEM_CAP } from "./world.config";
 
@@ -79,5 +82,34 @@ describe("performance.config (owner numbers, open question #5)", () => {
       expect(EFFECT_POOL_CAPS.HIGH[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.MEDIUM[kind]);
       expect(EFFECT_POOL_CAPS.MEDIUM[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.LOW[kind]);
     }
+  });
+});
+
+describe("water effects and environment budgets (lead decision, MFW-49)", () => {
+  const ORDER = ["HIGH", "MEDIUM", "LOW"] as const;
+  it("LOW is the cheap water variant: no glints, no ripples", () => {
+    expect(WATER_EFFECT_TIERS.LOW).toEqual({ glintCount: 0, krathongRipples: false });
+    expect(WATER_EFFECT_TIERS.HIGH.krathongRipples).toBe(true);
+    expect(WATER_EFFECT_TIERS.MEDIUM.krathongRipples).toBe(true);
+  });
+  it("counts and budgets never grow from HIGH to LOW", () => {
+    for (let i = 1; i < ORDER.length; i++) {
+      const [hi, lo] = [ORDER[i - 1], ORDER[i]];
+      expect(WATER_EFFECT_TIERS[hi].glintCount).toBeGreaterThanOrEqual(WATER_EFFECT_TIERS[lo].glintCount);
+      expect(ENVIRONMENT_RENDER_BUDGETS[hi].maxDrawCalls).toBeGreaterThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[lo].maxDrawCalls);
+      expect(ENVIRONMENT_RENDER_BUDGETS[hi].maxTriangles).toBeGreaterThanOrEqual(ENVIRONMENT_RENDER_BUDGETS[lo].maxTriangles);
+    }
+  });
+  it("is frozen and positive", () => {
+    for (const tier of ORDER) {
+      expect(Object.isFrozen(WATER_EFFECT_TIERS[tier])).toBe(true);
+      expect(Object.isFrozen(ENVIRONMENT_RENDER_BUDGETS[tier])).toBe(true);
+      expect(Number.isInteger(WATER_EFFECT_TIERS[tier].glintCount)).toBe(true);
+      expect(ENVIRONMENT_RENDER_BUDGETS[tier].maxDrawCalls).toBeGreaterThan(0);
+      expect(ENVIRONMENT_RENDER_BUDGETS[tier].maxTriangles).toBeGreaterThan(0);
+    }
+    expect(Object.isFrozen(WATER_EFFECT_TIERS)).toBe(true);
+    expect(Object.isFrozen(ENVIRONMENT_RENDER_BUDGETS)).toBe(true);
+    expect(KRATHONG_RIPPLE_MAX_TRIANGLES).toBeGreaterThan(0);
   });
 });

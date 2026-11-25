@@ -4,7 +4,9 @@ import { buildRibbonGeometryData, createRiverChannel } from "@/core/world";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { createBlobShadowGeometry } from "./blobShadowMeshes";
-import { createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
+import { createBankGeometry, createGroundGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
+import { Box3, Triangle, Vector3 } from "three";
+import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 
 describe("createPartGeometry", () => {
   it("builds each primitive with its triangle count", () => {
@@ -84,5 +86,67 @@ describe("createRibbonGeometry", () => {
     const n = g.getAttribute("normal");
     for (let i = 0; i < n.count; i++) expect([n.getX(i), n.getY(i), n.getZ(i)]).toEqual([0, 1, 0]);
     expect(g.index!.count).toBe(24);
+  });
+});
+
+describe("riverside v2 parts (MFW-49)", () => {
+  it("gable roof: 8 triangles, unit face normals, bounding box width × height × depth", () => {
+    const g = createPartGeometry({ kind: "gable", width: 0.9, depth: 0.7, height: 0.3 });
+    expect(g.index).toBeNull();
+    expect(countTriangles(g)).toBe(8);
+    const pos = g.getAttribute("position");
+    const nrm = g.getAttribute("normal");
+    for (let i = 0; i < pos.count; i += 3) {
+      const tri = new Triangle(
+        new Vector3().fromBufferAttribute(pos, i),
+        new Vector3().fromBufferAttribute(pos, i + 1),
+        new Vector3().fromBufferAttribute(pos, i + 2),
+      );
+      const face = tri.getNormal(new Vector3());
+      for (let k = 0; k < 3; k++) {
+        const n = new Vector3().fromBufferAttribute(nrm, i + k);
+        expect(n.length()).toBeCloseTo(1, 6);
+        expect(n.dot(face)).toBeCloseTo(1, 6); // per-face normal, outward winding
+      }
+    }
+    const size = new Box3().setFromBufferAttribute(pos as never).getSize(new Vector3());
+    expect([size.x, size.y, size.z]).toEqual([0.9, 0.3, 0.7].map((n) => expect.closeTo(n, 6)));
+    // Faceted already: the instanced copy is the same geometry.
+    expect(createInstancedPartGeometry({ kind: "gable", width: 0.9, depth: 0.7, height: 0.3 }, true).index).toBeNull();
+  });
+
+  it("icosahedron scaleY squashes the height", () => {
+    const full = createPartGeometry({ kind: "icosahedron", radius: 1, detail: 0 });
+    const half = createPartGeometry({ kind: "icosahedron", radius: 1, detail: 0, scaleY: 0.5 });
+    const h = (g: typeof full) => new Box3().setFromBufferAttribute(g.getAttribute("position") as never).getSize(new Vector3());
+    expect(h(half).y).toBeCloseTo(h(full).y / 2, 6);
+    expect(h(half).x).toBeCloseTo(h(full).x, 6);
+  });
+
+  it("createBankGeometry has upward normals everywhere", () => {
+    for (const bank of [LOY_KRATHONG_RIVER_LAYOUT.banks.left, LOY_KRATHONG_RIVER_LAYOUT.banks.right]) {
+      const g = createBankGeometry(bank);
+      const n = g.getAttribute("normal");
+      expect(n.count).toBe(bank.vertexCount);
+      for (let i = 0; i < n.count; i++) expect(n.getY(i)).toBeGreaterThan(0);
+      expect(countTriangles(g)).toBe(bank.indices.length / 3);
+      expect(g.boundingSphere).not.toBeNull();
+    }
+  });
+
+  it("createGroundGeometry is a ring from the derived hole to the outer radius", () => {
+    const ground = LOY_KRATHONG_RIVER_LAYOUT.ground;
+    const g = createGroundGeometry(ground);
+    expect(countTriangles(g)).toBe(2 * ground.segments);
+    const pos = g.getAttribute("position");
+    let min = Infinity;
+    let max = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const r = Math.hypot(pos.getX(i), pos.getY(i));
+      min = Math.min(min, r);
+      max = Math.max(max, r);
+    }
+    expect(min).toBeCloseTo(ground.innerRadius, 5);
+    expect(max).toBeCloseTo(ground.radius, 5);
   });
 });

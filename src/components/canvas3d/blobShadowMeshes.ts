@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Euler,
@@ -11,7 +12,12 @@ import {
   type Object3D,
 } from "three";
 import { BLOB_SHADOW_LOOK } from "@/config/look.config";
-import { buildBlobShadowFan, type BlobShadowFanSpec, type InstanceTransform } from "@/core/world";
+import {
+  buildBlobShadowFan,
+  type BlobShadowFanSpec,
+  type InstanceTransform,
+  type VertexAlphaMeshData,
+} from "@/core/world";
 
 const XYZ = 3;
 const RGBA = 4;
@@ -20,9 +26,8 @@ const INDEX_ITEM_SIZE = 1;
 /** Blobs never take taps (they would steal water / prop hits; coordination with MFW-59). */
 export const NO_RAYCAST: Object3D["raycast"] = () => {};
 
-/** Unit-disc fan in the xz plane: position(3), color(4, vertex alpha) and index from buildBlobShadowFan. */
-export function createBlobShadowGeometry(spec: BlobShadowFanSpec): BufferGeometry {
-  const data = buildBlobShadowFan(spec);
+/** Vertex-alpha mesh: position(3), color(4, vertex alpha) and index. Shared by blobs and the MFW-49 water / light fans. */
+export function createVertexAlphaGeometry(data: VertexAlphaMeshData): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new BufferAttribute(data.positions, XYZ));
   geometry.setAttribute("color", new BufferAttribute(data.colors, RGBA));
@@ -31,18 +36,39 @@ export function createBlobShadowGeometry(spec: BlobShadowFanSpec): BufferGeometr
   return geometry;
 }
 
-/** Unlit, transparent, sage-tinted (never black) blob material; no depth write so blobs never cut each other. */
-export function createBlobShadowMaterial(): MeshBasicMaterial {
+/** Unit-disc fan in the xz plane: position(3), color(4, vertex alpha) and index from buildBlobShadowFan. */
+export function createBlobShadowGeometry(spec: BlobShadowFanSpec): BufferGeometry {
+  return createVertexAlphaGeometry(buildBlobShadowFan(spec));
+}
+
+/** Colour, opacity and blending of a vertex-alpha fan material. */
+export interface FanMaterialLook {
+  readonly color: string;
+  readonly opacity: number;
+  readonly additive: boolean;
+}
+
+/**
+ * Unlit, transparent vertex-alpha material; no depth write so fans never cut each other. Every fan (blobs, water highlights,
+ * lamp light pools) uses these parameters, so they all share the blob shader program (MFW-49: no new shader variant).
+ */
+export function createFanMaterial(look: FanMaterialLook): MeshBasicMaterial {
   return new MeshBasicMaterial({
-    color: BLOB_SHADOW_LOOK.color,
-    opacity: BLOB_SHADOW_LOOK.opacity,
+    color: look.color,
+    opacity: look.opacity,
     transparent: true,
     depthWrite: false,
     vertexColors: true,
     polygonOffset: true,
     polygonOffsetFactor: BLOB_SHADOW_LOOK.polygonOffsetFactor,
     polygonOffsetUnits: BLOB_SHADOW_LOOK.polygonOffsetUnits,
+    ...(look.additive ? { blending: AdditiveBlending } : {}),
   });
+}
+
+/** Unlit, transparent, sage-tinted (never black) blob material; no depth write so blobs never cut each other. */
+export function createBlobShadowMaterial(): MeshBasicMaterial {
+  return createFanMaterial({ color: BLOB_SHADOW_LOOK.color, opacity: BLOB_SHADOW_LOOK.opacity, additive: false });
 }
 
 /** One draw call for up to `capacity` blobs; starts empty (count 0), never culled, casts/receives nothing, ignores taps. */

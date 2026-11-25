@@ -48,13 +48,16 @@ describe("flat river scene = MFW-27 resolved layout", () => {
     expect(scene.waterOutline).toHaveLength(2 * (n + 1));
     const bankLeft = layout.banks.left.positions;
     const bankRight = layout.banks.right.positions;
+    // MFW-49 bank profile rows: vertex k = 0 of row i (index i × rowSize) is the water edge on both banks.
+    const leftRow = layout.banks.left.rowSize;
+    const rightRow = layout.banks.right.rowSize;
     for (let i = 0; i <= n; i++) {
       const left = scene.waterOutline[i];
       const right = scene.waterOutline[2 * (n + 1) - 1 - i];
-      expect(Math.abs(left.x - bankLeft[(2 * i + 1) * 3])).toBeLessThan(1e-5);
-      expect(Math.abs(left.z - bankLeft[(2 * i + 1) * 3 + 2])).toBeLessThan(1e-5);
-      expect(Math.abs(right.x - bankRight[2 * i * 3])).toBeLessThan(1e-5);
-      expect(Math.abs(right.z - bankRight[2 * i * 3 + 2])).toBeLessThan(1e-5);
+      expect(Math.abs(left.x - bankLeft[i * leftRow * 3])).toBeLessThan(1e-5);
+      expect(Math.abs(left.z - bankLeft[i * leftRow * 3 + 2])).toBeLessThan(1e-5);
+      expect(Math.abs(right.x - bankRight[i * rightRow * 3])).toBeLessThan(1e-5);
+      expect(Math.abs(right.z - bankRight[i * rightRow * 3 + 2])).toBeLessThan(1e-5);
     }
   });
 

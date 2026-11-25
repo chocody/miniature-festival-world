@@ -96,6 +96,7 @@ import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { CANVAS_GL_OPTIONS } from "./sceneLook";
 import { SceneLighting } from "./SceneLighting";
 import { EnvironmentBlobShadows } from "./BlobShadows";
+import { LampLightPools, ShoreHighlights, WaterGlints } from "./WaterHighlights";
 import { useResolvedLightPreset } from "./useLightPreset";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -227,8 +228,12 @@ const ToyNightScene = memo(function ToyNightScene({
           lampFocusRef={lampTargetRef}
           selectedLampIndex={selectedLampIndex}
           onLampSelected={onLampSelected}
+          lightPreset={lightPreset}
         />
         <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
+        <ShoreHighlights layout={LOY_KRATHONG_RIVER_LAYOUT} />
+        <WaterGlints layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
+        <LampLightPools layout={LOY_KRATHONG_RIVER_LAYOUT} lightPreset={lightPreset} />
         <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
         <OwnKrathong
           targetRef={krathongTargetRef}

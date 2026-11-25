@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { InstancedMesh } from "three";
 import type { ScenePartSpec } from "@/config/scene.config";
 import type { InstanceTransform } from "@/core/world";
-import { createInstancedPartGeometry, createInstancedPartMaterial } from "./geometry";
+import { applyEmissiveIntensity, createInstancedPartGeometry, createInstancedPartMaterial } from "./geometry";
 import { applyInstanceTransforms, partShadowProps } from "./instancing";
 
 export interface InstancedPartProps {
@@ -14,10 +14,12 @@ export interface InstancedPartProps {
   readonly transforms: readonly InstanceTransform[];
   readonly shadows: boolean; // getSceneRenderSettings(tier).shadows
   readonly onClick?: (event: ThreeEvent<MouseEvent>) => void;
+  /** Runtime emissive intensity (e.g. village lights per light preset, MFW-49): a uniform, so the material is not re-created. */
+  readonly emissiveIntensity?: number;
 }
 
 /** One draw call for every instance of a part; owns (and disposes) one geometry and one material. */
-export function InstancedPart({ name, part, transforms, shadows, onClick }: InstancedPartProps) {
+export function InstancedPart({ name, part, transforms, shadows, onClick, emissiveIntensity }: InstancedPartProps) {
   // Flatness is baked into the normals so every instanced part shares one shader program (MFW-47 perf).
   const flat = part.material.flatShading;
   const geometry = useMemo(() => createInstancedPartGeometry(part.geometry, flat), [part.geometry, flat]);
@@ -39,6 +41,12 @@ export function InstancedPart({ name, part, transforms, shadows, onClick }: Inst
     applyInstanceTransforms(mesh, transforms, part);
     invalidate();
   }, [geometry, material, transforms, part, invalidate]);
+
+  useLayoutEffect(() => {
+    if (emissiveIntensity === undefined) return;
+    applyEmissiveIntensity(material, emissiveIntensity);
+    invalidate();
+  }, [material, emissiveIntensity, invalidate]);
 
   if (transforms.length === 0) return null;
   return (

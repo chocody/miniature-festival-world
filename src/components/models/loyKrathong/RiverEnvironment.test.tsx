@@ -7,12 +7,26 @@ import { BufferGeometry, Material } from "three";
 import type { Group, Mesh } from "three";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import { VILLAGE_LIGHTS } from "@/config/look.config";
 import { LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverEnvironment } from "./RiverEnvironment";
 import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
 
 const useFrameSpy = vi.hoisted(() => vi.fn());
+/** Materials created per part material spec (MFW-49: village lights per preset). */
+const partMaterials = vi.hoisted(() => new Map<object, import("three").MeshStandardMaterial>());
+vi.mock("@/components/canvas3d/geometry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/canvas3d/geometry")>();
+  return {
+    ...actual,
+    createInstancedPartMaterial: (spec: Parameters<typeof actual.createInstancedPartMaterial>[0]) => {
+      const m = actual.createInstancedPartMaterial(spec);
+      partMaterials.set(spec, m);
+      return m;
+    },
+  };
+});
 const proxyHit = vi.hoisted(() => ({ value: false }));
 // The DOM stub's click cannot carry R3F's `intersections`: this makes the water's deferral to a proxy testable.
 vi.mock("@/components/canvas3d/effects/riverHitPick", async (importOriginal) => {
@@ -35,6 +49,7 @@ function makeProps(overrides: Partial<Props> = {}): Props {
     lampFocusRef: createRef<Group>(),
     selectedLampIndex: 0,
     onLampSelected: vi.fn(),
+    lightPreset: "NIGHT",
     ...overrides,
   };
 }
@@ -51,11 +66,12 @@ describe("RiverEnvironment", () => {
     const names = [
       "water", "bankLeft", "bankRight", "houseBodies", "houseRoofs", "treeTrunks", "treeCanopies",
       "lampPosts", "lampHeads", "pierDeck", "pierPiles", "lampFocus",
+      "ground", "houseRoofsGable", "houseDoors", "houseWindows", "bushes", "rocks",
     ] as const;
     for (const key of names) {
       expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES[key]}"]`)).toHaveLength(1);
     }
-    expect(container.querySelectorAll("instancedMesh")).toHaveLength(7);
+    expect(container.querySelectorAll("instancedMesh")).toHaveLength(12);
   });
 
   it("riverside trees are instanced (backlog 8.2 AC1)", () => {
@@ -159,7 +175,34 @@ describe("RiverEnvironment", () => {
     expect(geometryDispose).not.toHaveBeenCalled();
     expect(materialDispose).not.toHaveBeenCalled();
     view.unmount();
-    expect(geometryDispose).toHaveBeenCalledTimes(3 + 7 + 1); // +1: the shared lamp tap-proxy geometry (MFW-59)
-    expect(materialDispose).toHaveBeenCalledTimes(7 + 1); // +1: its material
+    // water + 2 banks + ground ring (MFW-49), 12 instanced parts (MFW-49), +1: the shared lamp tap-proxy geometry (MFW-59).
+    // The ground's material is an R3F JSX element, disposed by R3F itself.
+    expect(geometryDispose).toHaveBeenCalledTimes(4 + 12 + 1);
+    expect(materialDispose).toHaveBeenCalledTimes(12 + 1); // +1: the proxy material
+  });
+
+  it("village windows and lanterns are lit at NIGHT and off at DAY, without re-creating materials (MFW-49 AC3)", () => {
+    partMaterials.clear();
+    const view = render(<RiverEnvironment {...makeProps({ lightPreset: "DAY" })} />);
+    const windows = partMaterials.get(RIVER_ENVIRONMENT_PARTS.houseWindow.material)!;
+    const lanterns = partMaterials.get(RIVER_ENVIRONMENT_PARTS.lampHead.material)!;
+    expect(windows.emissiveIntensity).toBe(0);
+    expect(lanterns.emissiveIntensity).toBe(0);
+    const materialDispose = vi.spyOn(Material.prototype, "dispose");
+    view.rerender(<RiverEnvironment {...makeProps({ lightPreset: "NIGHT" })} />);
+    expect(partMaterials.get(RIVER_ENVIRONMENT_PARTS.houseWindow.material)).toBe(windows);
+    expect(windows.emissiveIntensity).toBe(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity);
+    expect(lanterns.emissiveIntensity).toBe(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity);
+    view.rerender(<RiverEnvironment {...makeProps({ lightPreset: "DAY" })} />);
+    expect(windows.emissiveIntensity).toBe(VILLAGE_LIGHTS.DAY.windowEmissiveIntensity);
+    expect(materialDispose).not.toHaveBeenCalled();
+  });
+
+  it("the ground disc lies under everything, takes no taps and is drawn last (MFW-49)", () => {
+    const { container } = render(<RiverEnvironment {...makeProps()} />);
+    const ground = container.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
+    expect(ground.getAttribute("position")).toBe([0, LOY_KRATHONG_RIVER_LAYOUT.ground.y, 0].join(","));
+    expect(Number(ground.getAttribute("renderOrder"))).toBeGreaterThan(0);
+    expect(readFileSync(join(__dirname, "RiverEnvironment.tsx"), "utf8")).not.toMatch(/name=\{SCENE_OBJECT_NAMES\.ground\}[^>]*onClick/);
   });
 });
