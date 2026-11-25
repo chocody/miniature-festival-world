@@ -1,4 +1,7 @@
 import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
+import { getCameraRigPose, type CameraRigPose } from "./cameraRig";
+
+export * from "./cameraRig";
 
 export interface CameraTargetPosition {
   readonly x: number;
@@ -18,13 +21,14 @@ export interface CameraFlightPose {
 }
 
 export interface CameraAnimationApi {
-  start: (options: { to: CameraFlightPose; immediate: boolean }) => void;
+  start: (options: { to: CameraRigPose; immediate: boolean }) => void;
 }
 
 export interface MutablePosition {
   set: (x: number, y: number, z: number) => unknown;
 }
 
+/** The yaw-0 camera + focus pose; equals `applyCameraRigPose` at yaw 0 (ritualSite.ts and sceneFraming.test.ts use it). */
 export function getCameraFlightPose(target: CameraTargetPosition): CameraFlightPose {
   return {
     cameraX: target.x + CAMERA_FLIGHT_OFFSET[0],
@@ -39,8 +43,13 @@ export function getCameraFlightPose(target: CameraTargetPosition): CameraFlightP
 /** Creates an interruptible target-focused camera action with a reduced-motion instant cut. */
 export function createCameraController(animation: CameraAnimationApi, reducedMotion: boolean) {
   return {
-    flyTo(target: CameraTargetPosition) {
-      animation.start({ to: getCameraFlightPose(target), immediate: reducedMotion });
+    /** Flies the rig focus to the target, keeping `yawRad` (the user's rotation, MFW-57). */
+    flyTo(target: CameraTargetPosition, yawRad: number = 0) {
+      animation.start({ to: getCameraRigPose(target, yawRad), immediate: reducedMotion });
+    },
+    /** Animates the rig to a pose (the world rotate button). */
+    rotateTo(pose: CameraRigPose) {
+      animation.start({ to: pose, immediate: reducedMotion });
     },
   };
 }

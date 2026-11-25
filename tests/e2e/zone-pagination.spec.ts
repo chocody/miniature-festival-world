@@ -4,6 +4,10 @@ import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { E2E_WORLD_ROTATE_BUTTON_NAME } from "./helpers/cameraProbe";
+
+/** Accessible-name filter: every button except the 3D world rotate button (MFW-57). */
+const NOT_WORLD_ROTATE_BUTTON = new RegExp(`^(?!${E2E_WORLD_ROTATE_BUTTON_NAME}$)`);
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -87,6 +91,7 @@ test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) 
   await expect(viewport).toHaveAttribute("data-river-item-count", "3");
   await expect(viewport).toHaveAttribute("data-zone-id", "1");
   await expect(page.locator("canvas")).toHaveCount(1);
-  await expect(page.getByRole("button")).toHaveCount(1);
+  // MFW-57: the 3D world also shows the rotate button (open question 34); every other button stays absent.
+  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

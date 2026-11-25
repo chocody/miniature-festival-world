@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OrthographicCamera, Vector3 } from "three";
+import { OrthographicCamera, type Vector3 } from "three";
 import { TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS } from "@/config/look.config";
@@ -15,8 +15,11 @@ import {
   PINCH_ZOOM_MAX,
   PINCH_ZOOM_MIN,
   ROTATION_RADIANS_PER_PIXEL,
+  TWIST_START_RADIANS,
+  WORLD_VIEW_ROTATE_BUTTON_COPY,
+  WORLD_VIEW_ROTATE_STEP_RADIANS,
 } from "@/config/interaction.config";
-import { getPinchZoomFactor, type CustomizeViewControl } from "@/core/interaction";
+import { getPinchZoomFactor, getWheelZoomScale, type CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
@@ -26,8 +29,20 @@ import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes, getRiverItemPositionAt } from "@/core/world";
-import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
-import { HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
+import {
+  applyCameraRigPose,
+  applyPanDrag,
+  createCameraRigState,
+  getCameraRigPose,
+  getFramedCameraZoom,
+  getRiverPanBounds,
+  getRotatedCameraOffsetInto,
+  isInsidePanBounds,
+  twistCameraRig,
+  type CameraRigState,
+} from "@/core/camera";
+import { HIGHLIGHT_RING_SIZES, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { LOY_KRATHONG_RIVER_ENVIRONMENT } from "@/config/events/loyKrathong.river.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
@@ -1133,8 +1148,23 @@ describe("Find My (MFW-30)", () => {
     expect(r3f.flightStarts).toHaveLength(before + 1);
     const flight = r3f.flightStarts[before];
     expect(flight.immediate).toBe(false);
-    const pose = getCameraFlightPose(world);
+    const pose = getCameraRigPose(world, 0);
     for (const [k, v] of Object.entries(pose)) near((flight.to as Record<string, number>)[k], v);
+  });
+
+  it("Find My after a pan flies to the krathong (MFW-57)", () => {
+    const items = [storeItem(2, 1), storeItem(2, 2)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(v, { pointerId: 1, clientX: 140, clientY: 120 });
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 140, clientY: 120 });
+    const before = r3f.flightStarts.length;
+    focus(items[1].id, 1);
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    const pose = getCameraRigPose(expectedWorld(items[1]), 0);
+    for (const [k, val] of Object.entries(pose)) near((r3f.flightStarts[before].to as Record<string, number>)[k], val);
   });
 
   it("reduced motion: the Find My flight is an instant cut", () => {
@@ -1585,5 +1615,240 @@ describe("krathong model v2 (MFW-48)", () => {
     render(<SceneViewport mode="CUSTOMIZE" />);
     expect(spy.mock.calls.some((call) => call[1] === FLAME_FLICKER_REDRAW_INTERVAL_MS.HIGH)).toBe(false);
     spy.mockRestore();
+  });
+});
+
+describe("camera drag-to-travel (MFW-57)", () => {
+  const BOUNDS = getRiverPanBounds(LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
+  const ZOOM = SCENE_CAMERA_ZOOM; // jsdom has no ResizeObserver: the base zoom stays SCENE_CAMERA_ZOOM
+  type Move = readonly [number, number];
+  /** One-pointer drag through the separator's eyes: the first PAN_RIVER carries the whole displacement since down. */
+  const expectedAfterDrag = (from: Move, moves: readonly Move[], rig: CameraRigState = createCameraRigState()) => {
+    let prev = from;
+    let started = false;
+    let t = 0;
+    for (const m of moves) {
+      if (!started) {
+        if (Math.hypot(m[0] - from[0], m[1] - from[1]) < DRAG_START_DISTANCE_PX) continue;
+        started = true;
+        applyPanDrag(rig, m[0] - from[0], m[1] - from[1], ZOOM, (t += 1), BOUNDS);
+      } else {
+        applyPanDrag(rig, m[0] - prev[0], m[1] - prev[1], ZOOM, (t += 1), BOUNDS);
+      }
+      prev = m;
+    }
+    return rig;
+  };
+  const cameraFor = (rig: CameraRigState) => {
+    const camera = new OrthographicCamera();
+    applyCameraRigPose(rig, camera);
+    return camera;
+  };
+  const expectCameraAt = (rig: CameraRigState) => {
+    const want = cameraFor(rig).position;
+    const got = r3f.camera!.position;
+    expect(got.x).toBeCloseTo(want.x, 9);
+    expect(got.y).toBeCloseTo(want.y, 9);
+    expect(got.z).toBeCloseTo(want.z, 9);
+  };
+  const drag = (from: Move, moves: readonly Move[], pointerId = 1) => {
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId, clientX: from[0], clientY: from[1] });
+    for (const m of moves) fireEvent.pointerMove(v, { pointerId, clientX: m[0], clientY: m[1] });
+    const last = moves.at(-1) ?? from;
+    fireEvent.pointerUp(v, { pointerId, clientX: last[0], clientY: last[1] });
+  };
+  /** Second pointer at `angle` around (100, 100), 100 px away (y-down screen). */
+  const around = (angle: number) => ({ clientX: 100 + 100 * Math.cos(angle), clientY: 100 + 100 * Math.sin(angle) });
+  const twist = (rad: number) => {
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(v, { pointerId: 2, ...around(0) });
+    fireEvent.pointerMove(v, { pointerId: 2, ...around(TWIST_START_RADIANS + 0.01) });
+    fireEvent.pointerMove(v, { pointerId: 2, ...around(TWIST_START_RADIANS + 0.01 + rad) });
+    fireEvent.pointerUp(v, { pointerId: 2, ...around(TWIST_START_RADIANS + 0.01 + rad) });
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 100, clientY: 100 });
+  };
+  const focusOfCamera = () => {
+    const o = getRotatedCameraOffsetInto(0, { x: 0, y: 0, z: 0 });
+    const p = r3f.camera!.position;
+    return { x: p.x - o.x, z: p.z - o.z };
+  };
+  const rotateButton = () => screen.queryByRole("button", { name: WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel });
+
+  beforeEach(() => useDeviceStore.getState().setQualityTier("HIGH"));
+
+  it("WORLD_EXPLORE drag moves the camera, not the world group", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const moves: Move[] = [
+      [110, 100],
+      [130, 120],
+    ];
+    drag([100, 100], moves);
+    const rig = expectedAfterDrag([100, 100], moves);
+    expect(rig.focusX).not.toBe(0);
+    expectCameraAt(rig);
+    const world = container.querySelector('[name="scene-world-view"]')!;
+    expect(world.hasAttribute("position")).toBe(false);
+    expect(world.hasAttribute("rotation")).toBe(false);
+  });
+
+  it("a WORLD_EXPLORE drag interacts with nothing", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const count = viewport().getAttribute("data-gimmick-count");
+    const selected = viewport().getAttribute("data-selected-target");
+    const flights = r3f.flightStarts.length;
+    drag([100, 100], [
+      [120, 100],
+      [150, 130],
+    ]);
+    expect(viewport().getAttribute("data-gimmick-count")).toBe(count);
+    expect(viewport().getAttribute("data-selected-target")).toBe(selected);
+    expect(viewport()).not.toHaveAttribute("data-last-interaction");
+    expect(r3f.flightStarts).toHaveLength(flights);
+  });
+
+  it("a WORLD_EXPLORE drag of many moves does not re-render RiverFlow", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(v, { pointerId: 1, clientX: 100, clientY: 120 });
+    const afterStart = riverRenders.count;
+    expect(afterStart).toBeGreaterThan(0);
+    for (let i = 1; i <= 20; i++) fireEvent.pointerMove(v, { pointerId: 1, clientX: 100 + i, clientY: 120 + i });
+    expect(riverRenders.count).toBe(afterStart);
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 120, clientY: 140 });
+    expect(riverRenders.count).toBe(afterStart);
+  });
+
+  it("WORLD_EXPLORE pinch zooms", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const v = viewport();
+    fireEvent.pointerDown(v, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerDown(v, { pointerId: 2, clientX: 30, clientY: 10 });
+    fireEvent.pointerMove(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 2, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(v, { pointerId: 1, clientX: 10, clientY: 10 });
+    expect(r3f.camera!.zoom).toBeCloseTo(SCENE_CAMERA_ZOOM * 1.5, 9);
+    expectCameraAt(createCameraRigState()); // no pan
+  });
+
+  it("twist turns the camera", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    twist(0.25);
+    const rig = createCameraRigState();
+    twistCameraRig(rig, 0.25);
+    expectCameraAt(rig);
+  });
+
+  it("a flight after a twist keeps the user's yaw", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    twist(0.25);
+    fireEvent.click(lampMesh(container));
+    expect(r3f.flightStarts.at(-1)!.to).toMatchObject({ yawRad: expect.closeTo(0.25, 9) });
+  });
+
+  it("water tap after a pan flies to the water target and shows the ring", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    drag([100, 100], [[160, 140]]);
+    const flights = r3f.flightStarts.length;
+    tapStub.value = { x: 0.5, z: 0 };
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(r3f.flightStarts).toHaveLength(flights + 1);
+    // Deviation from the MFW-57 spec: the target is the water mesh (stub world position = origin), not the tapped point.
+    expect(r3f.flightStarts.at(-1)!.to).toEqual({ focusX: 0, focusY: 0, focusZ: 0, yawRad: 0 });
+    expect(r3f.flightStarts.at(-1)!.immediate).toBe(false);
+    expect(container.querySelector("ringGeometry")).not.toBeNull();
+  });
+
+  it("rotate button only in WORLD_EXPLORE, outside the section", () => {
+    const { rerender } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(rotateButton()).toBeNull();
+    rerender(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(rotateButton()).toBeNull();
+    cleanup();
+    r3f.flightStarts.length = 0;
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const button = rotateButton()!;
+    expect(button).not.toBeNull();
+    expect(viewport().contains(button)).toBe(false);
+    fireEvent.click(button);
+    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts[0].immediate).toBe(false);
+    expect(r3f.flightStarts[0].to).toMatchObject({ yawRad: expect.closeTo(WORLD_VIEW_ROTATE_STEP_RADIANS, 9) });
+    cleanup();
+
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(rotateButton()!);
+    expect(r3f.flightStarts.at(-1)!.immediate).toBe(true);
+  });
+
+  it("wheel zooms only in WORLD_EXPLORE", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(fireEvent.wheel(viewport(), { deltaY: -100 })).toBe(false); // default prevented
+    const h = viewport().clientHeight;
+    expect(r3f.camera!.zoom).toBeCloseTo(SCENE_CAMERA_ZOOM * getPinchZoomFactor(1, getWheelZoomScale(-100, 0, h)), 9);
+    expect(r3f.camera!.zoom).toBeGreaterThan(SCENE_CAMERA_ZOOM);
+    cleanup();
+
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(fireEvent.wheel(viewport(), { deltaY: -100 })).toBe(true);
+    expect(r3f.camera!.zoom).toBe(SCENE_CAMERA_ZOOM);
+  });
+
+  it("CUSTOMIZE and RITUAL_RELEASE never move the camera rig", () => {
+    const custom = render(<SceneViewport mode="CUSTOMIZE" />);
+    const start = r3f.camera!.position.clone();
+    drag([10, 10], [[40, 30]]);
+    expect(yaw(custom.container)).toBeCloseTo(30 * ROTATION_RADIANS_PER_PIXEL, 9);
+    expect(r3f.camera!.position.toArray()).toEqual(start.toArray());
+    cleanup();
+
+    r3f.flightStarts.length = 0;
+    render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={vi.fn()} />);
+    expect(r3f.flightStarts[0].to).toMatchObject({ yawRad: 0 });
+    const ritualStartPos = r3f.camera!.position.clone();
+    vi.spyOn(viewport(), "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 256 }));
+    const chip = screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 160, clientY: 140 });
+    fireEvent.pointerMove(chip, { pointerId: 1, clientX: 200, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 200, clientY: 100 });
+    expect(r3f.camera!.position.toArray()).toEqual(ritualStartPos.toArray());
+    // a drag on the water (not the chip) does not pan either
+    fireEvent.pointerDown(viewport(), { pointerId: 2, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(viewport(), { pointerId: 2, clientX: 120, clientY: 90 });
+    fireEvent.pointerUp(viewport(), { pointerId: 2, clientX: 120, clientY: 90 });
+    expect(r3f.camera!.position.toArray()).toEqual(ritualStartPos.toArray());
+  });
+
+  it("reduced motion: release snaps into bounds at once", () => {
+    const outward = Array.from({ length: 50 }, (_, i): Move => [100, 100 + (i + 1) * 100]);
+    useDeviceStore.getState().setReducedMotion(true);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    drag([100, 100], outward);
+    const reduced = focusOfCamera();
+    expect(isInsidePanBounds(reduced.x, reduced.z, BOUNDS)).toBe(true);
+    cleanup();
+
+    useDeviceStore.getState().setReducedMotion(false);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    drag([100, 100], outward);
+    const eased = focusOfCamera(); // still beyond: it eases back in frames (useFrame is a no-op in this stub)
+    expect(isInsidePanBounds(eased.x, eased.z, BOUNDS)).toBe(false);
+  });
+
+  it("tier change keeps the panned camera", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const moves: Move[] = [
+      [130, 100],
+      [150, 140],
+    ];
+    drag([100, 100], moves);
+    const before = r3f.camera;
+    act(() => useDeviceStore.getState().setQualityTier("LOW"));
+    expect(r3f.camera).not.toBe(before);
+    expectCameraAt(expectedAfterDrag([100, 100], moves));
   });
 });

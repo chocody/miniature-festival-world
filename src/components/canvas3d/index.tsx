@@ -1,7 +1,6 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useSpring } from "@react-spring/three";
+import { Canvas, useFrame } from "@react-three/fiber";
 import {
   useCallback,
   useEffect,
@@ -16,10 +15,9 @@ import {
   type RefObject,
 } from "react";
 import { OrthographicCamera, Vector3 } from "three";
-import type { Group, Mesh, Object3D } from "three";
+import type { Group, Mesh } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
-  CAMERA_FLIGHT_SPRING_CONFIG,
   HIGHLIGHT_RING_COLOR,
   HIGHLIGHT_RING_OPACITY,
   HIGHLIGHT_RING_SEGMENTS,
@@ -31,25 +29,37 @@ import {
 import type { EffectPoolCaps, QualityTier, RenderTier } from "@/config/performance.config";
 import { EFFECT_POOL_CAPS, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
 import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
-import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
 import { InspectPopup } from "@/components/ui/InspectPopup";
 import { OverlaySlot } from "@/components/ui/StageLayout";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
+import { WorldRotateButton } from "@/components/ui/WorldRotateButton";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
-import { createCameraController, getFramedCameraZoom, updateHighlightPosition } from "@/core/camera";
-import type { CameraTargetKind } from "@/core/camera";
+import {
+  applyCameraRigPose,
+  applyPanDrag,
+  createCameraRigState,
+  endPan,
+  getFramedCameraZoom,
+  getRiverPanBounds,
+  twistCameraRig,
+  updateHighlightPosition,
+  type CameraRigState,
+  type CameraTargetKind,
+} from "@/core/camera";
 import {
   capturesOnPointerDown,
   createInputSeparator,
   getPinchZoomFactor,
   getRotationAfterDrag,
+  getWheelZoomScale,
   getRotationAfterStep,
   getZoomFactorAfterStep,
   isCameraLocked,
@@ -58,14 +68,14 @@ import {
   type InteractionAction,
   type InteractionMode,
   type InteractionTarget,
+  type PointerSample,
 } from "@/core/interaction";
 import {
-  PAN_WORLD_UNITS_PER_PIXEL,
   PERCENT_SCALE,
   RITUAL_CHIP_MAX_PERCENT,
   RITUAL_CHIP_MIN_PERCENT,
   RITUAL_CHIP_START_PERCENT,
-  ROTATION_RADIANS_PER_PIXEL,
+  WORLD_VIEW_ROTATE_STEP_RADIANS,
 } from "@/config/interaction.config";
 import {
   FlameFlicker,
@@ -75,6 +85,7 @@ import {
 } from "@/components/models/loyKrathong";
 import { findFocusedRiverItem, getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems, type RiverSpot } from "@/core/world";
 import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseKind, type OwnKrathongPoseKind, type RitualState } from "@/core/ritual";
+import { CameraRig, type CameraRigHandle, type WorldPositionSource } from "./CameraRig";
 import { FindMyAnchor } from "./FindMyAnchor";
 import { OwnKrathong } from "./OwnKrathong";
 import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
@@ -132,7 +143,10 @@ export function getSceneRenderSettings(tier: RenderTier): SceneRenderSettings {
 /** No river krathongs (stable empty list). */
 export const NO_RIVER_ITEMS: readonly RiverFlowItem[] = Object.freeze([]);
 
-type TargetRef = RefObject<Object3D | null>;
+type TargetRef = RefObject<WorldPositionSource | null>;
+
+/** MFW-57 soft pan bounds of the camera focus, derived from the river channel config (a wider channel widens them). */
+const WORLD_PAN_BOUNDS = getRiverPanBounds(LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
 
 interface ToyNightSceneProps {
   lightPreset: LightPresetId;
@@ -143,8 +157,6 @@ interface ToyNightSceneProps {
   riverItems: readonly RiverFlowItem[];
   pinnedRiverIds: readonly string[];
   objectRotation: number;
-  worldRotation: number;
-  worldOffset: readonly [number, number];
   onTargetSelected: (target: CameraTargetKind) => void;
   selectedLampIndex: number;
   onLampSelected: (lampIndex: number) => void;
@@ -177,8 +189,6 @@ const ToyNightScene = memo(function ToyNightScene({
   riverItems,
   pinnedRiverIds,
   objectRotation,
-  worldRotation,
-  worldOffset,
   onTargetSelected,
   selectedLampIndex,
   onLampSelected,
@@ -204,15 +214,11 @@ const ToyNightScene = memo(function ToyNightScene({
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   return (
     <>
-      {/* World-fixed lights: NOT inside the view-transform group, so pan/rotate never changes the key-light direction. */}
+      {/* World-fixed lights: NOT inside the world container, so pan/rotate never changes the key-light direction. */}
       <SceneLighting preset={lightPreset} shadows={shadows} shadowMapSizePx={shadowMapSizePx} />
       <FlameFlicker baseEmissiveIntensity={LIGHT_PRESETS[lightPreset].flame.emissiveIntensity} reducedMotion={reducedMotion} />
-      {/* View transform seam: today's legacy pan/rotate. The pan fix (owner decision pending) replaces it with camera movement. */}
-      <group
-        name={SCENE_OBJECT_NAMES.worldView}
-        position={[worldOffset[0], 0, worldOffset[1]]}
-        rotation={[0, worldRotation, 0]}
-      >
+      {/* World container (identity). The camera moves (MFW-57); lights stay outside, world-fixed. */}
+      <group name={SCENE_OBJECT_NAMES.worldView}>
         <RiverEnvironment
           layout={LOY_KRATHONG_RIVER_LAYOUT}
           shadows={shadows}
@@ -268,46 +274,6 @@ const ToyNightScene = memo(function ToyNightScene({
   );
 });
 
-function CameraFlightController({
-  targetRef,
-  requestId,
-  reducedMotion,
-}: {
-  targetRef: TargetRef;
-  requestId: number;
-  reducedMotion: boolean;
-}) {
-  const worldTarget = useRef(new Vector3());
-  const invalidate = useThree((state) => state.invalidate);
-  const [springs, api] = useSpring(() => ({
-    cameraX: Number(CAMERA_FLIGHT_OFFSET[0]),
-    cameraY: Number(CAMERA_FLIGHT_OFFSET[1]),
-    cameraZ: Number(CAMERA_FLIGHT_OFFSET[2]),
-    focusX: 0,
-    focusY: 0,
-    focusZ: 0,
-    config: { ...CAMERA_FLIGHT_SPRING_CONFIG },
-    onChange: invalidate,
-  }));
-
-  useEffect(() => {
-    const target = targetRef.current;
-    if (!target) return;
-    target.getWorldPosition(worldTarget.current);
-    createCameraController(
-      { start: (options) => void api.start(options) },
-      reducedMotion,
-    ).flyTo(worldTarget.current);
-  }, [api, reducedMotion, requestId, targetRef]);
-
-  useFrame(({ camera }) => {
-    camera.position.set(springs.cameraX.get(), springs.cameraY.get(), springs.cameraZ.get());
-    camera.lookAt(springs.focusX.get(), springs.focusY.get(), springs.focusZ.get());
-  });
-
-  return null;
-}
-
 function TargetHighlight({ targetRef, target }: { targetRef: TargetRef; target: CameraTargetKind }) {
   const ringRef = useRef<Mesh | null>(null);
   const worldTarget = useRef(new Vector3());
@@ -343,6 +309,16 @@ function pointSample(event: PointerEvent<HTMLElement>, target: InteractionTarget
     time: event.timeStamp,
     target,
   };
+}
+
+/** Fills a reused sample (pointer moves: no allocation per event, AC5). The separator never retains it. */
+function fillPointSample(event: PointerEvent<HTMLElement>, target: InteractionTarget | null, out: PointerSample): PointerSample {
+  out.pointerId = event.pointerId;
+  out.x = event.clientX;
+  out.y = event.clientY;
+  out.time = event.timeStamp;
+  out.target = target;
+  return out;
 }
 
 /** A profiler-gated look-development viewport with tier-aware rendering and target focus. */
@@ -421,8 +397,11 @@ export function SceneViewport({
   );
   const viewportRef = useRef<HTMLElement>(null);
   const [objectRotation, setObjectRotation] = useState(0);
-  const [worldRotation, setWorldRotation] = useState(0);
-  const [worldOffset, setWorldOffset] = useState<[number, number]>([0, 0]);
+  // MFW-57 camera rig (render-only, never persisted): lazily created, same lint-safe pattern as getMapper.
+  const rigRef = useRef<CameraRigState | null>(null);
+  const getRig = useCallback(() => (rigRef.current ??= createCameraRigState()), []);
+  const rigHandleRef = useRef<CameraRigHandle | null>(null);
+  const moveSampleRef = useRef<PointerSample | null>(null);
   const chipRef = useRef<HTMLDivElement | null>(null);
   const writeChipPosition = useCallback((x: number, y: number) => {
     const el = chipRef.current;
@@ -470,6 +449,8 @@ export function SceneViewport({
 
   const onWaterSelected = useCallback((tap: WorldXZ | null) => {
     if (mode !== "WORLD_EXPLORE") return;
+    // MFW-57 deviation: the water fly/highlight target stays the water mesh (as before). Flying to the tapped point walked the
+    // camera along with every tap and broke the scene-taps / scene-gimmicks e2e specs; the product choice is open (follow-ups).
     onTargetSelected("water");
     if (tap && effectsRef.current) {
       effectsRef.current.spawnRipple(tap);
@@ -534,6 +515,14 @@ export function SceneViewport({
     invalidateRef.current?.();
   }, []);
 
+  const applyRigPose = useCallback(() => {
+    const camera = cameraRef.current;
+    if (camera) applyCameraRigPose(getRig(), camera);
+    invalidateRef.current?.();
+  }, [getRig]);
+
+  const onRotateView = useCallback(() => rigHandleRef.current?.rotateBy(WORLD_VIEW_ROTATE_STEP_RADIANS), []);
+
   const tapHint = useSceneTapHint(mode === "WORLD_EXPLORE");
   const dismissTapHint = tapHint.dismiss;
 
@@ -584,19 +573,25 @@ export function SceneViewport({
         break;
       }
       case "PAN_RIVER":
-        // Legacy pan/rotate kept as is: the gesture model awaits an owner decision (MFW-27 plan §11 Q1).
-        setWorldOffset(([x, y]) => [
-          x - action.deltaX * PAN_WORLD_UNITS_PER_PIXEL,
-          y - action.deltaY * PAN_WORLD_UNITS_PER_PIXEL,
-        ]);
-        setWorldRotation((value) => value + action.deltaX * ROTATION_RADIANS_PER_PIXEL);
+        // MFW-57: the camera travels; the world under the finger follows the finger (no React state per move).
+        applyPanDrag(getRig(), action.deltaX, action.deltaY, baseZoomRef.current * zoomRef.current, action.time, WORLD_PAN_BOUNDS);
+        applyRigPose();
+        break;
+      case "PAN_END":
+        // Read the store now: the separator keeps the first onAction it was created with.
+        endPan(getRig(), action.time, WORLD_PAN_BOUNDS, useDeviceStore.getState().reducedMotion);
+        applyRigPose();
+        break;
+      case "ROTATE_VIEW":
+        twistCameraRig(getRig(), action.deltaRad);
+        applyRigPose();
         break;
       case "TAP_INTERACT":
         setLastInteraction(action.target);
         dismissTapHint();
         break;
     }
-  }, [applyZoomFactor, onReleaseDrop, getMapper, resetChip, writeChipPosition, dismissTapHint]);
+  }, [applyZoomFactor, onReleaseDrop, getMapper, resetChip, writeChipPosition, dismissTapHint, getRig, applyRigPose]);
 
   useImperativeHandle(viewControlRef, () => ({
     rotate(direction) {
@@ -623,7 +618,8 @@ export function SceneViewport({
   function handlePointerMove(event: PointerEvent<HTMLElement>) {
     if (inputSeparatorRef.current?.mode === mode) {
       const { input } = inputSeparatorRef.current;
-      input.pointerMove(pointSample(event, readTarget(event.target)));
+      const sample = (moveSampleRef.current ??= { pointerId: 0, x: 0, y: 0, time: 0, target: null });
+      input.pointerMove(fillPointSample(event, readTarget(event.target), sample));
       if (mode === "WORLD_EXPLORE" && input.isDragging(event.pointerId) && !event.currentTarget.hasPointerCapture(event.pointerId)) {
         try {
           event.currentTarget.setPointerCapture(event.pointerId); // pan keeps tracking outside the viewport
@@ -688,6 +684,19 @@ export function SceneViewport({
     return () => observer.disconnect();
   }, [sceneShown, applyCameraZoom]);
 
+  // MFW-57: wheel / trackpad pinch zooms in WORLD_EXPLORE. Native and non-passive: React's onWheel cannot preventDefault().
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!sceneShown || mode !== "WORLD_EXPLORE" || !el) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const scale = getWheelZoomScale(event.deltaY, event.deltaMode, el.clientHeight);
+      if (scale !== 1) applyZoomFactor(getPinchZoomFactor(zoomRef.current, scale));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [sceneShown, mode, applyZoomFactor]);
+
   // MFW-54: the full-screen canvas stays within the tier's pixel budget; the screen size is stable across resize and rotation.
   const canvasDpr = useMemo(
     () =>
@@ -742,6 +751,7 @@ export function SceneViewport({
           if (cameraRef.current) {
             cameraRef.current.zoom = baseZoomRef.current * zoomRef.current;
             cameraRef.current.updateProjectionMatrix();
+            applyCameraRigPose(getRig(), cameraRef.current); // a tier-change Canvas re-creation keeps the travelled pose
           }
           rendererRef.current = gl;
         }}
@@ -756,8 +766,6 @@ export function SceneViewport({
             riverItems={sceneRiverItems}
             pinnedRiverIds={pinnedRiverIds}
             objectRotation={objectRotation}
-            worldRotation={worldRotation}
-            worldOffset={worldOffset}
             onTargetSelected={onTargetSelected}
             selectedLampIndex={selectedLampIndex}
             onLampSelected={onLampSelected}
@@ -780,13 +788,14 @@ export function SceneViewport({
             findMyItem={findMyItem}
             findMyAnchorRef={findMyAnchorRef}
           />
-          {cameraTargetRef && (
-            <CameraFlightController
-              targetRef={cameraTargetRef}
-              requestId={flyRequestId}
-              reducedMotion={reducedMotion}
-            />
-          )}
+          <CameraRig
+            getRig={getRig}
+            bounds={WORLD_PAN_BOUNDS}
+            targetRef={cameraTargetRef}
+            requestId={flyRequestId}
+            reducedMotion={reducedMotion}
+            handleRef={rigHandleRef}
+          />
           {activeTargetRef && selectedTarget && <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />}
         </KrathongAssetsProvider>
       </Canvas>
@@ -811,6 +820,8 @@ export function SceneViewport({
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>
     </section>
+    {/* Outside the section: its pointerdowns must not reach the gesture separator. */}
+    {mode === "WORLD_EXPLORE" && <WorldRotateButton onRotate={onRotateView} />}
     {perfProbeEnabled && (
       <OverlaySlot slot="debug">
         <PerfProbePanel

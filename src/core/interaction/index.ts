@@ -7,6 +7,9 @@ import {
   PINCH_ZOOM_MIN,
   ROTATION_RADIANS_PER_PIXEL,
   TAP_MAX_DURATION_MS,
+  TWIST_START_RADIANS,
+  WHEEL_LINE_HEIGHT_PX,
+  WHEEL_ZOOM_PER_PIXEL,
 } from "@/config/interaction.config";
 
 export const INTERACTION_MODES = ["CUSTOMIZE", "RITUAL_RELEASE", "WORLD_EXPLORE"] as const;
@@ -18,7 +21,11 @@ export type InteractionAction =
   | { type: "PINCH_ZOOM"; scale: number }
   | { type: "DRAG_KRATHONG"; deltaX: number; deltaY: number }
   | { type: "RELEASE_KRATHONG" }
-  | { type: "PAN_RIVER"; deltaX: number; deltaY: number }
+  | { type: "PAN_RIVER"; deltaX: number; deltaY: number; time: number }
+  /** WORLD_EXPLORE: the pan pointer lifted (`time`) or the pan stopped without inertia (`null`: 2nd finger, cancel). */
+  | { type: "PAN_END"; time: number | null }
+  /** WORLD_EXPLORE: two-finger twist past TWIST_START_RADIANS (screen y-down: clockwise is positive). */
+  | { type: "ROTATE_VIEW"; deltaRad: number }
   | { type: "TAP_INTERACT"; target: InteractionTarget };
 
 export interface PointerSample {
@@ -29,6 +36,7 @@ export interface PointerSample {
   target?: InteractionTarget | null;
 }
 
+/** `pointerMove`/`pointerUp` never retain the sample object (callers may reuse one). */
 export interface InputSeparator {
   pointerDown(sample: PointerSample): void;
   pointerMove(sample: PointerSample): void;
@@ -44,6 +52,8 @@ interface TrackedPointer extends PointerSample {
   readonly startTime: number;
   readonly startTarget: InteractionTarget | null;
   moved: boolean;
+  /** WORLD_EXPLORE: this pointer emitted PAN_RIVER and owes a PAN_END. */
+  panning: boolean;
 }
 
 export function getInteractionMode(state: FlowState): InteractionMode | null {
@@ -101,6 +111,32 @@ export function getZoomFactorAfterStep(current: number, direction: ViewStepDirec
 
 const distanceBetween = (a: PointerSample, b: PointerSample) => Math.hypot(a.x - b.x, a.y - b.y);
 
+/** WheelEvent.deltaMode values (DOM standard). */
+export const WHEEL_DELTA_MODE = Object.freeze({ pixel: 0, line: 1, page: 2 });
+
+/** Maps an angle into (−π, π]. */
+export function wrapAngleRad(a: number): number {
+  const turn = 2 * Math.PI;
+  let r = a % turn;
+  if (r <= -Math.PI) r += turn;
+  else if (r > Math.PI) r -= turn;
+  return r;
+}
+
+/** Screen angle (y-down) of the line from a to b. */
+export function getTwistAngle(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.atan2(b.y - a.y, b.x - a.x);
+}
+
+/** Zoom scale of one wheel event: a wheel up (negative deltaY) gives > 1, i.e. zoom in. */
+export function getWheelZoomScale(deltaY: number, deltaMode: number, pageHeightPx: number): number {
+  const unit =
+    deltaMode === WHEEL_DELTA_MODE.line ? WHEEL_LINE_HEIGHT_PX : deltaMode === WHEEL_DELTA_MODE.page ? pageHeightPx : 1;
+  const px = deltaY * unit;
+  if (!Number.isFinite(px)) return 1;
+  return Math.exp(-px * WHEEL_ZOOM_PER_PIXEL);
+}
+
 /** Routes pointer gestures to the active flow mode and drops all state when the mode changes. */
 export function createInputSeparator(
   mode: InteractionMode,
@@ -108,6 +144,34 @@ export function createInputSeparator(
 ): InputSeparator {
   const pointers = new Map<number, TrackedPointer>();
   let previousPinchDistance: number | null = null;
+  // WORLD_EXPLORE two-finger state (pinch + twist).
+  let pairA: TrackedPointer | null = null;
+  let pairB: TrackedPointer | null = null;
+  let previousTwistAngle = 0;
+  let twistAccum = 0;
+  let twisting = false;
+
+  /** Re-reads the two tracked pointers (down/up/cancel only, never per move). */
+  function resetPair() {
+    if (pointers.size === 2) {
+      let first: TrackedPointer | null = null;
+      let second: TrackedPointer | null = null;
+      for (const p of pointers.values()) {
+        if (first === null) first = p;
+        else second = p;
+      }
+      pairA = first;
+      pairB = second;
+      previousPinchDistance = distanceBetween(first!, second!);
+      previousTwistAngle = getTwistAngle(first!, second!);
+      twistAccum = 0;
+      twisting = false;
+    } else {
+      pairA = null;
+      pairB = null;
+      previousPinchDistance = null;
+    }
+  }
 
   function pointerDown(sample: PointerSample) {
     const pointer: TrackedPointer = {
@@ -117,8 +181,20 @@ export function createInputSeparator(
       startTime: sample.time,
       startTarget: sample.target ?? null,
       moved: false,
+      panning: false,
     };
     pointers.set(sample.pointerId, pointer);
+
+    if (mode === "WORLD_EXPLORE" && pointers.size >= 2) {
+      for (const p of pointers.values()) {
+        if (p.panning) {
+          p.panning = false;
+          onAction({ type: "PAN_END", time: null }); // a second finger stops the pan without inertia
+        }
+        p.moved = true; // multi-finger pointers never tap
+      }
+      resetPair();
+    }
 
     if (mode === "CUSTOMIZE" && pointers.size === 2) {
       const [first, second] = [...pointers.values()];
@@ -148,8 +224,29 @@ export function createInputSeparator(
       return;
     }
 
+    if (mode === "WORLD_EXPLORE" && pointers.size >= 2) {
+      if (pointers.size === 2 && pairA !== null && pairB !== null && (pointer === pairA || pointer === pairB)) {
+        const nextDistance = distanceBetween(pairA, pairB);
+        if (previousPinchDistance !== null && previousPinchDistance > 0 && nextDistance > 0) {
+          onAction({ type: "PINCH_ZOOM", scale: nextDistance / previousPinchDistance });
+        }
+        previousPinchDistance = nextDistance;
+        const angle = getTwistAngle(pairA, pairB);
+        const d = wrapAngleRad(angle - previousTwistAngle);
+        previousTwistAngle = angle;
+        if (twisting) {
+          if (d !== 0) onAction({ type: "ROTATE_VIEW", deltaRad: d });
+        } else {
+          twistAccum += d;
+          if (Math.abs(twistAccum) >= TWIST_START_RADIANS) twisting = true; // the accumulated part is not emitted
+        }
+      }
+      return; // never PAN_RIVER with 2+ pointers
+    }
+
     const movedDistance = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
     if (movedDistance < DRAG_START_DISTANCE_PX) return;
+    const firstDragMove = !pointer.moved;
     pointer.moved = true;
 
     if (mode === "CUSTOMIZE") {
@@ -157,7 +254,13 @@ export function createInputSeparator(
     } else if (mode === "RITUAL_RELEASE" && pointer.startTarget === "krathong") {
       onAction({ type: "DRAG_KRATHONG", deltaX, deltaY });
     } else if (mode === "WORLD_EXPLORE") {
-      onAction({ type: "PAN_RIVER", deltaX, deltaY });
+      // The first PAN_RIVER carries the whole displacement since pointerdown, so the world follows from the down point.
+      pointer.panning = true;
+      onAction(
+        firstDragMove
+          ? { type: "PAN_RIVER", deltaX: pointer.x - pointer.startX, deltaY: pointer.y - pointer.startY, time: sample.time }
+          : { type: "PAN_RIVER", deltaX, deltaY, time: sample.time },
+      );
     }
   }
 
@@ -183,10 +286,13 @@ export function createInputSeparator(
       sample.target === "water"
     ) {
       onAction({ type: "RELEASE_KRATHONG" });
+    } else if (mode === "WORLD_EXPLORE" && pointer.panning) {
+      onAction({ type: "PAN_END", time: sample.time });
     }
 
     pointers.delete(sample.pointerId);
-    if (pointers.size < 2) previousPinchDistance = null;
+    if (mode === "WORLD_EXPLORE") resetPair();
+    else if (pointers.size < 2) previousPinchDistance = null;
   }
 
   return {
@@ -194,8 +300,11 @@ export function createInputSeparator(
     pointerMove,
     pointerUp,
     pointerCancel(pointerId) {
+      const pointer = pointers.get(pointerId);
+      if (mode === "WORLD_EXPLORE" && pointer?.panning) onAction({ type: "PAN_END", time: null });
       pointers.delete(pointerId);
-      if (pointers.size < 2) previousPinchDistance = null;
+      if (mode === "WORLD_EXPLORE") resetPair();
+      else if (pointers.size < 2) previousPinchDistance = null;
     },
     isDragging(pointerId) {
       return pointers.get(pointerId)?.moved ?? false;

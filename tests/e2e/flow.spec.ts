@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
+import { E2E_WORLD_ROTATE_BUTTON_NAME } from "./helpers/cameraProbe";
+
+/** Accessible-name filter: every button except the 3D world rotate button (MFW-57). */
+const NOT_WORLD_ROTATE_BUTTON = new RegExp(`^(?!${E2E_WORLD_ROTATE_BUTTON_NAME}$)`);
 
 const OWNERSHIP_WARNING = "การล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนอุปกรณ์จะทำให้ไม่สามารถค้นคืนรายการผลงานของตัวเองได้";
 
@@ -43,6 +47,7 @@ test("flow walks from the active event to SHARED_WORLD_EXPLORE", async ({ page }
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   await expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
-  await expect(page.getByRole("button")).toHaveCount(1);
+  // MFW-57: the 3D world also shows the rotate button (open question 34); every other button stays absent.
+  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

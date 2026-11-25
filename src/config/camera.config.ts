@@ -1,4 +1,4 @@
-/** Reusable orthographic viewing angle for focusing targets in the miniature world. */
+/** Camera offset from the focus at yaw 0 (orthographic viewing angle). The camera rig rotates it about +Y (MFW-57). */
 export const CAMERA_FLIGHT_OFFSET = [4.5, 5.5, 7] as const;
 
 /** Smooth, interruptible camera transition tuned for short scene navigation. */
@@ -31,3 +31,19 @@ export const SCENE_CAMERA_ZOOM_MAX = SCENE_CAMERA_ZOOM * SCENE_CAMERA_ZOOM_MAX_F
 export const HIGHLIGHT_RING_COLOR = "#ffd166";
 export const HIGHLIGHT_RING_OPACITY = 0.9;
 export const HIGHLIGHT_RING_SEGMENTS = 32;
+
+/** MFW-57 camera drag-to-travel. PLACEHOLDER (spec silent; owner tunes on device, MFW-57) unless marked technical. */
+/** Fraction of the finger motion applied past a soft pan bound (rubber band). PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
+export const CAMERA_PAN_EDGE_RESISTANCE = 0.35;
+/** World units the focus may go past a soft pan bound while dragging. PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
+export const CAMERA_PAN_MAX_OVERSHOOT = 0.6;
+/** Time constant of the release ease-out (velocity × e^(−t/τ)) and of the return into bounds. PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
+export const CAMERA_PAN_EASE_TIME_CONSTANT_MS = 325;
+/** A release this long after the last move does not coast (the finger had stopped). PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
+export const CAMERA_PAN_RELEASE_IDLE_MS = 100;
+/** Release speed cap, world units per second. PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
+export const CAMERA_PAN_MAX_RELEASE_SPEED = 20;
+/** Technical: coasting stops below this speed (world units / s; < 3 px/s at the base zoom, invisible). */
+export const CAMERA_PAN_STOP_SPEED = 0.05;
+/** Technical: the return into bounds snaps when this close (world units); = the e2e camera-rest epsilon. */
+export const CAMERA_PAN_REST_EPSILON = 1e-4;
