@@ -3,6 +3,7 @@ import { E2E_MY_CREATION_ENTRY_KEYS_SORTED, E2E_MY_CREATIONS_STORAGE_KEY, makeOw
 import { E2E_CREATION_ID, E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -53,7 +54,7 @@ async function routeZones(
 }
 
 async function walkToWorld(page: Page) {
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

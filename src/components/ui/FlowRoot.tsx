@@ -1,5 +1,6 @@
 "use client";
 
+import type { FestivalEventId } from "@/config/events";
 import type { FlowEvent, FlowState } from "@/core/flow";
 import { getInteractionMode, type CustomizeViewControl } from "@/core/interaction";
 import { useDeviceStore } from "@/store/useDeviceStore";
@@ -10,7 +11,6 @@ import { getZonePagination } from "@/services/api/zonePagination";
 import { installMyCreationsRecorder } from "@/services/auth/myCreationsVault";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
-import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { PrivateWishReveal } from "./PrivateWishReveal";
@@ -28,19 +28,24 @@ const FlatViewport = lazy(() =>
   import("@/components/canvas2d").then((m) => ({ default: m.FlatViewport })),
 );
 
-/** Event that advances each placeholder step; LANDING and the terminal step have none. */
+/** Event that advances each placeholder step; the terminal step has none. */
 const NEXT_EVENT: Partial<Record<FlowState, FlowEvent>> = {
   CUSTOMIZE_OBJECT: { type: "FINISH_CUSTOMIZE" },
 };
 
 /** Renders the current step of the user flow from useUIStore. */
-export function FlowRoot() {
+export interface FlowRootProps {
+  readonly eventId: FestivalEventId;
+}
+
+export function FlowRoot({ eventId }: FlowRootProps) {
   const flowState = useUIStore((s) => s.flowState);
   const dispatch = useUIStore((s) => s.dispatch);
   const qualityTier = useDeviceStore((s) => s.qualityTier);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);
   const profiled = useDeviceStore((s) => s.profiled);
-  const selectedEventId = useUIStore((s) => s.selectedEventId);
+  const enterActiveEvent = useUIStore((s) => s.enterActiveEvent);
+  const enteredEventId = useUIStore((s) => s.selectedEventId);
   const ritual = useUIStore((s) => s.ritual);
   const ritualPhase = ritual.phase;
   const viewControlRef = useRef<CustomizeViewControl | null>(null);
@@ -48,6 +53,9 @@ export function FlowRoot() {
   const show2D = profiled && qualityTier === "FALLBACK_2D";
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
+
+  // Binds the server-resolved event to the session (MFW-53); declared first so later effects see it.
+  useEffect(() => enterActiveEvent(eventId), [enterActiveEvent, eventId]);
 
   // Every saved release is recorded in this device's creation list (MFW-30; owner decision 12).
   useEffect(() => installMyCreationsRecorder(getReleaseCreation()), []);
@@ -60,15 +68,16 @@ export function FlowRoot() {
   // The world loads once when the ritual starts and is not re-entered on FINISH_RITUAL.
   const inWorld = flowState === "RITUAL_RELEASE" || flowState === "SHARED_WORLD_EXPLORE";
   useEffect(() => {
-    if (!inWorld || selectedEventId === null) return;
+    if (!inWorld) return;
     const pagination = getZonePagination();
-    void pagination.enterWorld(selectedEventId);
+    void pagination.enterWorld(eventId);
     return () => pagination.leaveWorld();
-  }, [inWorld, selectedEventId]);
+  }, [inWorld, eventId]);
 
   return (
     <div
       data-flow-state={flowState}
+      data-active-event={enteredEventId ?? undefined}
       data-quality-tier={qualityTier}
       data-reduced-motion={reducedMotion ? "true" : "false"}
       data-interaction-mode={interactionMode ?? undefined}
@@ -98,11 +107,9 @@ export function FlowRoot() {
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
       {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer renderEntryExtra={(entry) => <PrivateWishReveal creationId={entry.id} />} />}
-      {flowState === "LANDING_EVENT_SELECT" ? (
-        <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
-      ) : flowState === "CUSTOMIZE_OBJECT" ? (
+      {flowState === "CUSTOMIZE_OBJECT" ? (
         <CustomizerPanel
-          eventId={selectedEventId}
+          eventId={eventId}
           onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
           viewControlRef={show3D ? viewControlRef : null}
         />

@@ -4,6 +4,11 @@ export const loyKrathongConfig = {
   id: "loy_krathong",
   name: "Loy Krathong",
   nameTh: "ลอยกระทง",
+  /** Date windows (Asia/Bangkok, end exclusive; MFW-53) — DRAFT: roadmap gives one day (24 พ.ย. 2026 / 13 พ.ย. 2027), no longer window; matches FESTIVAL_ENDS_AT. */
+  dateWindows: [
+    { startsAt: "2026-11-24T00:00:00+07:00", endsAt: "2026-11-25T00:00:00+07:00" },
+    { startsAt: "2027-11-13T00:00:00+07:00", endsAt: "2027-11-14T00:00:00+07:00" },
+  ],
 } as const satisfies FestivalEventConfig;
 
 /** Spec §6.4 Task 4.1 bases; id format follows the §5 example "banana_trunk_01". */

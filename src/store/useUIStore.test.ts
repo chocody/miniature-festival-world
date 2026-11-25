@@ -6,15 +6,15 @@ beforeEach(() => {
 });
 
 describe("useUIStore", () => {
-  it("starts at landing with no selection", () => {
+  it("starts at CUSTOMIZE_OBJECT with no event", () => {
     const s = useUIStore.getState();
-    expect(s.flowState).toBe("LANDING_EVENT_SELECT");
+    expect(s.flowState).toBe("CUSTOMIZE_OBJECT");
     expect(s.selectedEventId).toBeNull();
   });
 
   it("dispatch walks the whole chain", () => {
-    const { dispatch } = useUIStore.getState();
-    dispatch({ type: "SELECT_EVENT", eventId: "loy_krathong" });
+    const { dispatch, enterActiveEvent } = useUIStore.getState();
+    enterActiveEvent("loy_krathong");
     expect(useUIStore.getState().flowState).toBe("CUSTOMIZE_OBJECT");
     expect(useUIStore.getState().selectedEventId).toBe("loy_krathong");
     dispatch({ type: "FINISH_CUSTOMIZE" });
@@ -30,8 +30,19 @@ describe("useUIStore", () => {
     const { dispatch } = useUIStore.getState();
     const before = useUIStore.getState();
     dispatch({ type: "SUBMIT_WISH" });
-    dispatch({ type: "SELECT_EVENT", eventId: "christmas" });
+    dispatch({ type: "FINISH_RITUAL" });
     expect(useUIStore.getState()).toBe(before);
+  });
+
+  it("enterActiveEvent binds once and ignores unknown ids", () => {
+    useUIStore.getState().enterActiveEvent("loy_krathong");
+    const bound = useUIStore.getState();
+    bound.enterActiveEvent("christmas");
+    expect(useUIStore.getState()).toBe(bound);
+    useUIStore.setState(useUIStore.getInitialState(), true);
+    const fresh = useUIStore.getState();
+    fresh.enterActiveEvent("nope" as never);
+    expect(useUIStore.getState()).toBe(fresh);
   });
 });
 
@@ -46,8 +57,8 @@ describe("useUIStore ritual", () => {
   });
 
   it("REVISE_WISH returns to WRITE_WISH and resets the ritual but keeps attempt", () => {
-    const { dispatch, dispatchRitual } = useUIStore.getState();
-    dispatch({ type: "SELECT_EVENT", eventId: "loy_krathong" });
+    const { dispatch, dispatchRitual, enterActiveEvent } = useUIStore.getState();
+    enterActiveEvent("loy_krathong");
     dispatch({ type: "FINISH_CUSTOMIZE" });
     dispatch({ type: "SUBMIT_WISH" });
     dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });

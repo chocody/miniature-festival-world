@@ -17,7 +17,6 @@ import {
 
 describe("interaction mode routing", () => {
   it.each([
-    ["LANDING_EVENT_SELECT", null],
     ["CUSTOMIZE_OBJECT", "CUSTOMIZE"],
     ["WRITE_WISH", null],
     ["RITUAL_RELEASE", "RITUAL_RELEASE"],

@@ -30,6 +30,21 @@ describe("POST /api/creations (real route, no Supabase env)", () => {
     expect(body.items.map((i) => i.id)).toContain(creation.id);
   });
 
+  it("private-test override: Loy Krathong is accepted outside its date window, other events are rejected, reads keep working", async () => {
+    vi.setSystemTime(Date.parse("2026-12-01T12:00:00+07:00"));
+    const { GET, POST } = await import("./route");
+    const ok = await POST(makeCreateRequest(makeCreateBody()));
+    expect(ok.status).toBe(201);
+    const { creation } = (await ok.json()) as { creation: { id: string; zoneId: number } };
+    const other = await POST(makeCreateRequest(makeCreateBody({ eventId: "christmas" })));
+    expect(other.status).toBe(409);
+    expect(await other.json()).toEqual({ error: "event_closed" });
+    const list = await GET(new Request(`http://localhost/api/creations?event=loy_krathong&zone=${creation.zoneId}`));
+    expect(list.status).toBe(200);
+    const body = (await list.json()) as { items: { id: string }[] };
+    expect(body.items.map((i) => i.id)).toContain(creation.id);
+  });
+
   it("stores a private wish with the ephemeral key and leaks nothing", async () => {
     const { POST } = await import("./route");
     const res = await POST(makeCreateRequest(makeCreateBody({ wishVisibility: "private", wishText: "ความลับ" })));

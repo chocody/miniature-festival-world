@@ -2,7 +2,7 @@ import type { FestivalEventId } from "./events";
 
 export type EventFeatureFlags = Readonly<Record<FestivalEventId, boolean>>;
 
-/** Phase 1: only Loy Krathong is playable; every other festival shows "Coming Soon". */
+/** Which festivals are built and may become active (MFW-53). Phase 1: only Loy Krathong. */
 export const EVENT_FEATURE_FLAGS: EventFeatureFlags = Object.freeze({
   loy_krathong: true,
   christmas: false,

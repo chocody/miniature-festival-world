@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 
 const OWNERSHIP_WARNING = "การล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนอุปกรณ์จะทำให้ไม่สามารถค้นคืนรายการผลงานของตัวเองได้";
 
-const COMING_SOON = [
+const OTHER_FESTIVALS = [
   "Christmas",
   "New Year",
   "Chinese New Year",
@@ -14,24 +15,23 @@ const COMING_SOON = [
   "Halloween",
 ];
 
-test("event selector shows Loy Krathong enabled and 7 festivals Coming Soon", async ({ page }) => {
+test("opens straight into the active event — no selector, festival list or Coming Soon", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("button")).toHaveCount(8);
-  await expect(page.getByRole("button", { name: /Loy Krathong/ })).toBeEnabled();
-  for (const name of COMING_SOON) {
-    const btn = page.getByRole("button", { name: new RegExp(`^${name}`) });
-    await expect(btn).toBeDisabled();
-    await expect(btn).toContainText("Coming Soon");
+  await waitForActiveEvent(page);
+  await expect(page.getByText("Coming Soon")).toHaveCount(0);
+  await expect(page.getByText("เลือกเทศกาล")).toHaveCount(0);
+  await expect(page.locator("[data-event-id]")).toHaveCount(0);
+  for (const name of OTHER_FESTIVALS) {
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
   }
+  await expect(page.locator('[data-testid="customizer-panel"]')).toBeVisible();
 });
 
-test("flow walks from landing to SHARED_WORLD_EXPLORE", async ({ page }) => {
+test("flow walks from the active event to SHARED_WORLD_EXPLORE", async ({ page }) => {
   await mockCreateCreation(page);
   await page.goto("/");
   const root = page.locator("[data-flow-state]");
-  await expect(root).toHaveAttribute("data-flow-state", "LANDING_EVENT_SELECT");
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
-  await expect(root).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
+  await waitForActiveEvent(page);
   await expect(root).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "WRITE_WISH");

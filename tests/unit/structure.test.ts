@@ -26,7 +26,7 @@ const FILES = [
   "src/store/useBuilderStore.ts",
   "src/store/useWorldStore.ts",
   "src/store/useDeviceStore.ts",
-  "src/components/ui/EventSelector.tsx",
+  "src/components/ui/NoActiveEventScreen.tsx",
   "src/components/ui/MyCreationsDrawer.tsx",
   "src/core/coordinates/SplinePathCoord.ts",
   "src/core/coordinates/CylindricalCoord.ts",

@@ -22,7 +22,9 @@ import {
   recordingRepository,
   riverCoord,
 } from "./__fixtures__/createCreation";
-import { handleCreateCreation, type CreateCreationDeps } from "./createCreation";
+import { isEventActive } from "@/core/events";
+import { isServerActiveEvent } from "./activeEvent";
+import { getDefaultCreateCreationDeps, handleCreateCreation, type CreateCreationDeps } from "./createCreation";
 import { CreationRepositoryError, type CreationRepository } from "./creationRepository";
 import { PUBLIC_CREATION_KEYS, type PublicCreation } from "./creationTypes";
 import { createInMemoryCreationRepository } from "./inMemoryCreationRepository";
@@ -140,6 +142,23 @@ describe("AC1: request shape", () => {
     const c = await setup({ getPlacementStrategy: () => null });
     expect((await c.post(makeCreateBody())).status).toBe(409);
     expect(a.inserts.length + b.inserts.length + c.inserts.length).toBe(0);
+  });
+
+  it("rejects an event that is not active (date resolver)", async () => {
+    const byDate = (id: Parameters<typeof isEventActive>[0], t: number) => isEventActive(id, t, { override: null });
+    const inside = await setup({ isEventActive: byDate });
+    expect((await inside.post(makeCreateBody())).status).toBe(201);
+    const outside = await setup({ isEventActive: byDate }, Date.parse("2026-11-25T12:00:00+07:00"));
+    const res = await outside.post(makeCreateBody());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "event_closed" });
+    const never = await setup({ isEventActive: () => false });
+    expect((await never.post(makeCreateBody())).status).toBe(409);
+    expect(outside.inserts.length + never.inserts.length).toBe(0);
+  });
+
+  it("default deps use the server resolver", () => {
+    expect(getDefaultCreateCreationDeps().isEventActive).toBe(isServerActiveEvent);
   });
 
   it("does not echo a bad token", async () => {

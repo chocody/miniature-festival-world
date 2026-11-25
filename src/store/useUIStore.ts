@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import type { FestivalEventId } from "@/config/events";
-import { INITIAL_FLOW, transition, type FlowEvent, type FlowState } from "@/core/flow";
+import { INITIAL_FLOW, enterEvent, transition, type FlowEvent, type FlowState } from "@/core/flow";
 import { INITIAL_RITUAL_STATE, transitionRitual, type RitualEvent, type RitualState } from "@/core/ritual";
 
 export interface UIState {
   flowState: FlowState;
+  /** Active event resolved on the server (MFW-53); null until FlowRoot mounts. Name kept from 1.1. */
   selectedEventId: FestivalEventId | null;
+  enterActiveEvent: (eventId: FestivalEventId) => void;
   dispatch: (event: FlowEvent) => void;
   /** Release ritual sub-state of RITUAL_RELEASE (MFW-23). Public, parametric data only (invariant C). */
   ritual: RitualState;
@@ -15,6 +17,13 @@ export interface UIState {
 export const useUIStore = create<UIState>()((set, get) => ({
   flowState: INITIAL_FLOW.state,
   selectedEventId: INITIAL_FLOW.eventId,
+  enterActiveEvent: (eventId) => {
+    const { flowState, selectedEventId } = get();
+    const current = { state: flowState, eventId: selectedEventId };
+    const next = enterEvent(current, eventId);
+    if (next === current) return;
+    set({ selectedEventId: next.eventId });
+  },
   dispatch: (event) => {
     const { flowState, selectedEventId } = get();
     const current = { state: flowState, eventId: selectedEventId };

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 /** Backlog 4.2 AC3 width; 640 px is a common small Android height (lead decision). */
 const SMALL_PHONE = { width: 360, height: 640 } as const;
@@ -64,7 +65,7 @@ test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom wor
   });
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
-  await page.getByRole("button", { name: /Loy Krathong/ }).tap();
+  await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await page.evaluate(() => window.scrollTo(0, 0));
 
@@ -108,7 +109,7 @@ test("FALLBACK_2D at 360 px: same bar, no view buttons, no canvas", async ({ pag
   });
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await page.getByRole("button", { name: /Loy Krathong/ }).tap();
+  await waitForActiveEvent(page);
   const { panel } = await expectPanelAtBottom(page);
 
   for (const name of VIEW_BUTTONS) await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);

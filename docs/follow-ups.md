@@ -6,6 +6,8 @@ real device. Newest first. Remove an item when its fix is merged.
 
 | Card | Severity | Item | Kind |
 |---|---|---|---|
+| MFW-53 | Low | DRAFT defaults awaiting owner review: Loy Krathong window = one Bangkok day (24 Nov 2026 / 13 Nov 2027); New Year / CNY / Valentine's / Songkran windows follow §1.1 (wider than the §1 table); "nearest festival" = closest in time either way; an in-window unbuilt festival is not active (calm screen shows it); calm-screen copy and Gregorian-year date format; the event is fixed at page load (a session that outlives the window gets "event closed" on release). | owner decision |
+| MFW-53 | Low | Retention is per event id (`FESTIVAL_ENDS_AT`), so a Loy Krathong 2027 creation would be refused (expired 2026 end); CLAUDE.md still says stubs show "Coming Soon" (owner to update); the calm screen has no e2e (override is a constant). | fix later · owner |
 | MFW-34 | — | On-device soak (docs/perf/MFW-34.md §4): run on the private-test phones and fill the device table; decide the MEDIUM/LOW river caps (MFW-25 OQ 7) from the numbers. | owner · re-test on device |
 | MFW-45 | — | Owner: set `PRIVATE_WISH_KEY` (base64 of 32 random bytes) and `PRIVATE_WISH_KEY_ID` on Vercel (server-only); apply migrations MFW-12 → MFW-13 → MFW-45 on staging and verify the anon key is denied everywhere. | owner |
 | MFW-45 | Medium (before Christmas) | No abuse protection on `POST /api/creations` (rate limit / per-device cap). | fix later · owner decision |

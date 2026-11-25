@@ -8,6 +8,7 @@ import {
   WISH_SUBMIT_LABEL,
   WISH_TEXT_LABEL,
 } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 const SMALL_PHONE = { width: 360, height: 640 } as const;
 /** Duplicated literal of MIN_TOUCH_TARGET_PX in src/config/customizer.config.ts (do not import src/ into Playwright). */
@@ -22,7 +23,7 @@ const root = (page: Page) => page.locator("[data-flow-state]");
 
 async function toWishStep(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: WISH_SUBMIT_LABEL }).click();
   await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
 }
