@@ -864,6 +864,50 @@
             "11.1",
             "9.3"
           ]
+        },
+        {
+          "id": "13.5",
+          "summary": "Detailed krathong leaves and flowers (no more boxes and triangles)",
+          "goal": "Owner (2026-11-25): the models are only squares and triangles — leaves and flowers need real detail, like the reference.",
+          "ac": [
+            "Banana-leaf petals are real leaf shapes: a curved, tapered blade with a midrib crease, bent outward and slightly cupped, overlapping in layers like docs/spec/assets/loy-krathong-look-ref.png — no flat triangles or diamonds",
+            "Flowers are real blooms: several rounded, cupped petals in one or two rings around a raised centre, with small per-petal variation; each flower type in the registry (marigold, orchid, lotus) is recognisably different",
+            "The base, candle and flame get matching detail (rounded lip, wax drip or wick, soft teardrop flame); appearance keys and stored data are unchanged, so saved krathongs render with the new models; the customizer, pier and river use the same models",
+            "Detail is tiered: full detail for the own krathong (customizer / pier) and on HIGH; lighter variants for river krathongs on MEDIUM and LOW so a full 80-item zone stays inside the tier budgets (triangles, draw calls and programs recorded like docs/perf/MFW-34.md; no new shader program)",
+            "Geometry is shared, instanced on the river and disposed on unmount / zone switch; no per-frame allocation; before / after close-up screenshots (day and night) are attached to the PR"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.2"
+          ]
+        },
+        {
+          "id": "13.6",
+          "summary": "Detailed foliage — leafy trees, bushes and riverside plants",
+          "goal": "Trees and bushes read as foliage instead of blobs and cones.",
+          "ac": [
+            "Tree canopies are built from clustered leaf clumps (several overlapping rounded masses with a broken silhouette) on a tapered, slightly bent trunk with a branch or two, in the clay look of docs/spec/assets/loy-krathong-look-ref.png; at least two tree shapes",
+            "Bushes and riverside plants (reeds, lotus pads or grass tufts along the bank) add detail at the water edge; nothing covers the krathong lane or the walking paths",
+            "Repeated foliage is instanced; the environment stays inside ENVIRONMENT_RENDER_BUDGETS per tier (LOW uses the lighter variant) with before / after numbers; no new shader program",
+            "Gentle sway on HIGH / MEDIUM only where the scene is already animating; static under reduced motion",
+            "Before / after screenshots at phone and desktop size, day and night, are attached to the PR"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.3"
+          ]
         }
       ]
     },

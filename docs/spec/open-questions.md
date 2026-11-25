@@ -47,5 +47,6 @@ lead with the decision written in the PR) **before** the listed ticket is implem
 | 40 | Rings and halos around objects (highlight ring, yellow glow discs). | §6.3 Task 3.3 | MFW-67 (13.3) — Decided (owner, 2026-11-25): no yellow rings around objects; the scene should look natural. |
 | 41 | What can be interacted with? | §6.6 Task 6.2 | MFW-60 (11.4) — Decided (owner, 2026-11-25): anything in the scene. |
 | 42 | Scene size on screen. | row 28 | MFW-68 (13.4) — Decided (owner, 2026-11-25): the scene looks small and does not fill the area; make it bigger so it fills the screen. |
+| 43 | How detailed are leaves and flowers while generated models wait for Higgsfield credits? | row 39 | MFW-69 (13.5), MFW-70 (13.6) — Decided (owner, 2026-11-25): do what is possible now; leaves and flowers need much more detail — today they are only squares and triangles. Procedural models get real leaf and petal shapes; generated GLB models (MFW-65/66) follow when credits are available. |
 
 Also noted in MFW-2: Christmas date 24–25 Dec (roadmap table) vs 20–26 Dec (§1.1).
