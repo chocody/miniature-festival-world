@@ -40,6 +40,7 @@ import { publicCreationsToRiverItems } from "@/core/world/zoneRiverItems";
 import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
 import type { KrathongAppearance } from "@/core/customization/types";
 import { InspectPopup } from "@/components/ui/InspectPopup";
+import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
@@ -517,7 +518,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         </div>
         {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />}
       </section>
-      {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} />}
+      {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} ownerSection={<OwnerWishSection creation={inspected} />} />}
     </>
   );
 }

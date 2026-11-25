@@ -2,27 +2,37 @@
 
 import { isOwnedCreation } from "@/services/auth/ownedCreationHint";
 import type { OwnerWishRevealer } from "@/services/api/ownerWishClient";
+import type { WishVisibilitySwitcher } from "@/services/api/wishVisibilityClient";
 import { installDeviceOwnedCreationHint } from "./deviceOwnedCreations";
 import type { InspectedCreation } from "./inspectedCreation";
-import { PrivateWishReveal } from "./PrivateWishReveal";
+import { OwnerWishControls } from "./OwnerWishControls";
 
 installDeviceOwnedCreationHint();
 
-/** Offer the reveal only for a krathong with a private wish (no public text) that this device lists as its own. */
-export function shouldOfferOwnerWishReveal(
-  creation: Pick<InspectedCreation, "id" | "publicWishText">,
+/** Offer the owner controls for every krathong this device lists as its own, open or closed (the switch works both ways). MFW-63. */
+export function shouldOfferOwnerControls(
+  creation: Pick<InspectedCreation, "id">,
   isOwned: (creationId: string) => boolean = isOwnedCreation,
 ): boolean {
-  return creation.publicWishText === null && isOwned(creation.id);
+  return isOwned(creation.id);
 }
 
 export interface OwnerWishSectionProps {
   readonly creation: InspectedCreation;
   readonly isOwned?: (creationId: string) => boolean; // default isOwnedCreation
   readonly revealer?: OwnerWishRevealer;
+  readonly switcher?: WishVisibilitySwitcher;
 }
 
-export function OwnerWishSection({ creation, isOwned, revealer }: OwnerWishSectionProps) {
-  if (!shouldOfferOwnerWishReveal(creation, isOwned)) return null;
-  return <PrivateWishReveal key={creation.id} creationId={creation.id} revealer={revealer} />;
+export function OwnerWishSection({ creation, isOwned, revealer, switcher }: OwnerWishSectionProps) {
+  if (!shouldOfferOwnerControls(creation, isOwned)) return null;
+  return (
+    <OwnerWishControls
+      key={creation.id}
+      creationId={creation.id}
+      knownOpen={creation.publicWishText !== null}
+      switcher={switcher}
+      revealer={revealer}
+    />
+  );
 }

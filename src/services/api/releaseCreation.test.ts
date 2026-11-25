@@ -73,6 +73,26 @@ describe("release", () => {
     expect(b.ownerToken).toBe(OWNER_TOKEN_FIXTURE);
   });
 
+  it("sends the stored display name (MFW-63)", async () => {
+    useBuilderStore.setState({ wishDisplayName: "น้องมะลิ" });
+    const { releaser, bodies } = harness();
+    expect(await releaser.release(PIER)).toBe("saved");
+    expect(bodies[0].displayName).toBe("น้องมะลิ");
+    expect(Object.keys(bodies[0]).sort()).toEqual([...CREATE_CREATION_BODY_KEYS, "displayName"].sort());
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
+  });
+
+  it("a stored name that fails the name check revises the wish without a submit (MFW-63)", async () => {
+    useBuilderStore.setState({ wishDisplayName: "someone@example.com" });
+    const { releaser, submit } = harness();
+    expect(await releaser.release(PIER)).toBe("revise_wish");
+    expect(submit).not.toHaveBeenCalled();
+    expect(useUIStore.getState().flowState).toBe("WRITE_WISH");
+    useUIStore.setState({ flowState: "RITUAL_RELEASE" });
+    useBuilderStore.setState({ wishDisplayName: "a\tb" });
+    expect(await harness().releaser.release(PIER)).toBe("revise_wish");
+  });
+
   it("FALLBACK_2D and unprofiled never load the resolver", async () => {
     const loadLandingResolver = vi.fn();
     await harness({ loadLandingResolver }).releaser.release(PIER);
@@ -217,6 +237,7 @@ describe("release", () => {
   });
 
   it("clears the wish even when the response arrives stale", async () => {
+    useBuilderStore.setState({ wishDisplayName: "น้องมะลิ" });
     let resolve!: (r: CreateCreationResult) => void;
     const submit = vi.fn(() => new Promise<CreateCreationResult>((r) => { resolve = r; }));
     const { releaser } = harness({ submit });
@@ -225,6 +246,7 @@ describe("release", () => {
     resolve({ ok: true, creation: creationFor({ appearance: {} as AppearanceJson, coord: buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT) } as CreateCreationRequestBody) });
     expect(await first).toBe("ignored");
     expect(useBuilderStore.getState().wish).toBeNull();
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
   });
 
   it("guards: second release, wrong flow state, stale response", async () => {

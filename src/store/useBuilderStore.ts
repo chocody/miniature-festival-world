@@ -8,13 +8,12 @@ import {
   type KrathongChoiceResult,
 } from "@/core/customization";
 import type { ModerationReason } from "@/services/moderation";
+import { moderationReasonsFromServerBody, type ComposedWish } from "@/services/api/wishPayload";
 import {
-  evaluateWishDraft,
-  moderationReasonsFromServerBody,
-  type ComposedWish,
-  type WishDraft,
-  type WishDraftEvaluation,
-} from "@/services/api/wishPayload";
+  evaluateWishComposer,
+  type WishComposerDraft,
+  type WishComposerEvaluation,
+} from "@/services/api/wishComposer";
 
 export interface BuilderActions {
   /**
@@ -23,10 +22,11 @@ export interface BuilderActions {
    */
   chooseKrathong: (choice: KrathongChoice) => KrathongChoiceResult;
   /**
-   * Evaluates the draft (2.3 guard when public). Only when ok: stores the composed wish and clears server reasons.
-   * Otherwise the store is untouched (same state reference).
+   * Evaluates the composer draft (name always through the 2.3 guard; wish too when the switch is on). Only when ok: stores
+   * the composed wish and the trimmed name (null when empty) and clears server reasons. Otherwise the store is untouched
+   * (same state reference). MFW-63.
    */
-  submitWish: (draft: WishDraft) => WishDraftEvaluation;
+  submitWish: (draft: WishComposerDraft) => WishComposerEvaluation;
   /**
    * Reads an untrusted create-API error body (MFW-45). A moderation_blocked body stores its reasons (the wish is kept,
    * so the modal reopens with the text) and returns true; anything else changes nothing and returns false.
@@ -39,6 +39,8 @@ export interface BuilderState extends BuilderActions {
   appearance: EventAppearance | null;
   /** The composed wish of this creation. In memory only (never persisted); MFW-23 sends it when saving. */
   wish: ComposedWish | null;
+  /** The optional display name of this creation (MFW-63). In memory only (never persisted); cleared with `wish` after a save. */
+  wishDisplayName: string | null;
   /** Reasons the server gave for refusing the public wish; null when none. */
   wishServerReasons: readonly ModerationReason[] | null;
 }
@@ -46,6 +48,7 @@ export interface BuilderState extends BuilderActions {
 export const useBuilderStore = create<BuilderState>()((set, get) => ({
   appearance: null,
   wish: null,
+  wishDisplayName: null,
   wishServerReasons: null,
   chooseKrathong: (choice) => {
     const current = get().appearance ?? DEFAULT_KRATHONG_APPEARANCE;
@@ -54,8 +57,8 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     return result;
   },
   submitWish: (draft) => {
-    const result = evaluateWishDraft(draft);
-    if (result.ok) set({ wish: result.wish, wishServerReasons: null });
+    const result = evaluateWishComposer(draft);
+    if (result.ok) set({ wish: result.wish, wishDisplayName: result.displayName, wishServerReasons: null });
     return result;
   },
   rejectWishFromServer: (body) => {

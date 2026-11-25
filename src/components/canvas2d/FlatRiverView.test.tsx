@@ -5,6 +5,7 @@ import { LOY_KRATHONG_PIER_RELEASE_SPOT, LOY_KRATHONG_RIVER_LANE_ID } from "@/co
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { WISH_SWITCH_COPY } from "@/config/wish.config";
 import { FALLBACK_2D_EFFECT_POOL_CAPS } from "@/config/performance.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import {
@@ -20,6 +21,7 @@ import { makePublicCreation } from "@/core/fallback2d/__fixtures__/flatRiverItem
 import { INITIAL_RITUAL_STATE, type SavedRelease } from "@/core/ritual";
 import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
 import type { PublicCreation } from "@/services/api/creationTypes";
+import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
@@ -276,6 +278,31 @@ describe("FlatRiverView", () => {
     expect(screen.getByTestId("flat-river-view")).toHaveAttribute("data-last-gimmick", "inspect");
     fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
     expect(screen.queryByText(INSPECT_POPUP_COPY.dialogTitle)).toBeNull();
+  });
+
+  it("an owned krathong's 2D popup has the owner switch", () => {
+    const zone = items(5);
+    const owned = zone[2];
+    const closed = { ...zone[3], publicWishText: null, displayName: null };
+    setWorld([zone[0], zone[1], owned, closed, zone[4]]);
+    const unregister = registerOwnedCreationPredicate((id) => id === owned.id || id === closed.id);
+    try {
+      const { container } = mount();
+      const hitOf = (id: string) => container.querySelector('[data-input-target="krathong"][data-creation-id="' + id + '"]')!;
+      const sw = () => screen.getByRole("switch", { name: WISH_SWITCH_COPY.label });
+      tap(hitOf(owned.id));
+      expect(screen.getByRole("dialog")).toContainElement(sw());
+      expect(sw()).toHaveAttribute("aria-checked", owned.publicWishText !== null ? "true" : "false");
+      fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
+      tap(hitOf(closed.id), 2);
+      expect(sw()).toHaveAttribute("aria-checked", "false");
+      fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
+      tap(hitOf(zone[0].id), 3);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.queryByRole("switch")).toBeNull();
+    } finally {
+      unregister();
+    }
   });
 
   describe("own krathong", () => {

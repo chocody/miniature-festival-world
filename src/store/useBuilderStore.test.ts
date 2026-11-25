@@ -67,28 +67,45 @@ describe("wish", () => {
   const CLEAN = "ขอให้ทุกคนมีความสุข";
   const PII = "โทรหาฉัน 081-234-5678";
 
-  it("starts with no wish and no server reasons", () => {
+  it("starts with no wish, no name and no server reasons", () => {
     expect(useBuilderStore.getState().wish).toBeNull();
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
     expect(useBuilderStore.getState().wishServerReasons).toBeNull();
   });
 
   it("submitWish stores the trimmed composed wish", () => {
-    const result = useBuilderStore.getState().submitWish({ text: `  ${CLEAN} `, visibility: "private" });
+    const result = useBuilderStore.getState().submitWish({ text: `  ${CLEAN} `, open: false, displayName: null });
     expect(result.ok).toBe(true);
     expect(useBuilderStore.getState().wish).toEqual({ text: CLEAN, visibility: "private" });
   });
 
+  it("submitWish stores the trimmed name (MFW-63); an empty name is stored as null", () => {
+    useBuilderStore.getState().submitWish({ text: CLEAN, open: true, displayName: "  น้องมะลิ " });
+    expect(useBuilderStore.getState().wishDisplayName).toBe("น้องมะลิ");
+    expect(useBuilderStore.getState().wish).toEqual({ text: CLEAN, visibility: "public" });
+    useBuilderStore.getState().submitWish({ text: CLEAN, open: false, displayName: "   " });
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
+  });
+
+  it("a blocked name leaves the state reference unchanged, even with the switch off", () => {
+    const before = useBuilderStore.getState();
+    const result = useBuilderStore.getState().submitWish({ text: CLEAN, open: false, displayName: "someone@example.com" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.nameModerationReasons).toEqual(["email"]);
+    expect(useBuilderStore.getState()).toBe(before);
+  });
+
   it("an invalid draft is returned and the state reference is unchanged", () => {
     const before = useBuilderStore.getState();
-    const result = useBuilderStore.getState().submitWish({ text: PII, visibility: "public" });
+    const result = useBuilderStore.getState().submitWish({ text: PII, open: true, displayName: null });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.moderationReasons).toEqual(["phone"]);
+    if (!result.ok) expect(result.wishModerationReasons).toEqual(["phone"]);
     expect(useBuilderStore.getState()).toBe(before);
   });
 
   it("rejectWishFromServer", () => {
     const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
-    submitWish({ text: CLEAN, visibility: "public" });
+    submitWish({ text: CLEAN, open: true, displayName: null });
     const wish = useBuilderStore.getState().wish;
     expect(rejectWishFromServer({ error: "moderation_blocked", reasons: ["email"] })).toBe(true);
     expect(useBuilderStore.getState().wishServerReasons).toEqual(["email"]);
@@ -101,16 +118,16 @@ describe("wish", () => {
 
   it("a following valid submitWish clears server reasons", () => {
     const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
-    submitWish({ text: CLEAN, visibility: "public" });
+    submitWish({ text: CLEAN, open: true, displayName: null });
     rejectWishFromServer({ error: "moderation_blocked", reasons: ["email"] });
-    submitWish({ text: `${CLEAN}มาก`, visibility: "public" });
+    submitWish({ text: `${CLEAN}มาก`, open: true, displayName: null });
     expect(useBuilderStore.getState().wishServerReasons).toBeNull();
   });
 
   it("wish and appearance are independent; other stores keep their references", () => {
     const ui = useUIStore.getState();
     const device = useDeviceStore.getState();
-    useBuilderStore.getState().submitWish({ text: CLEAN, visibility: "private" });
+    useBuilderStore.getState().submitWish({ text: CLEAN, open: false, displayName: null });
     expect(useBuilderStore.getState().appearance).toBeNull();
     const wish = useBuilderStore.getState().wish;
     useBuilderStore.getState().chooseKrathong({ part: "base", value: "toy_bread_01" });
@@ -121,10 +138,10 @@ describe("wish", () => {
 
   it("writes nothing to localStorage", () => {
     const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
-    submitWish({ text: CLEAN, visibility: "private" });
-    submitWish({ text: PII, visibility: "public" });
+    submitWish({ text: CLEAN, open: false, displayName: null });
+    submitWish({ text: PII, open: true, displayName: null });
     rejectWishFromServer({ error: "moderation_blocked", reasons: ["phone"] });
-    submitWish({ text: CLEAN, visibility: "public" });
+    submitWish({ text: CLEAN, open: true, displayName: null });
     expect(window.localStorage.length).toBe(0);
   });
 });

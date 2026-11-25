@@ -5,7 +5,7 @@ import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
-import { WISH_COPY } from "@/config/wish.config";
+import { WISH_COPY, WISH_SWITCH_COPY } from "@/config/wish.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
 import { buildReleaseCoord } from "@/core/ritual";
@@ -36,7 +36,14 @@ function stubCreationsApi() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method !== "POST") return new Response(JSON.stringify({}), { status: 404 });
+      if (init?.method !== "POST") {
+        // Zone GET (the owner switch reads its state from the public list, MFW-63): an empty zone.
+        if (url.startsWith("/api/creations?")) {
+          const zoneId = Number(new URL(url, "http://localhost").searchParams.get("zone"));
+          return new Response(JSON.stringify({ eventId: "loy_krathong", zoneId, limit: 80, items: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 404 });
+      }
       const sent = JSON.parse(init.body as string) as Record<string, unknown>;
       api.posts.push({ url, body: sent });
       if (api.status !== 201) return new Response(JSON.stringify(api.body ?? {}), { status: api.status });
@@ -119,7 +126,6 @@ beforeEach(() => {
 
 const completeWish = (text = "ขอให้ทุกคนมีความสุข") => {
   fireEvent.change(screen.getByRole("textbox", { name: WISH_COPY.textLabel }), { target: { value: text } });
-  fireEvent.click(screen.getByRole("radio", { name: WISH_COPY.options.private.label }));
   fireEvent.click(screen.getByRole("button", { name: WISH_COPY.submit }));
 };
 
@@ -300,6 +306,7 @@ describe("FlowRoot", () => {
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
     expect(screen.queryByRole("dialog", { name: WISH_COPY.title })).toBeNull();
     expect(useBuilderStore.getState().wish).toEqual({ text: "ขอให้ทุกคนมีความสุข", visibility: "private" });
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
   });
 
   it("FALLBACK_2D: the wish modal works and no scene mounts", async () => {
@@ -388,7 +395,7 @@ describe("FlowRoot", () => {
     expect(list).toHaveTextContent("คุ้งน้ำที่ 1");
   });
 
-  it("the drawer entry offers the private wish reveal (MFW-31)", async () => {
+  it("the drawer entry offers the switch and the private wish reveal", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     act(() => {
@@ -398,6 +405,24 @@ describe("FlowRoot", () => {
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
     fireEvent.click(await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton }));
     const list = await screen.findByTestId("my-creations-list");
+    const sw = await within(list).findByRole("switch", { name: WISH_SWITCH_COPY.label });
+    expect(sw).toHaveAttribute("aria-checked", "false");
     expect(within(list).getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
+  });
+
+  it("a name typed in the wish step is sent as displayName and not kept after the save (MFW-63)", async () => {
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    fireEvent.change(screen.getByRole("textbox", { name: WISH_COPY.nameLabel }), { target: { value: " น้องมะลิ " } });
+    completeWish();
+    expect(useBuilderStore.getState().wishDisplayName).toBe("น้องมะลิ");
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    expect(api.posts).toHaveLength(1);
+    expect(api.posts[0].body.displayName).toBe("น้องมะลิ");
+    expect(api.posts[0].body.wishVisibility).toBe("private");
+    expect(useBuilderStore.getState().wishDisplayName).toBeNull();
+    expect(useBuilderStore.getState().wish).toBeNull();
+    expect(JSON.stringify({ ...window.localStorage })).not.toContain("น้องมะลิ");
   });
 });

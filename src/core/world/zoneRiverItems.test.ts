@@ -34,7 +34,7 @@ describe("publicCreationsToRiverItems", () => {
     const input = creation(1);
     const out = publicCreationsToRiverItems([input], QUERY);
     expect(out).toHaveLength(1);
-    expect(Object.keys(out[0]).sort()).toEqual(["appearance", "coord", "createdAtMs", "id", "publicWishText"]);
+    expect(Object.keys(out[0]).sort()).toEqual(["appearance", "coord", "createdAtMs", "displayName", "id", "publicWishText"]);
     expect(out[0].coord).toEqual(input.coord);
     expect(out[0].coord).not.toBe(input.coord);
     expect(out[0].createdAtMs).toBe(Date.parse(input.createdAt));
@@ -47,6 +47,17 @@ describe("publicCreationsToRiverItems", () => {
       QUERY,
     );
     expect(out.map((x) => x.publicWishText)).toEqual(["ขอให้สุขภาพแข็งแรง", null]);
+  });
+  it("copies the display name only with an open wish (MFW-63)", () => {
+    const out = publicCreationsToRiverItems(
+      [
+        creation(1, { publicWishText: "ขอให้สมหวัง", displayName: "น้องมะลิ" }),
+        creation(2, { publicWishText: null, displayName: "น้องมะลิ" }),
+        creation(3, { publicWishText: "ขอให้สมหวัง" }),
+      ],
+      QUERY,
+    );
+    expect(out.map((x) => x.displayName)).toEqual(["น้องมะลิ", null, null]);
   });
   it("caps at 80 valid items", () => {
     const valid = Array.from({ length: 85 }, (_, i) => creation(i + 1));

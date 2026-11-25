@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
 import { getReportSession, type ReportSession } from "@/services/api/reportClient";
 import type { InspectedCreation } from "./inspectedCreation";
 import { describeKrathongAppearance } from "./krathongAppearanceSummary";
@@ -19,7 +20,10 @@ type ReportUiState = "idle" | "confirming" | "sending" | "received" | "failed";
 
 const BUTTON_CLASS = "min-h-11 min-w-11 rounded-full border border-current px-3";
 
-/** Anonymous card for a tapped river krathong: appearance, public wish, Report. No id, name or time is ever shown. */
+/**
+ * Card for a tapped river krathong. An open wish shows name (or "ไม่ระบุชื่อ") + wish + Report; a closed wish shows only the
+ * krathong's appearance (owner decision 29, MFW-63). No id or time is ever shown.
+ */
 export function InspectPopup({ creation, onClose, reportSession, ownerSection }: InspectPopupProps) {
   const session = reportSession ?? getReportSession();
   const titleId = useId();
@@ -27,6 +31,7 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
   const [state, setState] = useState<ReportUiState>(() => (session.hasReported(creation.id) ? "received" : "idle"));
   const copy = INSPECT_POPUP_COPY;
   const rows = describeKrathongAppearance(creation.appearance);
+  const isOpen = creation.publicWishText !== null;
 
   useEffect(() => {
     dialogRef.current?.focus();
@@ -59,7 +64,6 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
           {copy.close}
         </button>
       </div>
-      <p className="text-xs opacity-75">{copy.anonymousNote}</p>
       <h3 className="mt-2 font-semibold">{copy.appearanceHeading}</h3>
       <dl>
         {rows.map((row) => (
@@ -78,10 +82,17 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
           </div>
         ))}
       </dl>
-      <h3 className="mt-2 font-semibold">{copy.wishHeading}</h3>
-      <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{creation.publicWishText ?? copy.noPublicWish}</p>
+      {isOpen && (
+        <>
+          <p className="mt-2" data-testid="inspect-display-name">
+            <span className="opacity-75">{copy.fromLabel}</span> {creation.displayName ?? DISPLAY_NAME_FALLBACK}
+          </p>
+          <h3 className="mt-2 font-semibold">{copy.wishHeading}</h3>
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{creation.publicWishText}</p>
+        </>
+      )}
       {ownerSection}
-      {creation.publicWishText !== null && (
+      {isOpen && (
         <div className="mt-2">
           {state === "idle" && (
             <button type="button" className={BUTTON_CLASS} onClick={() => setState("confirming")}>

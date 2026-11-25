@@ -20,6 +20,7 @@ import { useWorldStore } from "@/store/useWorldStore";
 import type { CreateCreationRequestBody } from "./createCreationTypes";
 import { submitCreation, type CreateCreationResult } from "./createCreationClient";
 import type { PublicCreation, AppearanceJson } from "./creationTypes";
+import { evaluateDisplayName, type DisplayNameEvaluation } from "./displayName";
 import { evaluateWishDraft, toWishRequestFields, type WishDraftEvaluation } from "./wishPayload";
 import { getZonePagination } from "./zonePagination";
 
@@ -67,14 +68,17 @@ export function createReleaseCreation(deps: ReleaseCreationDeps = {}): ReleaseCr
       return "ignored";
     }
     // 2. Wish: re-evaluate, never trust the stored composition blindly.
-    const wish = useBuilderStore.getState().wish;
+    const { wish, wishDisplayName } = useBuilderStore.getState();
     let evaluation: WishDraftEvaluation | null;
+    let nameEvaluation: DisplayNameEvaluation | null;
     try {
       evaluation = wish === null ? null : evaluateWishDraft({ text: wish.text, visibility: wish.visibility });
+      nameEvaluation = evaluateDisplayName(wishDisplayName);
     } catch {
       evaluation = null;
+      nameEvaluation = null;
     }
-    if (evaluation === null || !evaluation.ok) {
+    if (evaluation === null || !evaluation.ok || nameEvaluation === null || !nameEvaluation.ok) {
       ui.dispatch({ type: "REVISE_WISH" });
       return "revise_wish";
     }
@@ -116,6 +120,7 @@ export function createReleaseCreation(deps: ReleaseCreationDeps = {}): ReleaseCr
         ) as unknown as AppearanceJson,
         coord,
         ...toWishRequestFields(evaluation.wish), // wishText, wishVisibility
+        ...(nameEvaluation.name !== null ? { displayName: nameEvaluation.name } : {}), // omitted when there is no name (MFW-63)
         ownerToken: getOwnerToken(),
       };
     } catch {
@@ -128,7 +133,7 @@ export function createReleaseCreation(deps: ReleaseCreationDeps = {}): ReleaseCr
     const result = await submit(body);
     const receivedAt = now();
     if (isStale(attempt)) {
-      if (result.ok) useBuilderStore.setState({ wish: null, wishServerReasons: null }); // private text must not linger
+      if (result.ok) useBuilderStore.setState({ wish: null, wishDisplayName: null, wishServerReasons: null }); // private text must not linger
       return "ignored";
     }
 
@@ -145,7 +150,7 @@ export function createReleaseCreation(deps: ReleaseCreationDeps = {}): ReleaseCr
         movedByServer: didServerMoveSpot(coord, finalCoord),
       };
       useUIStore.getState().dispatchRitual({ type: "SAVED", attempt, saved });
-      useBuilderStore.setState({ wish: null, wishServerReasons: null }); // private text must not linger
+      useBuilderStore.setState({ wish: null, wishDisplayName: null, wishServerReasons: null }); // private text must not linger
       for (const listener of [...listeners]) {
         try {
           listener(c);

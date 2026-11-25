@@ -13,7 +13,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
-import { PrivateWishReveal } from "./PrivateWishReveal";
+import { OwnerWishControls } from "./OwnerWishControls";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { WishModal } from "./WishModal";
 import { ZoneNavigator } from "./ZoneNavigator";
@@ -106,7 +106,7 @@ export function FlowRoot({ eventId }: FlowRootProps) {
         </Suspense>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
-      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer renderEntryExtra={(entry) => <PrivateWishReveal creationId={entry.id} />} />}
+      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />}
       {flowState === "CUSTOMIZE_OBJECT" ? (
         <CustomizerPanel
           eventId={eventId}
