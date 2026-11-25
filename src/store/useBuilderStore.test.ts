@@ -6,6 +6,7 @@ import { useUIStore } from "./useUIStore";
 
 beforeEach(() => {
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
+  window.localStorage.clear();
 });
 
 const choose = useBuilderStore.getState().chooseKrathong;
@@ -59,5 +60,71 @@ describe("useBuilderStore.chooseKrathong", () => {
     choose({ part: "base", value: "toy_bread_01" });
     expect(useUIStore.getState()).toBe(ui);
     expect(useDeviceStore.getState()).toBe(device);
+  });
+});
+
+describe("wish", () => {
+  const CLEAN = "ขอให้ทุกคนมีความสุข";
+  const PII = "โทรหาฉัน 081-234-5678";
+
+  it("starts with no wish and no server reasons", () => {
+    expect(useBuilderStore.getState().wish).toBeNull();
+    expect(useBuilderStore.getState().wishServerReasons).toBeNull();
+  });
+
+  it("submitWish stores the trimmed composed wish", () => {
+    const result = useBuilderStore.getState().submitWish({ text: `  ${CLEAN} `, visibility: "private" });
+    expect(result.ok).toBe(true);
+    expect(useBuilderStore.getState().wish).toEqual({ text: CLEAN, visibility: "private" });
+  });
+
+  it("an invalid draft is returned and the state reference is unchanged", () => {
+    const before = useBuilderStore.getState();
+    const result = useBuilderStore.getState().submitWish({ text: PII, visibility: "public" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.moderationReasons).toEqual(["phone"]);
+    expect(useBuilderStore.getState()).toBe(before);
+  });
+
+  it("rejectWishFromServer", () => {
+    const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
+    submitWish({ text: CLEAN, visibility: "public" });
+    const wish = useBuilderStore.getState().wish;
+    expect(rejectWishFromServer({ error: "moderation_blocked", reasons: ["email"] })).toBe(true);
+    expect(useBuilderStore.getState().wishServerReasons).toEqual(["email"]);
+    expect(useBuilderStore.getState().wish).toBe(wish);
+    const before = useBuilderStore.getState();
+    expect(rejectWishFromServer({ error: "unavailable" })).toBe(false);
+    expect(rejectWishFromServer(null)).toBe(false);
+    expect(useBuilderStore.getState()).toBe(before);
+  });
+
+  it("a following valid submitWish clears server reasons", () => {
+    const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
+    submitWish({ text: CLEAN, visibility: "public" });
+    rejectWishFromServer({ error: "moderation_blocked", reasons: ["email"] });
+    submitWish({ text: `${CLEAN}มาก`, visibility: "public" });
+    expect(useBuilderStore.getState().wishServerReasons).toBeNull();
+  });
+
+  it("wish and appearance are independent; other stores keep their references", () => {
+    const ui = useUIStore.getState();
+    const device = useDeviceStore.getState();
+    useBuilderStore.getState().submitWish({ text: CLEAN, visibility: "private" });
+    expect(useBuilderStore.getState().appearance).toBeNull();
+    const wish = useBuilderStore.getState().wish;
+    useBuilderStore.getState().chooseKrathong({ part: "base", value: "toy_bread_01" });
+    expect(useBuilderStore.getState().wish).toBe(wish);
+    expect(useUIStore.getState()).toBe(ui);
+    expect(useDeviceStore.getState()).toBe(device);
+  });
+
+  it("writes nothing to localStorage", () => {
+    const { submitWish, rejectWishFromServer } = useBuilderStore.getState();
+    submitWish({ text: CLEAN, visibility: "private" });
+    submitWish({ text: PII, visibility: "public" });
+    rejectWishFromServer({ error: "moderation_blocked", reasons: ["phone"] });
+    submitWish({ text: CLEAN, visibility: "public" });
+    expect(window.localStorage.length).toBe(0);
   });
 });

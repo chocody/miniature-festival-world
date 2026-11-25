@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { APPEARANCE_FIXTURE } from "./__fixtures__/creations";
-import { isJsonObject, isPlainObject } from "./json";
+import { cloneJsonObject, isJsonObject, isPlainObject } from "./json";
 
 class Thing {
   a = 1;
@@ -41,5 +41,22 @@ describe("isJsonObject", () => {
 
   it("isPlainObject accepts a null-prototype object", () => {
     expect(isPlainObject(Object.create(null))).toBe(true);
+  });
+});
+
+
+describe("cloneJsonObject", () => {
+  it("returns a deep copy", () => {
+    const source = { a: [1, { b: 2 }], c: "x" };
+    const copy = cloneJsonObject(source);
+    expect(copy).toEqual(source);
+    expect(copy).not.toBe(source);
+    expect((copy as typeof source).a).not.toBe(source.a);
+    expect((copy as typeof source).a[1]).not.toBe(source.a[1]);
+  });
+  it("returns null for non-JSON objects", () => {
+    expect(cloneJsonObject([])).toBeNull();
+    expect(cloneJsonObject({ a: NaN })).toBeNull();
+    expect(cloneJsonObject(new Thing())).toBeNull();
   });
 });

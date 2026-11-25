@@ -28,3 +28,20 @@ export const SUPABASE_REQUEST_TIMEOUT_MS = 5_000;
 export const PG_INT4_MAX = 2_147_483_647;
 /** Postgres uuid text form (lowercase). */
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Atomic report increment (relative to SUPABASE_REST_PATH). MFW-13. */
+export const REPORT_CREATION_RPC_PATH = "rpc/mfw_report_creation";
+/** Zone directory read (MFW-25): explicit column allowlist, never "*". */
+export const ZONE_DIRECTORY_COLUMNS = Object.freeze(["zone_id"] as const);
+/** Highest visible zone first. */
+export const HIGHEST_ZONE_ORDER = "zone_id.desc";
+/** One row is enough to know the highest zone id. */
+export const ZONE_DIRECTORY_LIMIT = 1;
+
+/** MFW-45 RPCs (relative to SUPABASE_REST_PATH). Names equal the SQL functions of 20261124020000_mfw45_guarded_creation_insert.sql. */
+export const ZONE_ITEM_COUNTS_RPC_PATH = "rpc/mfw_zone_item_counts";
+export const ZONE_OCCUPANTS_RPC_PATH = "rpc/mfw_zone_occupants";
+export const INSERT_CREATION_GUARDED_RPC_PATH = "rpc/mfw_insert_creation_guarded";
+/** Vercel sets VERCEL_ENV to "production" | "preview" | "development". Writes never use the in-memory backend in production. */
+export const DEPLOYMENT_ENV = "VERCEL_ENV";
+export const PRODUCTION_DEPLOYMENT = "production";

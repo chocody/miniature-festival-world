@@ -17,6 +17,10 @@ import {
 import { getPinchZoomFactor, type CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
+import type { PublicCreation } from "@/services/api/creationTypes";
+import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes } from "@/core/world";
+import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import {
@@ -27,6 +31,25 @@ import {
   TOY_SCENE_CANVAS_CAMERA,
   TOY_SCENE_LIGHTING,
 } from "./index";
+
+const assets = vi.hoisted(() => ({ created: 0, disposed: 0 }));
+
+vi.mock("@/components/models/loyKrathong/krathongAssets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/models/loyKrathong/krathongAssets")>();
+  return {
+    ...actual,
+    createKrathongAssets: () => {
+      assets.created += 1;
+      const real = actual.createKrathongAssets();
+      const dispose = real.dispose.bind(real);
+      real.dispose = () => {
+        assets.disposed += 1;
+        dispose();
+      };
+      return real;
+    },
+  };
+});
 
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
@@ -152,6 +175,9 @@ afterEach(cleanup);
 beforeEach(() => {
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
+  useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
+  assets.created = 0;
+  assets.disposed = 0;
   r3f.cameraProps.length = 0;
   r3f.camera = null;
   r3f.flightStarts.length = 0;
@@ -467,5 +493,101 @@ describe("river flow in the scene", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={riverItems} />);
     const worldView = container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!;
     expect(worldView.querySelector('[name="river-item-a"]')).not.toBeNull();
+  });
+  const storeItem = (zoneId: number, i: number): PublicCreation => ({
+    id: `00000000-0000-4000-8000-${String(zoneId * 1000 + i).padStart(12, "0")}`,
+    eventId: "loy_krathong",
+    zoneId,
+    appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+    coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    publicWishText: null,
+    createdAt: "2026-11-24T12:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  const setWorld = (zoneId: number, items: PublicCreation[]) =>
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: zoneId, zoneCount: 3, zoneStatus: "ready", zoneItems: items });
+    });
+  const riverGroups = (c: HTMLElement) => [...c.querySelectorAll('[name^="river-item-"]')];
+
+  it("renders the visible zone from the store", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setWorld(2, [storeItem(2, 1), storeItem(2, 2)]);
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(riverGroups(container)).toHaveLength(2);
+    expect(viewport()).toHaveAttribute("data-river-item-count", "2");
+    expect(viewport()).toHaveAttribute("data-zone-id", "2");
+    rerender(<SceneViewport mode="CUSTOMIZE" />);
+    expect(riverGroups(container)).toHaveLength(0);
+    expect(viewport()).toHaveAttribute("data-river-item-count", "0");
+  });
+
+  it("renders at most 80 river items from the store", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setWorld(2, Array.from({ length: 85 }, (_, i) => storeItem(2, i + 1)));
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(riverGroups(container)).toHaveLength(80);
+    expect(viewport()).toHaveAttribute("data-river-item-count", "80");
+  });
+
+  it.each([false, true])("zone switch swaps river items (reducedMotion %s)", (reduced) => {
+    useDeviceStore.setState({ reducedMotion: reduced });
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setWorld(2, [storeItem(2, 1), storeItem(2, 2)]);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const flights = r3f.flightStarts.length;
+    const target = viewport().getAttribute("data-selected-target");
+    const oldIds = riverGroups(container).map((g) => g.getAttribute("name"));
+    setWorld(3, []);
+    expect(riverGroups(container)).toHaveLength(0);
+    setWorld(3, [storeItem(3, 1)]);
+    const newIds = riverGroups(container).map((g) => g.getAttribute("name"));
+    expect(newIds).toHaveLength(1);
+    expect(oldIds).not.toContain(newIds[0]);
+    expect(r3f.flightStarts.length).toBe(flights);
+    expect(viewport().getAttribute("data-selected-target")).toBe(target);
+  });
+
+  it("zone switch reuses the one krathong asset set", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setWorld(2, [storeItem(2, 1)]);
+    const { unmount } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    setWorld(3, [storeItem(3, 1), storeItem(3, 2)]);
+    setWorld(1, []);
+    expect(assets.created).toBe(1);
+    expect(assets.disposed).toBe(0);
+    unmount();
+    expect(assets.disposed).toBe(1);
+  });
+
+  it("a focused creation is rendered even when the tier cap hides it", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const items = Array.from({ length: 80 }, (_, i) => storeItem(2, i + 1));
+    const cap = TIER_BUDGETS.LOW.riverItemCap;
+    const lanes = getLoyKrathongRiverLanes();
+    const prepared = prepareRiverItems(
+      items.map((c) => ({ id: c.id, coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) })),
+      lanes,
+    );
+    const shown = new Set(selectVisibleRiverItems(prepared, cap).map((i) => i.id));
+    const hidden = items.find((c) => !shown.has(c.id))!;
+    setWorld(2, items);
+    act(() => useWorldStore.setState({ focusedCreationId: hidden.id }));
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(container.querySelector(`[name="river-item-${hidden.id}"]`)).not.toBeNull();
+    expect(riverGroups(container)).toHaveLength(cap);
+  });
+
+  it("the riverItems prop overrides the store", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setWorld(2, [storeItem(2, 1)]);
+    const x = {
+      id: "x",
+      coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+      createdAtMs: 1_700_000_000_000,
+      appearance: DEFAULT_KRATHONG_APPEARANCE,
+    };
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[x]} />);
+    expect(riverGroups(container).map((g) => g.getAttribute("name"))).toEqual(["river-item-x"]);
   });
 });

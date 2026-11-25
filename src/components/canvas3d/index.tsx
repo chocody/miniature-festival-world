@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type PointerEvent,
@@ -57,13 +58,14 @@ import {
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
-import { getLoyKrathongRiverLanes } from "@/core/world";
+import { getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems } from "@/core/world";
 import { PartChangeBounce } from "./PartChangeBounce";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { useWorldStore } from "@/store/useWorldStore";
 
 export { TOY_SCENE_LIGHTING, TOY_MATTE_MATERIALS } from "@/config/scene.config";
 
@@ -106,7 +108,7 @@ export function getSceneRenderSettings(tier: RenderTier): SceneRenderSettings {
   };
 }
 
-/** Default: no river krathongs until a zone data source exists (MFW-25). */
+/** No river krathongs (stable empty list). */
 export const NO_RIVER_ITEMS: readonly RiverFlowItem[] = Object.freeze([]);
 
 type TargetRef = RefObject<Object3D | null>;
@@ -117,6 +119,7 @@ interface ToyNightSceneProps {
   appearance: KrathongAppearance;
   reducedMotion: boolean;
   riverItems: readonly RiverFlowItem[];
+  pinnedRiverIds: readonly string[];
   objectRotation: number;
   worldRotation: number;
   worldOffset: readonly [number, number];
@@ -134,6 +137,7 @@ function ToyNightScene({
   appearance,
   reducedMotion,
   riverItems,
+  pinnedRiverIds,
   objectRotation,
   worldRotation,
   worldOffset,
@@ -195,6 +199,7 @@ function ToyNightScene({
           lanes={getLoyKrathongRiverLanes()}
           shadows={shadows}
           reducedMotion={reducedMotion}
+          pinnedIds={pinnedRiverIds}
         />
       </group>
     </>
@@ -283,7 +288,7 @@ export function SceneViewport({
   mode = null,
   onGestureRelease,
   viewControlRef,
-  riverItems = NO_RIVER_ITEMS,
+  riverItems,
 }: {
   mode?: InteractionMode | null;
   onGestureRelease?: () => void;
@@ -295,6 +300,22 @@ export function SceneViewport({
   const reducedMotion = useDeviceStore((state) => state.reducedMotion);
   const builderAppearance = useBuilderStore((state) => state.appearance);
   const appearance = builderAppearance ?? DEFAULT_KRATHONG_APPEARANCE;
+  const worldEventId = useWorldStore((s) => s.eventId);
+  const worldZoneId = useWorldStore((s) => s.currentZoneId);
+  const worldZoneItems = useWorldStore((s) => s.zoneItems);
+  const focusedCreationId = useWorldStore((s) => s.focusedCreationId);
+  const storeRiverItems = useMemo(
+    () =>
+      mode === "WORLD_EXPLORE" && worldEventId !== null && worldZoneId !== null
+        ? publicCreationsToRiverItems(worldZoneItems, { eventId: worldEventId, zoneId: worldZoneId })
+        : NO_RIVER_ITEMS,
+    [mode, worldEventId, worldZoneId, worldZoneItems],
+  );
+  const visibleRiverItems = riverItems ?? storeRiverItems;
+  const pinnedRiverIds = useMemo(
+    () => (focusedCreationId === null ? NO_PINNED_RIVER_IDS : Object.freeze([focusedCreationId])),
+    [focusedCreationId],
+  );
   const viewportRef = useRef<HTMLElement>(null);
   const [objectRotation, setObjectRotation] = useState(0);
   const [worldRotation, setWorldRotation] = useState(0);
@@ -447,6 +468,8 @@ export function SceneViewport({
       data-quality-tier={qualityTier}
       data-selected-target={selectedTarget ?? undefined}
       data-interaction-mode={mode ?? undefined}
+      data-zone-id={mode === "WORLD_EXPLORE" ? worldZoneId ?? undefined : undefined}
+      data-river-item-count={visibleRiverItems.length}
       data-camera-locked={mode ? String(isCameraLocked(mode)) : undefined}
       data-last-interaction={lastInteraction ?? undefined}
       data-input-target={mode === "WORLD_EXPLORE" ? "water" : undefined}
@@ -480,7 +503,8 @@ export function SceneViewport({
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
             reducedMotion={reducedMotion}
-            riverItems={riverItems}
+            riverItems={visibleRiverItems}
+            pinnedRiverIds={pinnedRiverIds}
             objectRotation={objectRotation}
             worldRotation={worldRotation}
             worldOffset={worldOffset}

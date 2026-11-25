@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { completeWishStep } from "./helpers/wishStep";
 
 const OWNERSHIP_WARNING = "การล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนอุปกรณ์จะทำให้ไม่สามารถค้นคืนรายการผลงานของตัวเองได้";
 
@@ -33,7 +34,7 @@ test("flow walks from landing to SHARED_WORLD_EXPLORE", async ({ page }) => {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "WRITE_WISH");
   await expect(page.getByRole("note")).toHaveText(OWNERSHIP_WARNING);
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await completeWishStep(page);
   await expect(root).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
   await expect(page.getByRole("note")).toHaveCount(0);
   await expect(root).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");

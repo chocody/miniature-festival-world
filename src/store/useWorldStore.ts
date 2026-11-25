@@ -1,12 +1,32 @@
 import { create } from "zustand";
+import type { FestivalEventId } from "@/config/events/types";
+import type { PublicCreation } from "@/services/api/creationTypes";
 
-/** Shared-world status (spec §3: useWorldStore). */
+export type ZoneLoadStatus = "idle" | "loading" | "ready" | "error";
+
+/** Shared-world status (spec §3: โซนปัจจุบัน, จำนวนผู้เล่น, ระดับการเติบโตของโลก). Fed from public endpoints only (invariant C). */
 export interface WorldState {
-  currentZoneId: number | null;
-  participantCount: number | null;
+  currentZoneId: number | null; // visible zone
+  participantCount: number | null; // spec §3 "จำนวนผู้เล่น"; not set by any card yet
+  eventId: FestivalEventId | null; // world being shown; null outside SHARED_WORLD_EXPLORE
+  zoneCount: number | null; // open zones = growth level (GET /api/zones)
+  zoneStatus: ZoneLoadStatus;
+  /** ONLY the visible zone's public items, ≤ ZONE_ITEM_CAP. All of them, even those above the tier render cap (Find My, collisions). */
+  zoneItems: readonly PublicCreation[];
+  /** Creation the camera follows (set by MFW-30 Find My); always rendered even above the tier cap. */
+  focusedCreationId: string | null;
 }
 
-export const useWorldStore = create<WorldState>()(() => ({
+export const NO_ZONE_ITEMS: readonly PublicCreation[] = Object.freeze([]);
+
+export const INITIAL_WORLD_STATE: Readonly<WorldState> = Object.freeze({
   currentZoneId: null,
   participantCount: null,
-}));
+  eventId: null,
+  zoneCount: null,
+  zoneStatus: "idle",
+  zoneItems: NO_ZONE_ITEMS,
+  focusedCreationId: null,
+});
+
+export const useWorldStore = create<WorldState>()(() => ({ ...INITIAL_WORLD_STATE }));

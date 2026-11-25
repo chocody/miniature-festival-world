@@ -1,3 +1,4 @@
+import { ZONE_API_QUERY_PARAMS as ZONE_QUERY_PARAMS } from "./apiPaths";
 import type { ZoneQuery, ZoneQueryField } from "./creationTypes";
 import { isFestivalEventId, isZoneId } from "./creationValidation";
 
@@ -6,7 +7,7 @@ export type ZoneQueryParseResult =
   | { readonly ok: false; readonly field: ZoneQueryField };
 
 /** Query parameter names of GET /api/creations. */
-export const ZONE_QUERY_PARAMS = Object.freeze({ event: "event", zone: "zone" } as const);
+export { ZONE_QUERY_PARAMS };
 
 /** Canonical non-negative decimal integer, no sign, no leading zeros (range is checked by isZoneId). */
 const ZONE_PARAM_PATTERN = /^(0|[1-9][0-9]*)$/;

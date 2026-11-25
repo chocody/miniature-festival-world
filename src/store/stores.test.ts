@@ -22,9 +22,23 @@ describe("zustand stores", () => {
   it("have the specified initial shapes", () => {
     const builder = useBuilderStore.getState();
     expect(builder.appearance).toBeNull();
-    expect(Object.keys(builder).sort()).toEqual(["appearance", "chooseKrathong"]);
-    expect(typeof builder.chooseKrathong).toBe("function");
-    expect(useWorldStore.getState()).toEqual({ currentZoneId: null, participantCount: null });
+    expect(builder.wish).toBeNull();
+    expect(builder.wishServerReasons).toBeNull();
+    expect(Object.keys(builder).sort()).toEqual([
+      "appearance",
+      "chooseKrathong",
+      "rejectWishFromServer",
+      "submitWish",
+      "wish",
+      "wishServerReasons",
+    ]);
+    for (const action of ["chooseKrathong", "submitWish", "rejectWishFromServer"] as const) {
+      expect(typeof builder[action]).toBe("function");
+    }
+    expect(useWorldStore.getState()).toEqual({
+      currentZoneId: null, participantCount: null, eventId: null, zoneCount: null,
+      zoneStatus: "idle", zoneItems: [], focusedCreationId: null,
+    });
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,
       qualityTier: DEFAULT_QUALITY_TIER,

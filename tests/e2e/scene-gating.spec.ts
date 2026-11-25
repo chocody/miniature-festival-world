@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { completeWishStep } from "./helpers/wishStep";
 
 test.use({ hasTouch: true });
 
@@ -50,7 +51,7 @@ test("3D tier: landing ships no WebGL chunk; canvas only in canvas modes; ritual
   await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
   await expectNoScene(page);
 
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await completeWishStep(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
   await expect(page.locator("canvas")).toHaveCount(1);
   const box = (await page.locator(VIEWPORT).boundingBox())!;
@@ -84,7 +85,7 @@ test("FALLBACK_2D: no canvas and no WebGL chunk across the whole flow", async ({
   await expectNoScene(page);
 
   await page.getByRole("button", { name: "ถัดไป" }).click();
-  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await completeWishStep(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
   await expectNoScene(page);
 

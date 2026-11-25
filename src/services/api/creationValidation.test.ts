@@ -4,7 +4,8 @@ import type { OwnerTokenHash } from "@/services/auth";
 import { makeNewCreation, makePrivateWish } from "./__fixtures__/creations";
 import { CreationRepositoryError } from "./creationRepository";
 import type { NewCreation } from "./creationTypes";
-import { isZoneId, toIsoTimestamp, validateNewCreation } from "./creationValidation";
+import { isZoneId, toIsoTimestamp, validateGuardedNewCreation, validateNewCreation } from "./creationValidation";
+import type { GuardedNewCreation } from "./creationTypes";
 
 const NOW = Date.parse("2026-11-24T12:00:00.000Z");
 
@@ -82,5 +83,73 @@ describe("helpers", () => {
     expect(toIsoTimestamp("2026-11-24T18:19:33.562709+00:00")).toBe("2026-11-24T18:19:33.562Z");
     expect(toIsoTimestamp("x")).toBeNull();
     expect(toIsoTimestamp(5)).toBeNull();
+  });
+});
+
+describe("validateNewCreation: moderation backstop (MFW-13)", () => {
+  it.each(["โทร 081-234-5678", "line: somchai99", "somchai@gmail.com", "ไอ้เหี้ย", "fuck"])(
+    "rejects a public wish with PII / profanity: %s",
+    (text) => {
+      const err = failure(makeNewCreation({ publicWishText: text }));
+      expect(err.code).toBe("invalid_input");
+      expect(err.detail).toBe("publicWishText");
+      expect(err.message).not.toContain("0812");
+      expect(err.message).not.toContain("somchai");
+      expect(err.message).not.toContain(text);
+    },
+  );
+
+  it("a private creation is not moderated", () => {
+    const input = makeNewCreation({ publicWishText: null, privateWish: makePrivateWish() });
+    expect(validateNewCreation(input, NOW)).toEqual(input);
+  });
+
+  it("a normal wish with a year passes", () => {
+    const input = makeNewCreation({ publicWishText: "ขอให้ปี 2569 ทุกคนสุขภาพแข็งแรง" });
+    expect(validateNewCreation(input, NOW).publicWishText).toBe("ขอให้ปี 2569 ทุกคนสุขภาพแข็งแรง");
+  });
+});
+
+describe("validateGuardedNewCreation", () => {
+  const UUID_A = "00000000-0000-4000-8000-000000000001";
+  const guarded = (over: Partial<GuardedNewCreation> = {}): GuardedNewCreation => ({
+    ...makeNewCreation(),
+    createdAt: new Date(NOW),
+    expectedOccupantIds: [UUID_A],
+    ...over,
+  });
+  const field = (input: GuardedNewCreation): string | undefined => {
+    try {
+      validateGuardedNewCreation(input);
+    } catch (err) {
+      if (err instanceof CreationRepositoryError) return err.detail;
+      throw err;
+    }
+    return undefined;
+  };
+
+  it("passes a valid input with a fresh copy and frozen ids", () => {
+    const input = guarded();
+    const out = validateGuardedNewCreation(input);
+    expect(out).not.toBe(input);
+    expect(out.createdAt).not.toBe(input.createdAt);
+    expect(out.createdAt.getTime()).toBe(NOW);
+    expect(Object.isFrozen(out.expectedOccupantIds)).toBe(true);
+    expect(out.expectedOccupantIds).toEqual([UUID_A]);
+  });
+  it("rejects a bad createdAt", () => {
+    expect(field(guarded({ createdAt: new Date(NaN) }))).toBe("createdAt");
+    expect(field(guarded({ createdAt: "2026-11-24" as unknown as Date }))).toBe("createdAt");
+  });
+  it("requires expiresAt later than createdAt", () => {
+    expect(field(guarded({ expiresAt: new Date(NOW) }))).toBe("expiresAt");
+  });
+  it("rejects bad expectedOccupantIds", () => {
+    expect(field(guarded({ expectedOccupantIds: "x" as unknown as string[] }))).toBe("expectedOccupantIds");
+    expect(field(guarded({ expectedOccupantIds: ["00000000-0000-4000-8000-00000000000A"] }))).toBe("expectedOccupantIds");
+    expect(field(guarded({ expectedOccupantIds: [UUID_A, UUID_A] }))).toBe("expectedOccupantIds");
+    const eighty = Array.from({ length: 80 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    expect(field(guarded({ expectedOccupantIds: eighty }))).toBe("expectedOccupantIds");
+    expect(field(guarded({ expectedOccupantIds: eighty.slice(0, 79) }))).toBeUndefined();
   });
 });
