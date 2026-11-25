@@ -172,3 +172,12 @@ A preset change is an instant cut (no cross-fade), so it is safe under reduced m
 - PLACEHOLDER: `DAY_NIGHT_HOURS` (06:00–18:00).
 - Lead guards (not product numbers): `LOOK_MIN_LIT_LUMINANCE` 0.025, `LOOK_MIN_ALBEDO_LUMINANCE` 0.1,
   `ENVIRONMENT_PART_MAX_TRIANGLES` 128.
+
+## Before / after (MFW-47)
+
+Captured on the production build with SwiftShader WebGL (HIGH tier, before the full-screen stage of MFW-54).
+
+| | Before (night only) | After — day | After — night |
+|---|---|---|---|
+| World, 1440×900 | ![before](screenshots/mfw-47/before-desktop-world.png) | ![day](screenshots/mfw-47/after-desktop-world-day.png) | ![night](screenshots/mfw-47/after-desktop-world-night.png) |
+| Customize, 390×844 | ![before](screenshots/mfw-47/before-phone-customize.png) | ![day](screenshots/mfw-47/after-phone-customize-day.png) | — |
