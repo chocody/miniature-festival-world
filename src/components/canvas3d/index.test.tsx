@@ -29,6 +29,8 @@ import { HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
+import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
@@ -112,6 +114,13 @@ const r3f = vi.hoisted(() => ({
   camera: null as OrthographicCamera | null,
   flightStarts: [] as { immediate: boolean; to?: object }[],
   bounceStarts: [] as { immediate: boolean; from?: { scale: number }; to: { scale: number } }[],
+  gl: {
+    info: {
+      memory: { geometries: 3, textures: 0 },
+      render: { calls: 12, triangles: 400, frame: 7 },
+      programs: [{}, {}],
+    },
+  },
 }));
 
 /**
@@ -131,7 +140,7 @@ vi.mock("@react-three/fiber", async () => {
     shadows?: boolean;
     gl?: { antialias?: boolean };
     dpr: readonly [number, number];
-    onCreated?: (state: { camera: OrthographicCamera; invalidate: () => void }) => void;
+    onCreated?: (state: { camera: OrthographicCamera; invalidate: () => void; gl: typeof r3f.gl }) => void;
   }) {
     const [camera] = React.useState(() => new THREE.OrthographicCamera());
     r3f.cameraProps.push(props.camera);
@@ -141,7 +150,7 @@ vi.mock("@react-three/fiber", async () => {
     }, [camera, props.camera]);
     React.useEffect(() => {
       r3f.camera = camera;
-      onCreated?.({ camera, invalidate: noop });
+      onCreated?.({ camera, invalidate: noop, gl: r3f.gl });
     }, [camera, onCreated]);
     return React.createElement(
       "div",
@@ -226,7 +235,10 @@ const krathongMesh = (c: HTMLElement) => c.querySelector('[name="scene-krathong"
 const krathongTarget = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.krathong}"]`)!;
 const yaw = (c: HTMLElement) => Number(krathongTarget(c).getAttribute("rotation")!.split(",")[1]);
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 beforeEach(() => {
   tapStub.value = { x: 0.5, z: 0 };
@@ -1139,5 +1151,61 @@ describe("Find My (MFW-30)", () => {
     for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
       expect(viewport().getAttribute(attr)).not.toContain(items[0].id);
     }
+  });
+});
+
+describe("river batch and perf probe (MFW-34)", () => {
+  const riverItem = (id: string) => ({
+    id,
+    coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    createdAtMs: 1_700_000_000_000,
+    appearance: DEFAULT_KRATHONG_APPEARANCE,
+  });
+  const probe = (c: HTMLElement) => c.querySelector('[data-testid="perf-probe"]');
+  const probeHook = () =>
+    (window as unknown as Record<string, { sample(): Record<string, unknown> | null } | undefined>)[PERF_PROBE_GLOBAL_NAME];
+
+  it("river krathongs render through one persistent batch", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const items = [riverItem("a"), riverItem("b"), riverItem("c")];
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+    const groups = container.querySelectorAll('[name^="river-item-"]');
+    expect(groups).toHaveLength(3);
+    for (const g of groups) expect(g.querySelector('mesh:not([name^="river-hit-"])')).toBeNull(); // only MFW-28 hit proxies remain
+    const batch = container.querySelectorAll('[name="river-krathong-batch"]');
+    expect(batch).toHaveLength(1);
+    expect(batch[0].querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
+    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
+    expect(container.querySelector('[name="river-krathong-batch"]')).toBe(batch[0]);
+  });
+
+  it("perf probe is off by default", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(probe(container)).toBeNull();
+    expect(probeHook()).toBeUndefined();
+  });
+
+  it("perf probe with ?perfProbe=1 sits beside the viewport and reads the renderer", () => {
+    window.history.replaceState(null, "", "/?perfProbe=1");
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const panel = probe(container)!;
+    expect(panel).not.toBeNull();
+    expect(viewport().contains(panel)).toBe(false);
+    expect(probeHook()!.sample()).toMatchObject({ geometries: 3, calls: 12, programs: 2 });
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    rerender(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(probe(container)).toBeNull();
+    expect(screen.queryByTestId("r3f-canvas")).toBeNull();
+  });
+
+  it("the soak button exists only in WORLD_EXPLORE", () => {
+    window.history.replaceState(null, "", "/?perfProbe=1");
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { rerender } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(screen.queryByRole("button", { name: "Run zone-switch soak" })).toBeNull();
+    rerender(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(screen.getByRole("button", { name: "Run zone-switch soak" })).toBeTruthy();
   });
 });

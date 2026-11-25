@@ -10,6 +10,7 @@ import {
   memo,
   useRef,
   useState,
+  useSyncExternalStore,
   type PointerEvent,
   type Ref,
   type RefObject,
@@ -69,6 +70,8 @@ import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseK
 import { FindMyAnchor } from "./FindMyAnchor";
 import { OwnKrathong } from "./OwnKrathong";
 import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
+import { PerfProbePanel } from "./PerfProbePanel";
+import { readPerfProbeFlag, readPerfProbeFlagOnServer, subscribeToNothing, type RendererInfoSource } from "./perfProbe";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
@@ -365,7 +368,11 @@ export function SceneViewport({
         : NO_RIVER_ITEMS,
     [mode, worldEventId, worldZoneId, worldZoneItems],
   );
-  const visibleRiverItems = riverItems ?? storeRiverItems;
+  const perfProbeEnabled = useSyncExternalStore(subscribeToNothing, readPerfProbeFlag, readPerfProbeFlagOnServer);
+  const rendererRef = useRef<RendererInfoSource | null>(null);
+  const [soakRiverItems, setSoakRiverItems] = useState<readonly RiverFlowItem[] | null>(null);
+  // The soak (perf probe) overrides the river only while it runs, and only in WORLD_EXPLORE.
+  const visibleRiverItems = (mode === "WORLD_EXPLORE" ? soakRiverItems : null) ?? riverItems ?? storeRiverItems;
   const ritual = useUIStore((s) => s.ritual);
   const site = getLoyKrathongRitualSite();
   const mapperRef = useRef<RitualDropMapper | null>(null);
@@ -672,13 +679,14 @@ export function SceneViewport({
         gl={settings.antialias ? CANVAS_GL_ANTIALIAS_ON : CANVAS_GL_ANTIALIAS_OFF}
         shadows={settings.shadows}
         frameloop="demand"
-        onCreated={({ camera, invalidate }) => {
+        onCreated={({ camera, invalidate, gl }) => {
           cameraRef.current = camera instanceof OrthographicCamera ? camera : null;
           invalidateRef.current = invalidate;
           if (cameraRef.current) {
             cameraRef.current.zoom = SCENE_CAMERA_ZOOM * zoomRef.current;
             cameraRef.current.updateProjectionMatrix();
           }
+          rendererRef.current = gl;
         }}
       >
         <KrathongAssetsProvider>
@@ -740,6 +748,15 @@ export function SceneViewport({
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>
     </section>
+    {perfProbeEnabled && (
+      <PerfProbePanel
+        rendererRef={rendererRef}
+        riverItemCount={visibleRiverItems.length}
+        qualityTier={qualityTier}
+        soakEnabled={mode === "WORLD_EXPLORE"}
+        onSoakItems={setSoakRiverItems}
+      />
+    )}
     {inspected && (
       <InspectPopup
         key={inspected.id}
