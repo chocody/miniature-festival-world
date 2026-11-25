@@ -133,7 +133,7 @@ Start from `sizeHint` in the `get` output (AC count → S ≤2, M 3–4, L ≥5;
 | Role | Model |
 |---|---|
 | lead | `opus` always |
-| dev | `sonnet` for every size — the lead's spec is file-level (owner rule; `sizeHint.devModel` already says sonnet); `opus` only if the lead's spec is still not file-level after one revision (Step 4.2) |
+| dev | `sizeHint.devModel`: `opus` when the ticket carries the label `dev-opus` (owner rule 2026-11-25: how models and scenes look, scene design, key features), else `sonnet` for every size — the lead's spec is file-level (owner rule); also `opus` if the lead's spec is still not file-level after one revision (Step 4.2) |
 | reviewer, qa | `sonnet` |
 | privacy-auditor, r3f-perf-reviewer | as defined in `.claude/agents/*.md` (pass no `model`) |
 
@@ -141,7 +141,7 @@ Record it on the ticket:
 ```bash
 node scripts/jira.mjs comment <KEY> - <<'EOF'
 Estimate: <S|M|L> — <reasons: AC count, risk labels, areas>
-Models: lead opus · dev sonnet · reviewer sonnet · qa sonnet<· privacy-auditor / r3f-perf-reviewer if expected>
+Models: lead opus · dev <sonnet|opus> · reviewer sonnet · qa sonnet<· privacy-auditor / r3f-perf-reviewer if expected>
 Merge: owner (labels <…>) — the loop opens a green PR but does not merge.      <- only when OWNER_MERGE
 EOF
 ```
