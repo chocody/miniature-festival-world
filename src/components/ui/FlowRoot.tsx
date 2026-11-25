@@ -23,6 +23,11 @@ const SceneViewport = lazy(() =>
   import("@/components/canvas3d").then((m) => ({ default: m.SceneViewport })),
 );
 
+/** The 2D fallback is its own async chunk, three-free (MFW-33). */
+const FlatViewport = lazy(() =>
+  import("@/components/canvas2d").then((m) => ({ default: m.FlatViewport })),
+);
+
 /** Event that advances each placeholder step; LANDING and the terminal step have none. */
 const NEXT_EVENT: Partial<Record<FlowState, FlowEvent>> = {
   CUSTOMIZE_OBJECT: { type: "FINISH_CUSTOMIZE" },
@@ -40,6 +45,7 @@ export function FlowRoot() {
   const ritualPhase = ritual.phase;
   const viewControlRef = useRef<CustomizeViewControl | null>(null);
   const show3D = profiled && qualityTier !== "FALLBACK_2D";
+  const show2D = profiled && qualityTier === "FALLBACK_2D";
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
 
@@ -83,6 +89,11 @@ export function FlowRoot() {
                 : undefined
             }
           />
+        </Suspense>
+      )}
+      {show2D && interactionMode !== null && (
+        <Suspense fallback={null}>
+          <FlatViewport mode={interactionMode} />
         </Suspense>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}

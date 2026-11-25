@@ -92,6 +92,14 @@ vi.mock("@/components/canvas3d", async () => {
   };
 });
 
+vi.mock("@/components/canvas2d", async () => {
+  const React = await import("react");
+  return {
+    FlatViewport: ({ mode }: { mode: string }) =>
+      React.createElement("div", { "data-testid": "flat-viewport", "data-mode": mode }),
+  };
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -233,6 +241,30 @@ describe("FlowRoot", () => {
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
     await act(async () => {});
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
+  });
+
+  it("FALLBACK_2D mounts the flat viewport per mode (MFW-33)", async () => {
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    render(<FlowRoot />);
+    expect(screen.queryByTestId("flat-viewport")).toBeNull(); // landing has no interaction mode
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    expect(await screen.findByTestId("flat-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
+    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(screen.queryByTestId("flat-viewport")).toBeNull(); // WRITE_WISH
+    completeWish();
+    expect(await screen.findByTestId("flat-viewport")).toHaveAttribute("data-mode", "RITUAL_RELEASE");
+  });
+
+  it("a 3D tier or an unprofiled device never mounts the flat viewport", async () => {
+    render(<FlowRoot />);
+    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    await act(async () => {});
+    expect(screen.queryByTestId("flat-viewport")).toBeNull();
+    act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+    await act(async () => {});
+    expect(screen.queryByTestId("flat-viewport")).toBeNull();
   });
 
   it("enters the shared world once when the ritual starts and leaves on unmount", async () => {
