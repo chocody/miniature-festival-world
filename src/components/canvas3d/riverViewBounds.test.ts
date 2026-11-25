@@ -101,6 +101,38 @@ describe("river view bounds (MFW-57)", () => {
     expect(misses).toEqual([]);
   });
 
+  it("every village prop and the pier are reachable by panning at the framed zoom (MFW-68 AC3)", () => {
+    const layout = LOY_KRATHONG_RIVER_LAYOUT;
+    const targets = [
+      ...(["houses", "trees", "lamps", "bushes", "rocks"] as const).flatMap((kind) =>
+        layout[kind].map((t, i) => ({ name: `${kind}[${i}]`, p: t.position })),
+      ),
+      { name: "pier tip", p: layout.pier.tip },
+      { name: "deck centre", p: layout.pier.deckCenter },
+      { name: "release point", p: layout.pier.releasePoint },
+    ];
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    const misses: string[] = [];
+    const ndc = new Vector3();
+    for (const [w, h] of [[320, 568], [360, 640], [390, 844], [844, 390], [1440, 900]] as const) {
+      const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, SCENE_CAMERA_NEAR, SCENE_CAMERA_FAR);
+      camera.zoom = getFramedCameraZoom({ width: w, height: h });
+      camera.updateProjectionMatrix();
+      const rig = createCameraRigState();
+      for (const { name, p } of targets) {
+        rig.focusX = clamp(p.x, BOUNDS.minX, BOUNDS.maxX);
+        rig.focusY = SITE.tip.y;
+        rig.focusZ = clamp(p.z, BOUNDS.minZ, BOUNDS.maxZ);
+        rig.yawRad = 0;
+        applyCameraRigPose(rig, camera);
+        ndc.set(p.x, p.y, p.z).project(camera);
+        if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) misses.push(`${name} at ${w}×${h}: ndc ${ndc.x}, ${ndc.y}`);
+      }
+    }
+    expect(targets.length).toBeGreaterThan(3);
+    expect(misses).toEqual([]);
+  });
+
   it("negative control: a focus far beyond the bounds shows no water", () => {
     expect(waterInView({ x: 0, z: BOUNDS.maxZ + 20 }, 0, 360, 640, 1)).toBe(false);
   });

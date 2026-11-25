@@ -28,8 +28,8 @@ const nextFrames = (page: Page) =>
 /**
  * MFW-54: the scene fills the viewport. LOW runs at 390×844 (a backlog 10.2 AC viewport, framed at zoom ≥ SCENE_CAMERA_ZOOM): it
  * is the full 44 px disc proof of MFW-59 AC3. HIGH / MEDIUM run at E2E_SWIFTSHADER_3D_VIEWPORT (360×640): SwiftShader cannot keep
- * them above the FPS fallback on a bigger full-screen canvas under load. There the framed zoom is 50, so the proxy discs are
- * ≈ 42.3 px, still wider than the probe ring (44 px − 2 × RING_INSET_PX); the 360-px shortfall is a follow-up (docs/follow-ups.md).
+ * them above the FPS fallback on a bigger full-screen canvas under load. Since MFW-68 360×640 is framed at zoom ≈ 66.7, so the
+ * proxy discs are ≥ 44 px there too, and the full-ring assertion is the MFW-68 AC3 proof at 360 px wide.
  */
 const TIERS = [
   { tier: "HIGH", memory: 8, cores: 8, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },

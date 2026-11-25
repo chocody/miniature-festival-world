@@ -9,9 +9,9 @@ import {
 describe("camera flight and target highlight", () => {
   it("builds a clear camera pose focused on the target", () => {
     expect(getCameraFlightPose({ x: 1, y: 2, z: 3 })).toEqual({
-      cameraX: 5.5,
-      cameraY: 7.5,
-      cameraZ: 10,
+      cameraX: 10,
+      cameraY: 13,
+      cameraZ: 17,
       focusX: 1,
       focusY: 2,
       focusZ: 3,

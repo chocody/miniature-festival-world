@@ -13,6 +13,9 @@ const mapper = createRitualDropMapper(site);
 const SIZES = [
   { width: 320, height: 256 },
   { width: 704, height: 256 },
+  { width: 360, height: 640 },
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
 ];
 const FIELD = { width: 320, height: 256 };
 const PERCENT_SCALE = 100;

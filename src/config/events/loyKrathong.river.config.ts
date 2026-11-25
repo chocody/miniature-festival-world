@@ -137,9 +137,11 @@ export const RIVER_BANK_PROFILE: readonly BankProfilePoint[] = Object.freeze([
  * Not the spec's full disc (MFW-49 dev, measured): SwiftShader shades the disc pixels hidden under the water and banks. The
  * ground has a hole shaped like the river + banks outline (buildGroundHoleOutline), so it overdraws nothing; holeMargin 1
  * keeps the hole edge ≥ 0.6 inside the outer bank edge, the most a camera ray can pass under that edge
- * (0.4 step / tan 33.5° camera elevation). Dev technical value.
+ * (0.4 step / tan 33.5° camera elevation). Dev technical value. MFW-68: radius 40 (inradius 39.8 with 32 segments) covers the
+ * largest view (SCENE_MAX_VIEW_SIZE / PINCH_ZOOM_MIN) from anywhere in the pan bounds ± CAMERA_PAN_MAX_OVERSHOOT at any yaw (worst
+ * visible ground point r ≈ 32.5–34.2; sceneCoverage.test.ts). Technical.
  */
-export const RIVER_GROUND: RiverGroundDefinition = Object.freeze({ radius: 30, y: -0.32, segments: 32, holeMargin: 1 });
+export const RIVER_GROUND: RiverGroundDefinition = Object.freeze({ radius: 40, y: -0.32, segments: 32, holeMargin: 1 });
 
 /** Draw the ground last among opaque meshes (early depth rejects the covered pixels on SwiftShader). Lead decision, MFW-49. */
 export const RIVER_GROUND_RENDER_ORDER = 1;
