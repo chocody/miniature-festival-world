@@ -1,6 +1,8 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { memo, useMemo, useRef } from "react";
+import type { Mesh } from "three";
 import { assembleKrathong, type KrathongAppearance, type KrathongPartInstance } from "@/core/customization";
 import { useKrathongAssets } from "./KrathongAssetsProvider";
 import { UprightAnchor } from "./UprightAnchor";
@@ -10,12 +12,24 @@ export interface KrathongModelProps {
   shadows: boolean;
 }
 
-function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
+interface PartMeshProps {
+  readonly part: KrathongPartInstance;
+  readonly shadows: boolean;
+}
+
+/** The flame part: same mesh as every other part, scaled per frame by the canvas-shared flicker (MFW-48). Allocation-free. */
+function FlameMesh({ part, shadows }: PartMeshProps) {
   const assets = useKrathongAssets();
-  const assembly = useMemo(() => assembleKrathong(appearance), [appearance]);
-  const renderPart = (part: KrathongPartInstance) => (
+  const ref = useRef<Mesh>(null);
+  useFrame(() => {
+    const mesh = ref.current;
+    if (mesh === null) return;
+    const f = assets.flameFlicker;
+    mesh.scale.set(part.scale[0] * f.widthScale, part.scale[1] * f.heightScale, part.scale[2] * f.widthScale);
+  });
+  return (
     <mesh
-      key={part.id}
+      ref={ref}
       name={part.id}
       geometry={assets.geometry(part.geometryKey)}
       material={assets.material(part.materialKey)}
@@ -23,9 +37,30 @@ function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
       rotation={[0, part.rotationY, 0]}
       scale={part.scale}
       castShadow={shadows}
-      receiveShadow={shadows && part.role === "base"}
+      receiveShadow={false}
     />
   );
+}
+
+function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
+  const assets = useKrathongAssets();
+  const assembly = useMemo(() => assembleKrathong(appearance), [appearance]);
+  const renderPart = (part: KrathongPartInstance) =>
+    part.role === "flame" ? (
+      <FlameMesh key={part.id} part={part} shadows={shadows} />
+    ) : (
+      <mesh
+        key={part.id}
+        name={part.id}
+        geometry={assets.geometry(part.geometryKey)}
+        material={assets.material(part.materialKey)}
+        position={part.localPosition}
+        rotation={[0, part.rotationY, 0]}
+        scale={part.scale}
+        castShadow={shadows}
+        receiveShadow={shadows && part.role === "base"}
+      />
+    );
   return (
     <group name="krathong-model">
       {assembly.body.map(renderPart)}

@@ -54,6 +54,7 @@ export type KrathongGeometryKey =
   | `base:${KrathongBaseId}`
   | `leaf:${LeafFoldStyleId}`
   | `flower:${FlowerKind}`
+  | "flowerCentre"
   | "candle"
   | "flame"
   | "incense";
@@ -61,11 +62,12 @@ export type KrathongMaterialKey =
   | `base:${KrathongBaseId}`
   | `leaf:${LeafColor}`
   | `flower:${FlowerKind}`
+  | "flowerCentre"
   | `candle:${CandleColor}`
   | "flame"
   | "incense";
 
-export type KrathongPartRole = "base" | "leaf" | "flower" | "candle" | "flame" | "incense";
+export type KrathongPartRole = "base" | "leaf" | "flower" | "flowerCentre" | "candle" | "flame" | "incense";
 
 /** Derived at render time from an appearance. NEVER persisted or sent (invariant A). */
 export interface KrathongPartInstance {

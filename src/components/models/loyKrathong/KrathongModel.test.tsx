@@ -24,6 +24,7 @@ describe("KrathongModel", () => {
     expect(count(container, 'mesh[name="base"]')).toBe(1);
     expect(count(container, 'mesh[name^="leaf_"]')).toBe(KRATHONG_LEAF_COUNT);
     expect(count(container, 'mesh[name^="flower_"]')).toBe(RIM_SOCKET_COUNT);
+    expect(count(container, 'mesh[name^="flowerCentre_"]')).toBe(RIM_SOCKET_COUNT); // MFW-48
     expect(count(container, '[name="center_socket"] mesh[name="candle"]')).toBe(1);
     expect(count(container, '[name="center_socket"] mesh[name="flame"]')).toBe(1);
     expect(count(container, '[name="center_socket"] mesh[name^="incense_"]')).toBe(KRATHONG_INCENSE_MODEL.count);
@@ -38,6 +39,8 @@ describe("KrathongModel", () => {
     );
     const names = [...container.querySelectorAll('mesh[name^="flower_"]')].map((m) => m.getAttribute("name"));
     expect(names).toEqual(["flower_rim_socket_0", "flower_rim_socket_2"]);
+    const centres = [...container.querySelectorAll('mesh[name^="flowerCentre_"]')].map((m) => m.getAttribute("name"));
+    expect(centres).toEqual(["flowerCentre_rim_socket_0", "flowerCentre_rim_socket_2"]);
   });
 
   it("throws without the provider", () => {

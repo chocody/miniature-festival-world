@@ -68,6 +68,7 @@ import {
   ROTATION_RADIANS_PER_PIXEL,
 } from "@/config/interaction.config";
 import {
+  FlameFlicker,
   KrathongAssetsProvider,
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
@@ -205,6 +206,7 @@ const ToyNightScene = memo(function ToyNightScene({
     <>
       {/* World-fixed lights: NOT inside the view-transform group, so pan/rotate never changes the key-light direction. */}
       <SceneLighting preset={lightPreset} shadows={shadows} shadowMapSizePx={shadowMapSizePx} />
+      <FlameFlicker baseEmissiveIntensity={LIGHT_PRESETS[lightPreset].flame.emissiveIntensity} reducedMotion={reducedMotion} />
       {/* View transform seam: today's legacy pan/rotate. The pan fix (owner decision pending) replaces it with camera movement. */}
       <group
         name={SCENE_OBJECT_NAMES.worldView}

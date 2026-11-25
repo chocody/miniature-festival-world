@@ -9,10 +9,12 @@ import {
   KRATHONG_BASE_MODELS,
   KRATHONG_CANDLE_MODEL,
   KRATHONG_FLAME_MODEL,
+  KRATHONG_FLOWER_CENTRE_MODEL,
   KRATHONG_FLOWER_MODELS,
   KRATHONG_INCENSE_MODEL,
   KRATHONG_LEAF_MODELS,
   KRATHONG_MATTE_SURFACE,
+  type KrathongMeshSpec,
   type MatteMaterialSpec,
   type PrimitiveGeometrySpec,
 } from "@/config/krathongModel.config";
@@ -22,6 +24,7 @@ export const KRATHONG_GEOMETRY_KEYS: readonly KrathongGeometryKey[] = Object.fre
   ...KRATHONG_BASE_IDS.map((id) => `base:${id}` as const),
   ...LEAF_FOLD_STYLE_IDS.map((id) => `leaf:${id}` as const),
   ...FLOWER_KINDS.map((kind) => `flower:${kind}` as const),
+  "flowerCentre" as const,
   "candle" as const,
   "flame" as const,
   "incense" as const,
@@ -31,6 +34,7 @@ export const KRATHONG_MATERIAL_KEYS: readonly KrathongMaterialKey[] = Object.fre
   ...KRATHONG_BASE_IDS.map((id) => `base:${id}` as const),
   ...LEAF_COLOR_PALETTE.map((color) => `leaf:${color}` as const),
   ...FLOWER_KINDS.map((kind) => `flower:${kind}` as const),
+  "flowerCentre" as const,
   ...CANDLE_COLOR_PALETTE.map((color) => `candle:${color}` as const),
   "flame" as const,
   "incense" as const,
@@ -45,20 +49,40 @@ function has(list: readonly string[], value: string | undefined): value is strin
   return value !== undefined && list.includes(value);
 }
 
-export function geometrySpecFor(key: KrathongGeometryKey): PrimitiveGeometrySpec {
+interface PartShapeSpec {
+  readonly geometry: PrimitiveGeometrySpec;
+  readonly mesh: KrathongMeshSpec;
+}
+
+function partShapeFor(key: KrathongGeometryKey): PartShapeSpec | undefined {
   const [head, tail] = splitKey(key);
   if (tail === undefined) {
-    if (head === "candle") return KRATHONG_CANDLE_MODEL.geometry;
-    if (head === "flame") return KRATHONG_FLAME_MODEL.geometry;
-    if (head === "incense") return KRATHONG_INCENSE_MODEL.geometry;
+    if (head === "flowerCentre") return KRATHONG_FLOWER_CENTRE_MODEL;
+    if (head === "candle") return KRATHONG_CANDLE_MODEL;
+    if (head === "flame") return KRATHONG_FLAME_MODEL;
+    if (head === "incense") return KRATHONG_INCENSE_MODEL;
   } else if (head === "base" && has(KRATHONG_BASE_IDS, tail)) {
-    return KRATHONG_BASE_MODELS[tail as keyof typeof KRATHONG_BASE_MODELS].geometry;
+    return KRATHONG_BASE_MODELS[tail as keyof typeof KRATHONG_BASE_MODELS];
   } else if (head === "leaf" && has(LEAF_FOLD_STYLE_IDS, tail)) {
-    return KRATHONG_LEAF_MODELS[tail as keyof typeof KRATHONG_LEAF_MODELS].geometry;
+    return KRATHONG_LEAF_MODELS[tail as keyof typeof KRATHONG_LEAF_MODELS];
   } else if (head === "flower" && has(FLOWER_KINDS, tail)) {
-    return KRATHONG_FLOWER_MODELS[tail as keyof typeof KRATHONG_FLOWER_MODELS].geometry;
+    return KRATHONG_FLOWER_MODELS[tail as keyof typeof KRATHONG_FLOWER_MODELS];
   }
-  throw new Error(`unknown krathong geometry key: ${key}`);
+  return undefined;
+}
+
+/** v1 primitive: the 2D-fallback silhouette and the river-footprint proxy. */
+export function geometrySpecFor(key: KrathongGeometryKey): PrimitiveGeometrySpec {
+  const shape = partShapeFor(key);
+  if (shape === undefined) throw new Error(`unknown krathong geometry key: ${key}`);
+  return shape.geometry;
+}
+
+/** The v2 3D mesh (MFW-48), built by krathongMeshData. */
+export function meshSpecFor(key: KrathongGeometryKey): KrathongMeshSpec {
+  const shape = partShapeFor(key);
+  if (shape === undefined) throw new Error(`unknown krathong mesh key: ${key}`);
+  return shape.mesh;
 }
 
 export function materialSpecFor(key: KrathongMaterialKey): MatteMaterialSpec {
@@ -72,6 +96,7 @@ export function materialSpecFor(key: KrathongMaterialKey): MatteMaterialSpec {
         emissiveIntensity: KRATHONG_FLAME_MODEL.emissiveIntensity,
       };
     }
+    if (head === "flowerCentre") return matte(KRATHONG_FLOWER_CENTRE_MODEL.color);
     if (head === "incense") return matte(KRATHONG_INCENSE_MODEL.color);
   } else if (head === "base" && has(KRATHONG_BASE_IDS, tail)) {
     return matte(KRATHONG_BASE_MODELS[tail as keyof typeof KRATHONG_BASE_MODELS].color);

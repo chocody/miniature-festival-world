@@ -5,6 +5,8 @@ import {
   KRATHONG_FLOWER_MODELS,
   KRATHONG_INCENSE_MODEL,
   KRATHONG_LEAF_COUNT,
+  KRATHONG_LEAF_MODELS,
+  KRATHONG_LEAF_VARIATION,
 } from "@/config/krathongModel.config";
 import { assembleKrathong } from "./krathongAssembler";
 import { KRATHONG_GEOMETRY_KEYS, KRATHONG_MATERIAL_KEYS } from "./krathongAssetKeys";
@@ -19,7 +21,8 @@ const PART_KEYS = ["geometryKey", "id", "localPosition", "materialKey", "role", 
 describe("assembleKrathong", () => {
   it("builds the default part counts with unique ids", () => {
     const a = assembleKrathong(D);
-    expect(a.body).toHaveLength(1 + KRATHONG_LEAF_COUNT + RIM_SOCKET_COUNT);
+    // MFW-48: every flower brings its own flowerCentre part.
+    expect(a.body).toHaveLength(1 + KRATHONG_LEAF_COUNT + 2 * RIM_SOCKET_COUNT);
     expect(a.centerAnchor.parts).toHaveLength(2 + KRATHONG_INCENSE_MODEL.count);
     const ids = [...a.body, ...a.centerAnchor.parts].map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -35,9 +38,25 @@ describe("assembleKrathong", () => {
     const [x, y, z] = flowers[0].localPosition;
     expect(flowers[0].socketId).toBe(rimSocketId(i));
     expect(x).toBeCloseTo(base.rimRadius * Math.sin(theta), 9);
-    expect(y).toBeCloseTo(base.topY + KRATHONG_FLOWER_MODELS.orchid.localY, 9);
+    expect(y).toBeCloseTo(base.rimY + KRATHONG_FLOWER_MODELS.orchid.localY, 9); // MFW-48: flowers sit on the rim surface
     expect(z).toBeCloseTo(base.rimRadius * Math.cos(theta), 9);
     expect(flowers[0].rotationY).toBeCloseTo(theta, 9);
+  });
+
+  it("MFW-48: leaves sit on the rim with the hand-made yaw / scale variation", () => {
+    for (const base of KRATHONG_BASE_IDS) {
+      const a = assembleKrathong({ ...D, base });
+      const leaves = a.body.filter((p) => p.role === "leaf");
+      expect(leaves).toHaveLength(KRATHONG_LEAF_COUNT);
+      leaves.forEach((leaf, j) => {
+        const v = KRATHONG_LEAF_VARIATION[j];
+        const theta = ((j + 0.5) * 2 * Math.PI) / KRATHONG_LEAF_COUNT;
+        const model = KRATHONG_LEAF_MODELS[D.lotusFold];
+        expect(leaf.rotationY).toBeCloseTo(theta + v.yawRad, 9);
+        expect(leaf.localPosition[1]).toBeCloseTo(KRATHONG_BASE_MODELS[base].rimY + model.localY, 9);
+        leaf.scale.forEach((c, k) => expect(c).toBeCloseTo(model.scale[k] * v.scale, 9));
+      });
+    }
   });
 
   it("makes no flower for null sockets or an empty list", () => {

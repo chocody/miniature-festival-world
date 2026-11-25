@@ -8,6 +8,7 @@ import {
   type KrathongAppearance,
   type KrathongPartInstance,
 } from "@/core/customization";
+import { STATIC_FLAME_FLICKER, type FlameFlickerFrame } from "@/core/customization/flameFlicker";
 import { writeYawTwistQuaternion } from "@/core/customization/uprightConstraint";
 import type { KrathongAssets } from "./krathongAssets";
 
@@ -21,6 +22,7 @@ export interface PlannedKrathongPart {
   readonly bucketIndex: number;
   readonly slot: number; // instance index inside its bucket mesh
   readonly upright: boolean; // true for the centre-anchor parts (candle, flame, incense)
+  readonly flicker: boolean; // true for the flame: scaled per frame by the canvas-shared flicker (MFW-48)
   readonly local: Matrix4; // T(localPosition) · R_y(rotationY) · S(scale), as KrathongModel renders it
 }
 export interface PlannedKrathongItem {
@@ -43,6 +45,7 @@ const scratchTwist = new Quaternion();
 const scratchScale = new Vector3();
 const scratchUpright = new Matrix4();
 const scratchOut = new Matrix4();
+const scratchFlickerScale = new Vector3();
 
 /** One reusable upload range per batch mesh: three clears `updateRanges` after each upload, so a fresh object per frame would allocate. */
 interface UploadRange {
@@ -91,7 +94,7 @@ export function planKrathongInstances(
       if (b === null || counts[b] >= capacity[b]) return; // defensive: a test proves it never happens
       const slot = counts[b]++;
       slotItems[b].push(i);
-      parts.push(Object.freeze({ bucketIndex: b, slot, upright, local: localMatrixOf(part) }));
+      parts.push(Object.freeze({ bucketIndex: b, slot, upright, flicker: part.role === "flame", local: localMatrixOf(part) }));
     };
     for (const part of assembly.body) place(part, false);
     for (const part of assembly.centerAnchor.parts) place(part, true);
@@ -109,6 +112,7 @@ export function planKrathongInstances(
 /**
  * Per frame, no allocation. `itemMatrix` / `itemQuaternion` are the item anchor group's local matrix / quaternion in the
  * river-flow space, which is also the batch's space. Upright parts get the item's yaw twist (the UprightAnchor rule).
+ * The flame part is scaled by `flame` (the canvas-shared flicker, MFW-48) in its own frame, as KrathongModel does.
  */
 export function writeKrathongItemInstances(
   plan: KrathongInstancePlan,
@@ -116,6 +120,7 @@ export function writeKrathongItemInstances(
   itemMatrix: Matrix4,
   itemQuaternion: Quaternion,
   sink: KrathongInstanceSink,
+  flame: Readonly<FlameFlickerFrame> = STATIC_FLAME_FLICKER,
 ): void {
   const item = plan.items[itemIndex];
   if (item === undefined) return;
@@ -127,6 +132,7 @@ export function writeKrathongItemInstances(
   for (let p = 0; p < parts.length; p++) {
     const part = parts[p];
     scratchOut.multiplyMatrices(part.upright ? scratchUpright : itemMatrix, part.local);
+    if (part.flicker) scratchOut.scale(scratchFlickerScale.set(flame.widthScale, flame.heightScale, flame.widthScale));
     sink.setMatrixAt(part.bucketIndex, part.slot, scratchOut);
   }
 }

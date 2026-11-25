@@ -33,8 +33,9 @@ function countsFor(appearance: KrathongAppearance): number[] {
 describe("krathong instance buckets", () => {
   it("has one bucket per geometry/material pair of the catalogue", () => {
     expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(
-      KRATHONG_BASE_IDS.length + LEAF_FOLD_STYLE_IDS.length * LEAF_COLOR_PALETTE.length + FLOWER_KINDS.length + CANDLE_COLOR_PALETTE.length + 2,
+      KRATHONG_BASE_IDS.length + LEAF_FOLD_STYLE_IDS.length * LEAF_COLOR_PALETTE.length + FLOWER_KINDS.length + CANDLE_COLOR_PALETTE.length + 3, // + flowerCentre (MFW-48)
     );
+    expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(18);
     expect(new Set(KRATHONG_INSTANCE_BUCKETS.map((b) => b.key)).size).toBe(KRATHONG_INSTANCE_BUCKET_COUNT);
     for (const b of KRATHONG_INSTANCE_BUCKETS) {
       expect(KRATHONG_GEOMETRY_KEYS).toContain(b.geometryKey);
@@ -76,6 +77,7 @@ describe("krathong instance buckets", () => {
       if (b.role === "leaf" && b.geometryKey === `leaf:${LEAF_FOLD_STYLE_IDS[0]}` && b.materialKey === `leaf:${LEAF_COLOR_PALETTE[0]}`)
         expect(counts[i]).toBe(KRATHONG_LEAF_COUNT);
       else if (b.role === "flower" && b.geometryKey === `flower:${FLOWER_KINDS[0]}`) expect(counts[i]).toBe(RIM_SOCKET_COUNT);
+      else if (b.role === "flowerCentre") expect(counts[i]).toBe(RIM_SOCKET_COUNT);
       else if (b.role === "incense") expect(counts[i]).toBe(KRATHONG_INCENSE_MODEL.count);
       else if (b.role === "base" && b.geometryKey === `base:${KRATHONG_BASE_IDS[0]}`) expect(counts[i]).toBe(1);
       else if (b.role === "candle" && b.materialKey === `candle:${CANDLE_COLOR_PALETTE[0]}`) expect(counts[i]).toBe(1);

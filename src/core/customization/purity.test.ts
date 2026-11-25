@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const files = [
-  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "krathongInstanceBuckets", "appearanceRegistry", "krathongChoices", "partChangeBounce", "index"].map(
+  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "krathongInstanceBuckets", "appearanceRegistry", "krathongChoices", "partChangeBounce", "krathongMeshData", "flameFlicker", "index"].map(
     (name) => `src/core/customization/${name}.ts`,
   ),
   "src/config/events/loyKrathong.config.ts",
@@ -20,6 +20,11 @@ describe("server-usable customization modules", () => {
   });
   it("keeps the three.js helper out of the barrel", () => {
     expect(readFileSync(join(root, "src/core/customization/index.ts"), "utf8")).not.toContain("uprightConstraint");
+  });
+  it("keeps the mesh builder and the flame flicker out of the barrel (MFW-48)", () => {
+    const barrel = readFileSync(join(root, "src/core/customization/index.ts"), "utf8");
+    expect(barrel).not.toContain("krathongMeshData");
+    expect(barrel).not.toContain("flameFlicker");
   });
   it("keeps the part-change bounce controller out of the barrel", () => {
     expect(readFileSync(join(root, "src/core/customization/index.ts"), "utf8")).not.toContain("partChangeBounce");

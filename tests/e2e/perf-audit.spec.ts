@@ -2,6 +2,7 @@ import { expect, test, type CDPSession, type Page, type TestInfo } from "@playwr
 import { completeWishStep } from "./helpers/wishStep";
 import {
   E2E_MAX_HEAP_GROWTH_BYTES,
+  E2E_MAX_SHADER_PROGRAMS,
   E2E_PERF_PROBE_GLOBAL,
   E2E_PERF_PROBE_QUERY,
   E2E_PERF_TEST_TIMEOUT_MS,
@@ -112,15 +113,27 @@ async function routeZones(page: Page, zoneCount: number, sizes: Record<number, n
 /** `?pinTier=1` as an extra query parameter (the probe query comes first). */
 const PIN_TIER_PARAM = E2E_PINNED_TIER_URL.slice(E2E_PINNED_TIER_URL.indexOf("?") + 1);
 
-async function walkToWorld(page: Page, pinned = false) {
+/** The probe panel's "fps" value (the device store FPS), or null while it reads "n/a" (always n/a on a pinned tier). */
+async function readFps(page: Page): Promise<number | null> {
+  const text = (await page.locator(PROBE).locator("dt", { hasText: /^fps$/ }).locator("xpath=following-sibling::dd[1]").textContent()) ?? "";
+  const value = Number(text.trim());
+  return text.trim() !== "" && Number.isFinite(value) ? value : null;
+}
+
+/** Walks CUSTOMIZE → wish → release; returns the CUSTOMIZE probe sample (MFW-48: the idle customizer with the flame flicker). */
+async function walkToWorld(page: Page, pinned = false): Promise<{ customize: ProbeSample; fpsCustomize: number | null }> {
   await page.goto("/" + E2E_PERF_PROBE_QUERY + (pinned ? `&${PIN_TIER_PARAM}` : ""));
   await waitForActiveEvent(page);
+  await expect(page.locator(PROBE)).toBeVisible();
+  const customize = await sample(page);
+  const fpsCustomize = await readFps(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   await expect(page.locator("canvas")).toHaveCount(1);
   await expect(page.locator(PROBE)).toBeVisible();
+  return { customize, fpsCustomize };
 }
 
 async function goToZone(page: Page, target: number, expectedItems: number) {
@@ -176,30 +189,39 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
   await forceTier(page, 8, 8);
   await routeZones(page, 3, { 1: 1, 2: 80 });
   await mockCreateCreation(page, { zoneId: 3 }); // the release lands in the empty zone 3, which the audit never measures
-  await walkToWorld(page, true); // pinned: the forced 3D tier cannot fall back to 2D mid-audit on a slow SwiftShader runner
+  // pinned: the forced 3D tier cannot fall back to 2D mid-audit on a slow SwiftShader runner (FPS readings are then n/a)
+  const { customize, fpsCustomize } = await walkToWorld(page, true);
   const tierNow = () => root(page).getAttribute("data-quality-tier");
   // The FPS step-down may fire mid-run on a loaded runner (owner thresholds, never raised). Both samples must share one tier, so
   // retake the pair until the tier is stable around them; the check holds at whatever tier both samples share.
-  let pair: { tier: string | null; full: ProbeSample; one: ProbeSample } | null = null;
+  let pair: { tier: string | null; full: ProbeSample; one: ProbeSample; fpsFull: number | null; fpsOne: number | null } | null = null;
   for (let attempt = 0; attempt < 3 && pair === null; attempt++) {
     await goToZone(page, 2, 80);
     const t0 = await tierNow();
     const full = await sample(page);
+    const fpsFull = await readFps(page);
     const t1 = await tierNow();
     await goToZone(page, 1, 1);
     const t2 = await tierNow();
     const one = await sample(page);
+    const fpsOne = await readFps(page);
     const t3 = await tierNow();
-    if (t0 === t1 && t1 === t2 && t2 === t3) pair = { tier: t0, full, one };
+    if (t0 === t1 && t1 === t2 && t2 === t3) pair = { tier: t0, full, one, fpsFull, fpsOne };
   }
   if (pair === null) throw new Error("tier kept changing between the samples (SwiftShader too slow); report it, do not raise thresholds");
-  const { tier, full, one } = pair;
+  const { tier, full, one, fpsFull, fpsOne } = pair;
   await report(testInfo, {
     tier,
+    callsCustomize: customize.calls,
+    trianglesCustomize: customize.triangles,
+    programsCustomize: customize.programs,
+    fpsCustomize,
     callsOne: one.calls,
     callsFull: full.calls,
     trianglesOne: one.triangles,
     trianglesFull: full.triangles,
+    fpsOne,
+    fpsFull,
   });
   if (RECORD_ONLY) return;
   expect(tier).not.toBe("FALLBACK_2D");
@@ -252,6 +274,7 @@ test("LOW: memory stays flat across repeated zone switches", async ({ page }, te
   expect(end.geometries).toBe(base.geometries);
   expect(end.textures).toBe(base.textures);
   expect(end.programs).toBe(base.programs);
+  expect(end.programs).toBeLessThanOrEqual(E2E_MAX_SHADER_PROGRAMS); // MFW-48: the v2 krathong adds no shader program
   expect(end.calls).toBe(base.calls);
   expect(base.calls).toBe(one.calls);
   expect(heap1 - heap0).toBeLessThanOrEqual(E2E_MAX_HEAP_GROWTH_BYTES);

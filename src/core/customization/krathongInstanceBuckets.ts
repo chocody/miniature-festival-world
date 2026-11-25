@@ -35,13 +35,14 @@ function bucket(
   return Object.freeze({ key: krathongInstanceBucketKey(geometryKey, materialKey), role, geometryKey, materialKey, maxPerKrathong });
 }
 
-/** Fixed order: bases, leaves (fold × colour), flowers, candles, flame, incense. The index is the batch mesh index. */
+/** Fixed order: bases, leaves (fold × colour), flowers, flower centres, candles, flame, incense. The index is the batch mesh index. */
 export const KRATHONG_INSTANCE_BUCKETS: readonly KrathongInstanceBucket[] = Object.freeze([
   ...KRATHONG_BASE_IDS.map((id) => bucket("base", `base:${id}`, `base:${id}`, SINGLE_PART)),
   ...LEAF_FOLD_STYLE_IDS.flatMap((fold) =>
     LEAF_COLOR_PALETTE.map((color) => bucket("leaf", `leaf:${fold}`, `leaf:${color}`, KRATHONG_LEAF_COUNT)),
   ),
   ...FLOWER_KINDS.map((kind) => bucket("flower", `flower:${kind}`, `flower:${kind}`, RIM_SOCKET_COUNT)),
+  bucket("flowerCentre", "flowerCentre", "flowerCentre", RIM_SOCKET_COUNT),
   ...CANDLE_COLOR_PALETTE.map((color) => bucket("candle", "candle", `candle:${color}`, SINGLE_PART)),
   bucket("flame", "flame", "flame", SINGLE_PART),
   bucket("incense", "incense", "incense", KRATHONG_INCENSE_MODEL.count),
