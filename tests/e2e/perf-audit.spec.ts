@@ -15,6 +15,7 @@ import {
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 /** Phone-sized viewport: far fewer pixels for SwiftShader, so these long renders do not starve the other 3D tests running in parallel. */
 const PHONE_VIEWPORT = { width: 360, height: 800 };
@@ -108,8 +109,11 @@ async function routeZones(page: Page, zoneCount: number, sizes: Record<number, n
   );
 }
 
-async function walkToWorld(page: Page) {
-  await page.goto("/" + E2E_PERF_PROBE_QUERY);
+/** `?pinTier=1` as an extra query parameter (the probe query comes first). */
+const PIN_TIER_PARAM = E2E_PINNED_TIER_URL.slice(E2E_PINNED_TIER_URL.indexOf("?") + 1);
+
+async function walkToWorld(page: Page, pinned = false) {
+  await page.goto("/" + E2E_PERF_PROBE_QUERY + (pinned ? `&${PIN_TIER_PARAM}` : ""));
   await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
@@ -172,7 +176,7 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
   await forceTier(page, 8, 8);
   await routeZones(page, 3, { 1: 1, 2: 80 });
   await mockCreateCreation(page, { zoneId: 3 }); // the release lands in the empty zone 3, which the audit never measures
-  await walkToWorld(page);
+  await walkToWorld(page, true); // pinned: the forced 3D tier cannot fall back to 2D mid-audit on a slow SwiftShader runner
   const tierNow = () => root(page).getAttribute("data-quality-tier");
   // The FPS step-down may fire mid-run on a loaded runner (owner thresholds, never raised). Both samples must share one tier, so
   // retake the pair until the tier is stable around them; the check holds at whatever tier both samples share.

@@ -70,8 +70,13 @@ test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom wor
   await page.evaluate(() => window.scrollTo(0, 0));
 
   const { panel, box } = await expectPanelAtBottom(page);
+  // Backlog 10.2 AC2 (MFW-54): the bar floats over the full-screen scene instead of sitting below it.
   const viewportBox = (await page.locator(VIEWPORT).boundingBox())!;
-  expect(viewportBox.y + viewportBox.height).toBeLessThanOrEqual(box.y);
+  expect(Math.abs(viewportBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(viewportBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(viewportBox.width - SMALL_PHONE.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(viewportBox.height - SMALL_PHONE.height)).toBeLessThanOrEqual(1);
+  expect(box.y).toBeGreaterThan(0);
   await expectNoHorizontalOverflow(page);
 
   for (const name of TABS) {

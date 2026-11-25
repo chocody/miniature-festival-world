@@ -25,7 +25,7 @@ export function DayNightSwitch(): JSX.Element | null {
       role="radiogroup"
       aria-label={COPY.groupLabel}
       data-light-preset-choice={choice}
-      className="-mt-6 mb-6 flex items-center gap-1 self-end rounded-full border border-stone-200 bg-white/80 p-1 text-xs shadow-sm"
+      className="flex w-fit items-center gap-1 rounded-full border border-stone-200 bg-white/90 p-1 text-xs text-stone-700 shadow-sm"
     >
       {LIGHT_PRESET_CHOICES.map((option) => {
         const checked = option === choice;

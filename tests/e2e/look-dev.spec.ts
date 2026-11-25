@@ -1,12 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 /** Duplicated literals (do not import src/ into Playwright): LIGHT_PRESET_STORAGE_KEY / LIGHT_PRESET_SWITCH_COPY in src/config/look.config.ts. */
 const LIGHT_PRESET_STORAGE_KEY = "mfw:lightPreset:v1";
 const SWITCH_AUTO = "ตามเวลาจริง";
 const SWITCH_NIGHT = "กลางคืน";
+const SWITCH_GROUP = "แสงในฉาก";
 
-test.use({ timezoneId: "Asia/Bangkok" });
+// HIGH is forced below: MFW-54's SwiftShader viewport and the pinned tier keep the 3D canvas on slow runners.
+test.use({ timezoneId: "Asia/Bangkok", viewport: E2E_SWIFTSHADER_3D_VIEWPORT });
 
 const scene = (page: Page) => page.locator('[aria-label="Toy-like night river preview"]');
 
@@ -33,12 +37,12 @@ async function enterLoyKrathong(page: Page): Promise<void> {
 test("AUTO follows the device's local time: DAY at 10:00, NIGHT at 20:00 (MFW-47 AC3)", async ({ page }) => {
   const errors = await openScene(page);
   await page.clock.setFixedTime(new Date("2026-11-25T10:00:00+07:00"));
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL);
   await enterLoyKrathong(page);
   await expect(scene(page)).toHaveAttribute("data-light-preset", "DAY");
 
   await page.clock.setFixedTime(new Date("2026-11-25T20:00:00+07:00"));
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL);
   await enterLoyKrathong(page);
   await expect(scene(page)).toHaveAttribute("data-light-preset", "NIGHT");
 
@@ -49,10 +53,14 @@ test("AUTO follows the device's local time: DAY at 10:00, NIGHT at 20:00 (MFW-47
 test("the switch overrides the time and the choice stays on the device (MFW-47 AC3)", async ({ page }) => {
   const errors = await openScene(page);
   await page.clock.setFixedTime(new Date("2026-11-25T10:00:00+07:00"));
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL);
   await enterLoyKrathong(page);
   await expect(scene(page)).toHaveAttribute("data-light-preset", "DAY");
 
+  // The switch floats over the full-screen stage in its own overlay corner (MFW-54 stage), not under the canvas.
+  const group = page.getByRole("radiogroup", { name: SWITCH_GROUP });
+  await expect(group).toBeVisible();
+  await expect(page.locator('[data-overlay-slot="corner"]').getByRole("radiogroup", { name: SWITCH_GROUP })).toHaveCount(1);
   await page.getByRole("radio", { name: SWITCH_NIGHT }).click();
   await expect(scene(page)).toHaveAttribute("data-light-preset", "NIGHT");
   expect(await page.evaluate((key) => localStorage.getItem(key), LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");

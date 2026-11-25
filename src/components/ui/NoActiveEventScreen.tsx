@@ -12,7 +12,7 @@ export function NoActiveEventScreen({ festival }: NoActiveEventScreenProps) {
       aria-label={NO_ACTIVE_EVENT_COPY.regionLabel}
       data-testid="no-active-event"
       data-nearest-event={festival?.eventId}
-      className="flex min-h-[60vh] w-full items-center justify-center"
+      className="flex min-h-[60vh] w-full items-center justify-center px-4 py-8"
     >
       <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-3xl border border-amber-200/70 bg-amber-50/70 px-8 py-12 text-center dark:border-zinc-700 dark:bg-zinc-900/70">
         <p className="text-sm text-zinc-600 dark:text-zinc-300">{NO_ACTIVE_EVENT_COPY.lead}</p>

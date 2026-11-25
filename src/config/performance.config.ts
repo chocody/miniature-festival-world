@@ -55,6 +55,19 @@ export const TIER_BUDGETS: Readonly<Record<RenderTier, TierBudget>> = Object.fre
   LOW: Object.freeze({ pixelRatioCap: 1, shadows: false, maxTextureSize: 512, riverItemCap: 24, riverItemCastShadow: false }),
 });
 
+/**
+ * Max renderer drawing-buffer pixels (screen CSS area × pixel ratio²) per 3D tier; null = no cap (MFW-54). The full-screen stage
+ * made the canvas 5–7× larger than the old 704×256 box, so a big screen renders at a lower pixel ratio (LOW even below 1) instead
+ * of spending the frame budget on fill or dropping to FALLBACK_2D. PLACEHOLDER (spec silent; owner to confirm): HIGH ≈ 2.5 MP
+ * and MEDIUM ≈ 1.5 MP leave phones at their pixelRatioCap and trim retina desktops; LOW = a 390×844 phone at pixel ratio 1,
+ * the size SwiftShader e2e holds above FALLBACK_FPS_THRESHOLD.
+ */
+export const TIER_MAX_RENDER_PIXELS: Readonly<Record<RenderTier, number | null>> = Object.freeze({
+  HIGH: 2_500_000,
+  MEDIUM: 1_500_000,
+  LOW: 390 * 844,
+});
+
 // Technical numbers (lead decision, MFW-9)
 
 /** Each FPS sample is the average over one window of this length (back-to-back windows). */

@@ -16,6 +16,7 @@ import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { OwnerWishControls } from "./OwnerWishControls";
 import { RitualReleasePanel } from "./RitualReleasePanel";
+import { OverlaySlot, STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { WishModal } from "./WishModal";
 import { ZoneNavigator } from "./ZoneNavigator";
 
@@ -86,42 +87,63 @@ export function FlowRoot({ eventId }: FlowRootProps) {
       data-ritual-bumped={ritual.saved ? String(isRitualBumped(ritual)) : undefined}
       data-own-krathong={ritualPhase === "RELEASED" ? "released" : undefined}
       data-ritual-error={ritual.error?.kind ?? undefined}
-      className="flex w-full flex-col"
+      data-stage-layout="fullscreen"
+      className={STAGE_LAYOUT_CLASSES.root}
     >
-      {show3D && interactionMode !== null && (
-        <Suspense fallback={null}>
-          <SceneViewport
-            mode={interactionMode}
-            viewControlRef={viewControlRef}
-            onReleaseDrop={
-              interactionMode === "RITUAL_RELEASE"
-                ? (candidate) => void getReleaseCreation().release({ kind: "drop", candidate })
-                : undefined
-            }
+      <div data-testid="stage-layer" className={STAGE_LAYOUT_CLASSES.stage}>
+        {show3D && interactionMode !== null && (
+          <Suspense fallback={null}>
+            <SceneViewport
+              mode={interactionMode}
+              viewControlRef={viewControlRef}
+              onReleaseDrop={
+                interactionMode === "RITUAL_RELEASE"
+                  ? (candidate) => void getReleaseCreation().release({ kind: "drop", candidate })
+                  : undefined
+              }
+            />
+          </Suspense>
+        )}
+        {show2D && interactionMode !== null && (
+          <Suspense fallback={null}>
+            <FlatViewport mode={interactionMode} />
+          </Suspense>
+        )}
+      </div>
+      <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
+        {/* Day/night switch (MFW-47): in the world view it heads the top card; in the other canvas modes the top-left corner is free. */}
+        {interactionMode !== null && flowState !== "SHARED_WORLD_EXPLORE" && (
+          <OverlaySlot slot="corner">
+            <DayNightSwitch />
+          </OverlaySlot>
+        )}
+        {flowState === "SHARED_WORLD_EXPLORE" && (
+          <OverlaySlot slot="top">
+            <DayNightSwitch />
+            <ZoneNavigator />
+            <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />
+          </OverlaySlot>
+        )}
+        {flowState === "CUSTOMIZE_OBJECT" ? (
+          <CustomizerPanel
+            eventId={eventId}
+            onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
+            viewControlRef={show3D ? viewControlRef : null}
           />
-        </Suspense>
-      )}
-      {interactionMode !== null && <DayNightSwitch />}
-      {show2D && interactionMode !== null && (
-        <Suspense fallback={null}>
-          <FlatViewport mode={interactionMode} />
-        </Suspense>
-      )}
-      {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
-      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />}
-      {flowState === "CUSTOMIZE_OBJECT" ? (
-        <CustomizerPanel
-          eventId={eventId}
-          onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
-          viewControlRef={show3D ? viewControlRef : null}
-        />
-      ) : flowState === "WRITE_WISH" ? (
-        <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
-      ) : flowState === "RITUAL_RELEASE" ? (
-        <RitualReleasePanel animateInScene={show3D} />
-      ) : (
-        <FlowStepPlaceholder step={flowState} onNext={nextEvent ? () => dispatch(nextEvent) : undefined} />
-      )}
+        ) : flowState === "WRITE_WISH" ? (
+          <OverlaySlot slot="dialog">
+            <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
+          </OverlaySlot>
+        ) : flowState === "RITUAL_RELEASE" ? (
+          <OverlaySlot slot="panel">
+            <RitualReleasePanel animateInScene={show3D} />
+          </OverlaySlot>
+        ) : (
+          <OverlaySlot slot="panel">
+            <FlowStepPlaceholder step={flowState} onNext={nextEvent ? () => dispatch(nextEvent) : undefined} />
+          </OverlaySlot>
+        )}
+      </div>
     </div>
   );
 }

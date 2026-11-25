@@ -87,5 +87,6 @@ describe("look config (MFW-47)", () => {
     expect(spec).toContain(`"${LIGHT_PRESET_STORAGE_KEY}"`);
     expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.AUTO}"`);
     expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.NIGHT}"`);
+    expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.groupLabel}"`);
   });
 });

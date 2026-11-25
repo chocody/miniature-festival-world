@@ -2,8 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
 const root = (page: Page) => page.locator("[data-flow-state]");
 const nextFrames = (page: Page) =>
@@ -30,7 +32,8 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
       },
       { memory: deviceMemory, cores: hardwareConcurrency },
     );
-    await page.goto("/");
+    // HIGH is pinned so it cannot fall back to 2D mid-test on a slow SwiftShader runner; LOW has no step-down.
+    await page.goto(tier === "HIGH" ? E2E_PINNED_TIER_URL : "/");
     await expect(root(page)).toHaveAttribute("data-quality-tier", tier);
 
     await waitForActiveEvent(page);

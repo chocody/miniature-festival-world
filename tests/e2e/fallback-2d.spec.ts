@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { makeOwnZoneItem } from "./fixtures/findMyFixtures";
 import { E2E_CREATION_ID, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
+import { E2E_FLAT_RIVER_PROBED_HEIGHT_PX } from "./fixtures/stageFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 
@@ -142,7 +143,8 @@ test("krathong tap shows the anonymous popup", async ({ page }) => {
   await page.goto("/");
   await walkToWorld(page);
   const hit = page.locator('[data-input-target="krathong"]').first();
-  await hit.scrollIntoViewIfNeeded();
+  // Centred, so the item never sits under an overlay of the full-screen stage (MFW-54).
+  await hit.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
   const box = (await hit.boundingBox())!;
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.getByText(INSPECT_DIALOG_TITLE)).toBeVisible();
@@ -163,13 +165,15 @@ test("Find My scrolls to my krathong", async ({ page }) => {
   await expect(page.locator(RIVER)).toHaveAttribute("data-focused-creation-id", E2E_CREATION_ID);
   await expect
     .poll(() =>
-      page.locator(SCROLLER).evaluate((el) => {
+      page.locator(SCROLLER).evaluate((el, probedHeightPx) => {
         const own = el.querySelector('[data-own="true"]');
         const ownX = Number(/translate\(([-\d.e]+) /.exec(own?.getAttribute("transform") ?? "")?.[1]);
         const max = Math.max(0, el.scrollWidth - el.clientWidth);
         const wanted = Math.min(max, Math.max(0, ownX - el.clientWidth / 2)); // the scroll clamps near an end
-        return Math.abs(el.scrollLeft - wanted);
-      }),
+        // The map is as tall as the stage (MFW-54): measure the drift in px of the map height the tolerance was set at.
+        const mapScale = Number(el.querySelector("svg")?.getAttribute("height")) / probedHeightPx;
+        return Math.abs(el.scrollLeft - wanted) / mapScale;
+      }, E2E_FLAT_RIVER_PROBED_HEIGHT_PX),
     )
     .toBeLessThanOrEqual(FIND_MY_TOLERANCE_PX);
   await expect(page.locator('[data-testid="flat-focus-ring"]')).toHaveAttribute("visibility", "visible");

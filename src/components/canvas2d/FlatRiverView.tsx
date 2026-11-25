@@ -7,10 +7,12 @@ import {
   FLAT_KRATHONG_VIEW_ELEVATION_RAD,
   FLAT_RIVER_FRAME_INTERVAL_MS,
   FLAT_RIVER_HIGHLIGHT,
+  FLAT_RIVER_PADDING_PX,
   FLAT_RIVER_PROP_SIZES,
   FLAT_RIVER_SPRITE_SCALE,
   FLAT_MIN_TAP_RADIUS_PX,
   FLAT_RIVER_TAP_RADIUS,
+  FLAT_RIVER_VIEW_HEIGHT_PX,
   FLAT_VIEW_COLORS,
   FLAT_VIEW_COPY,
 } from "@/config/fallback2d.config";
@@ -27,12 +29,15 @@ import {
   flatCoordToCanvasInto,
   flatProgressToCanvasInto,
   flatRiverScrollLeft,
+  flatRiverScrollLeftAfterRescale,
   getLoyKrathongFlatRiver,
   worldToCanvas,
   worldToCanvasInto,
   type FlatLane,
+  type FlatLaneSet,
   type FlatProp,
   type KrathongLayer2D,
+  type TopDownProjection,
 } from "@/core/fallback2d/flat";
 import { createInputSeparator, type InputSeparator, type InteractionAction, type InteractionTarget } from "@/core/interaction";
 import { excludeOwnAndCap, isOwnZoneVisible } from "@/core/ritual";
@@ -43,6 +48,7 @@ import { InspectPopup } from "@/components/ui/InspectPopup";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
+import { OverlaySlot } from "@/components/ui/StageLayout";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
@@ -91,8 +97,7 @@ function scrollScrollerTo(el: HTMLElement, left: number, behavior: ScrollBehavio
   else el.scrollLeft = left;
 }
 /** Canvas point of the pier release spot (MFW-23's three-free config), or null if its lane is unknown. */
-function pierSpotCanvasPoint(): { readonly x: number; readonly y: number } | null {
-  const { lanes, projection } = getLoyKrathongFlatRiver();
+function pierSpotCanvasPoint(lanes: FlatLaneSet, projection: TopDownProjection): { readonly x: number; readonly y: number } | null {
   const lane = lanes.get(LOY_KRATHONG_PIER_RELEASE_SPOT.laneId);
   if (!lane) return null;
   const p = flatProgressToCanvasInto(
@@ -115,7 +120,9 @@ function polygonPoints(points: readonly { readonly x: number; readonly y: number
  * of pre-rendered circles (invariant E). Positions are derived at render time and never stored (invariant A).
  */
 export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }: FlatRiverViewProps) {
-  const { lanes, scene, projection } = getLoyKrathongFlatRiver();
+  // MFW-54: the map is as tall as the stage (measured below); null until measured → the default map height.
+  const [stageHeightPx, setStageHeightPx] = useState<number | null>(null);
+  const { lanes, scene, projection } = getLoyKrathongFlatRiver(stageHeightPx ?? FLAT_RIVER_VIEW_HEIGHT_PX);
   const mapWidth = projection.viewport.width;
   const mapHeight = projection.viewport.height;
 
@@ -197,7 +204,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   }, [eventId, currentZoneId, zoneItems, saved, pierPreview, ownOnRiver, ownAppearance, lanes, elements]);
 
   const ownLayers = useMemo(() => buildKrathongLayers2D(ownAppearance, SPRITE_VIEW), [ownAppearance]);
-  const pier = useMemo(() => pierSpotCanvasPoint(), []);
+  const pier = useMemo(() => pierSpotCanvasPoint(lanes, projection), [lanes, projection]);
 
   const clockOffsetMs = saved?.serverClockOffsetMs ?? 0;
   const spritePx = FLAT_RIVER_SPRITE_SCALE * projection.scale;
@@ -226,6 +233,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     [mode, inspectedId, shared],
   );
 
+  const sectionRef = useRef<HTMLElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const ringRef = useRef<SVGCircleElement | null>(null);
@@ -235,6 +243,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   const rippleFrame = useRef(createRippleFrame());
   const latest = useRef({ items, clockOffsetMs, reducedMotion, focusId });
   const scrolledFor = useRef<string | null>(null);
+  const prevScaleRef = useRef<{ scale: number; viewportWidth: number; mapWidth: number } | null>(null);
   const pendingTap = useRef<{ target: InteractionTarget | null; creationId: string | null; x: number; y: number; pointerType: string } | null>(
     null,
   );
@@ -315,6 +324,23 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     return () => frames.cancel(handle);
   }, [frames, now, writeFrame]);
 
+  // MFW-54: measure the stage height on the section, not the scroller: a classic horizontal scrollbar would otherwise shrink the
+  // scroller, the map would follow, and the scrollbar could come and go in a loop. A classic scrollbar overlays the map's bottom
+  // edge (bank) instead. State changes only on resize.
+  useLayoutEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const measure = () => {
+      const h = section.clientHeight;
+      setStageHeightPx(Number.isFinite(h) && h > 2 * FLAT_RIVER_PADDING_PX ? Math.round(h) : null);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
   // Initial scroll: centre the pier unless Find My already names a krathong.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
@@ -322,6 +348,33 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     scrollScrollerTo(scroller, flatRiverScrollLeft(art.pierTipX, scroller.clientWidth, mapWidth), "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount
   }, []);
+
+  // MFW-54: a rescale (stage resized) keeps the map point at the viewport centre centred.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const prev = prevScaleRef.current;
+    prevScaleRef.current = { scale: projection.scale, viewportWidth: scroller.clientWidth, mapWidth };
+    if (prev === null || prev.scale === projection.scale) return;
+    if (prev.mapWidth <= prev.viewportWidth && latest.current.focusId === null) {
+      // The old map could not scroll (no wider than the viewport, e.g. the first measurement on a desktop), so its centre was not
+      // a chosen position: centre the pier, as on mount.
+      scrollScrollerTo(scroller, flatRiverScrollLeft(art.pierTipX, scroller.clientWidth, mapWidth), "auto");
+      return;
+    }
+    scrollScrollerTo(
+      scroller,
+      flatRiverScrollLeftAfterRescale(
+        scroller.scrollLeft,
+        prev.viewportWidth,
+        scroller.clientWidth,
+        projection.scale / prev.scale,
+        FLAT_RIVER_PADDING_PX,
+        mapWidth,
+      ),
+      "auto",
+    );
+  }, [projection, mapWidth, art]);
 
   // Find My: one scroll per request that centres the krathong (instant under reduced motion).
   useEffect(() => {
@@ -420,6 +473,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     <>
       <section
         aria-label={FLAT_VIEW_COPY.riverLabel}
+        ref={sectionRef}
         data-testid="flat-river-view"
         data-interaction-mode={mode}
         data-zone-id={currentZoneId ?? undefined}
@@ -429,7 +483,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         data-ripple-capacity={pools.ripple.capacity}
         data-last-gimmick={gimmick.kind ?? undefined}
         data-gimmick-count={gimmick.count}
-        className="relative mb-8 w-full overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
+        className="relative h-full w-full overflow-hidden"
         style={{ backgroundColor: FLAT_VIEW_COLORS.bank }}
       >
         <div
@@ -438,7 +492,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
           role="region"
           aria-label={FLAT_VIEW_COPY.riverScrollLabel}
           tabIndex={0}
-          className="w-full touch-manipulation select-none overflow-x-auto overflow-y-hidden"
+          className="h-full w-full touch-manipulation select-none overflow-x-auto overflow-y-hidden"
         >
           <svg
             ref={svgRef}
@@ -516,9 +570,22 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
             />
           </svg>
         </div>
-        {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />}
+        {tapHint.visible && (
+          <OverlaySlot slot="hint">
+            <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />
+          </OverlaySlot>
+        )}
       </section>
-      {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} ownerSection={<OwnerWishSection creation={inspected} />} />}
+      {inspected && (
+        <OverlaySlot slot="sheet">
+          <InspectPopup
+            key={inspected.id}
+            creation={inspected}
+            onClose={() => setInspectedId(null)}
+            ownerSection={<OwnerWishSection creation={inspected} />}
+          />
+        </OverlaySlot>
+      )}
     </>
   );
 }

@@ -10,8 +10,9 @@ export function DeviceProfiler(): null {
   useEffect(() => {
     const { setFps, setQualityTier, setReducedMotion, setLightPresetChoice } = useDeviceStore.getState();
     setLightPresetChoice(getLightPresetPreference().read()); // hydrate the per-device light preset once (MFW-47)
-    const watchFps = !isTierPinRequested(window.location.search); // ?pinTier=1: keep the initial tier (e2e on SwiftShader)
-    return startDeviceProfiler({ setFps, setQualityTier, setReducedMotion }, getBrowserProfilerEnv(), { watchFps });
+    return startDeviceProfiler({ setFps, setQualityTier, setReducedMotion }, getBrowserProfilerEnv(), {
+      watchFps: !isTierPinRequested(window.location.search),
+    });
   }, []);
   return null;
 }
