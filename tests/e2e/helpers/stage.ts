@@ -77,6 +77,27 @@ export async function expectTopSlotPlacement(page: Page, vp: StageViewport): Pro
   expect(box.width).toBeLessThanOrEqual(336);
 }
 
+/**
+ * The first-visit tap hint is visible and nothing covers it: the hint itself takes no touch, so the element under its centre must be
+ * the stage (never an overlay slot such as the bottom sheet).
+ */
+export async function expectTapHintUnoccluded(page: Page): Promise<void> {
+  const hint = page.getByTestId("scene-tap-hint");
+  await expect(hint).toBeVisible();
+  const box = (await hint.boundingBox())!;
+  const covered = await page.evaluate(
+    ({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      return el === null || el.closest("[data-overlay-slot]") !== null || el.closest('[data-testid="overlay-layer"]') !== null;
+    },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+  expect(covered).toBe(false);
+  const vp = page.viewportSize()!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+}
+
 /** Forces the profiled tier through deviceMemory / hardwareConcurrency (same init script as the other specs). */
 export async function forceTier(page: Page, memory: number, cores: number): Promise<void> {
   await page.addInitScript(

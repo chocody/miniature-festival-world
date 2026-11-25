@@ -799,7 +799,11 @@ export function SceneViewport({
           <span className="sr-only">กระทง</span>
         </div>
       )}
-      {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.scene3d} reducedMotion={reducedMotion} />}
+      {tapHint.visible && (
+        <OverlaySlot slot="hint">
+          <SceneTapHint text={SCENE_TAP_HINT_COPY.scene3d} reducedMotion={reducedMotion} />
+        </OverlaySlot>
+      )}
       <span className="sr-only" aria-live="polite">
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>

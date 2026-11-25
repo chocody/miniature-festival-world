@@ -7,6 +7,7 @@ import {
   expectFillsViewport,
   expectNoPageScroll,
   expectPanelPlacement,
+  expectTapHintUnoccluded,
   expectTopSlotPlacement,
   forceTier,
   sceneZoomScale,
@@ -29,7 +30,6 @@ const CHIP = '[data-input-target="krathong"]';
 const PANEL_SLOT = '[data-overlay-slot="panel"]';
 const PREVIEW = '[data-testid="flat-krathong-preview"]';
 const RIVER = '[data-testid="flat-river-view"]';
-const SCROLLER = '[data-testid="flat-river-scroller"]';
 const PHONE = { width: 390, height: 844, wide: false } as const;
 const PHONE_LANDSCAPE = { width: 844, height: 390, wide: true } as const;
 const DESKTOP = { width: 1440, height: 900, wide: true } as const;
@@ -151,6 +151,7 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       await expectSceneFills(page);
       await expectPanelPlacement(page.locator(PANEL_SLOT), vp);
       await expectTopSlotPlacement(page, vp);
+      await expectTapHintUnoccluded(page);
       await expectNoPageScroll(page);
       expect(errors).toEqual([]);
     });
@@ -210,7 +211,9 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
         await expectNoPageScroll(page);
         await expect
           .poll(() =>
-            page.locator(SCROLLER).evaluate((el) => Number(el.querySelector("svg")?.getAttribute("height")) === el.clientHeight),
+            page
+              .locator(RIVER)
+              .evaluate((el) => Number(el.querySelector("svg")?.getAttribute("height")) === Math.round(el.clientHeight)),
           )
           .toBe(true);
       };
@@ -223,6 +226,7 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       await expectRiverFills();
       await expectPanelPlacement(page.locator(PANEL_SLOT), vp);
       await expectTopSlotPlacement(page, vp);
+      await expectTapHintUnoccluded(page);
 
       expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(false);
       await expect(page.locator("canvas")).toHaveCount(0);

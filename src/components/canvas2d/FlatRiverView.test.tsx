@@ -126,6 +126,7 @@ describe("FlatRiverView tap targets and hint (MFW-59)", () => {
     expect(hint).toHaveTextContent(SCENE_TAP_HINT_COPY.flat2d);
     expect(hint.className).toContain("pointer-events-none");
     expect(hint).toHaveAttribute("data-motion", "pulse");
+    expect(hint.closest('[data-overlay-slot="hint"]')).not.toBeNull(); // MFW-54: floats above the bottom sheet
     tap(water(container));
     expect(screen.queryByTestId("scene-tap-hint")).toBeNull();
   });
@@ -441,14 +442,18 @@ describe("FlatRiverView", () => {
 
   describe("full-screen stage (MFW-54, backlog 10.2)", () => {
     const SCROLLER = '[data-testid="flat-river-scroller"]';
+    const SECTION = '[data-testid="flat-river-view"]';
     let stageHeight = 640;
+    /** The stage height is read from the section (a classic scrollbar must not feed back into the map height). */
     const stubStageHeight = () =>
       Object.defineProperty(HTMLElement.prototype, "clientHeight", {
         configurable: true,
         get(this: HTMLElement) {
-          return this.matches(SCROLLER) ? stageHeight : 0;
+          if (this.matches(SECTION)) return stageHeight;
+          return this.matches(SCROLLER) ? stageHeight - SCROLLBAR_PX : 0;
         },
       });
+    const SCROLLBAR_PX = 15; // a classic horizontal scrollbar: the scroller is shorter than the stage
     const unstubStageHeight = () => {
       delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight;
     };

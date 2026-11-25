@@ -233,6 +233,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     [mode, inspectedId, shared],
   );
 
+  const sectionRef = useRef<HTMLElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const ringRef = useRef<SVGCircleElement | null>(null);
@@ -323,18 +324,20 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     return () => frames.cancel(handle);
   }, [frames, now, writeFrame]);
 
-  // MFW-54: measure the stage height (the scroller, so a horizontal scrollbar is excluded); state changes only on resize.
+  // MFW-54: measure the stage height on the section, not the scroller: a classic horizontal scrollbar would otherwise shrink the
+  // scroller, the map would follow, and the scrollbar could come and go in a loop. A classic scrollbar overlays the map's bottom
+  // edge (bank) instead. State changes only on resize.
   useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
+    const section = sectionRef.current;
+    if (!section) return;
     const measure = () => {
-      const h = scroller.clientHeight;
+      const h = section.clientHeight;
       setStageHeightPx(Number.isFinite(h) && h > 2 * FLAT_RIVER_PADDING_PX ? Math.round(h) : null);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    observer.observe(scroller);
+    observer.observe(section);
     return () => observer.disconnect();
   }, []);
 
@@ -470,6 +473,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     <>
       <section
         aria-label={FLAT_VIEW_COPY.riverLabel}
+        ref={sectionRef}
         data-testid="flat-river-view"
         data-interaction-mode={mode}
         data-zone-id={currentZoneId ?? undefined}
@@ -566,7 +570,11 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
             />
           </svg>
         </div>
-        {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />}
+        {tapHint.visible && (
+          <OverlaySlot slot="hint">
+            <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />
+          </OverlaySlot>
+        )}
       </section>
       {inspected && (
         <OverlaySlot slot="sheet">

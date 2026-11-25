@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { OrthographicCamera, Vector3 } from "three";
-import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR } from "@/config/camera.config";
+import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
+import { LAMP_TAP_RADIUS, RIVER_KRATHONG_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
+import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { LOY_KRATHONG_PIER } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
@@ -75,5 +78,33 @@ describe("scene framing at any aspect ratio (MFW-54)", () => {
         }
       }
     }
+  });
+});
+
+describe("tap discs at the framed zoom (MFW-54 fix round; documented follow-up)", () => {
+  // The MFW-59 proxies are sized in world units for MIN_TOUCH_TARGET_PX at SCENE_CAMERA_ZOOM. The framed zoom is at or above it from
+  // a 374-px width, so the AC phones 390×844 and wider keep ≥ 44 px discs. Below that the disc shrinks with the zoom: 360×640 frames
+  // at zoom 50 → ≈ 42.3 px. Scaling the proxies by SCENE_CAMERA_ZOOM / zoom is a follow-up (docs/follow-ups.md, MFW-54).
+  const discPx = (zoom: number) => ({
+    lamp: 2 * LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO * zoom,
+    krathong: 2 * RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE * TAP_PROXY_INRADIUS_RATIO * zoom,
+  });
+
+  it("keeps ≥ MIN_TOUCH_TARGET_PX discs at 390×844, 844×390 and 1440×900", () => {
+    for (const [w, h] of [[390, 844], [844, 390], [1440, 900]] as const) {
+      const d = discPx(getFramedCameraZoom({ width: w, height: h }));
+      expect(d.lamp).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+      expect(d.krathong).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+    }
+  });
+
+  it("documents the 360-px shortfall: discs scale with zoom / SCENE_CAMERA_ZOOM (≈ 42.3 px at 360×640)", () => {
+    const zoom = getFramedCameraZoom({ width: 360, height: 640 });
+    expect(zoom).toBeLessThan(SCENE_CAMERA_ZOOM);
+    const d = discPx(zoom);
+    const expectedMin = (MIN_TOUCH_TARGET_PX * zoom) / SCENE_CAMERA_ZOOM;
+    expect(d.lamp).toBeCloseTo(expectedMin, 9);
+    expect(d.lamp).toBeLessThan(MIN_TOUCH_TARGET_PX);
+    expect(d.krathong).toBeGreaterThanOrEqual(expectedMin - 1e-9);
   });
 });

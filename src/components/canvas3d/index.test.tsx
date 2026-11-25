@@ -1283,6 +1283,7 @@ describe("scene tap hint (MFW-59)", () => {
     expect(el.className).toContain("pointer-events-none");
     expect(el).toHaveAttribute("data-motion", "pulse");
     expect(el.className).toContain("animate-pulse");
+    expect(el.closest('[data-overlay-slot="hint"]')).not.toBeNull(); // MFW-54: floats above the bottom sheet
   });
 
   it("is static under reduced motion", () => {
@@ -1443,7 +1444,7 @@ describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
     expect(screen.getByRole("dialog").closest('[data-overlay-slot="sheet"]')).not.toBeNull();
   });
 
-  it("LOW renders a big screen within its pixel budget; HIGH keeps its pixel-ratio range", () => {
+  it("LOW and HIGH render a big screen within their pixel budget", () => {
     vi.stubGlobal("screen", { width: 1440, height: 900 });
     useDeviceStore.getState().setQualityTier("LOW");
     const { unmount } = render(<SceneViewport mode="CUSTOMIZE" />);
@@ -1453,7 +1454,8 @@ describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
     useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     useDeviceStore.getState().setQualityTier("HIGH");
     render(<SceneViewport mode="CUSTOMIZE" />);
-    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-dpr", `1,${TIER_BUDGETS.HIGH.pixelRatioCap}`);
+    const highRatio = Math.sqrt(TIER_MAX_RENDER_PIXELS.HIGH! / (1440 * 900));
+    expect(screen.getByTestId("r3f-canvas")).toHaveAttribute("data-dpr", `1,${highRatio}`);
   });
 
   it("the perf probe sits in the debug slot", () => {

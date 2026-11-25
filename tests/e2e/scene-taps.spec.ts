@@ -3,6 +3,8 @@ import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneItem } from "./fixtures/zoneFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectTapHintUnoccluded } from "./helpers/stage";
+import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
   E2E_INSPECT_DIALOG_TITLE,
   E2E_MIN_TOUCH_TARGET_PX,
@@ -22,10 +24,16 @@ const hint = (page: Page) => page.getByTestId("scene-tap-hint");
 const nextFrames = (page: Page) =>
   page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
+/**
+ * MFW-54: the scene fills the viewport. LOW runs at 390×844 (a backlog 10.2 AC viewport, framed at zoom ≥ SCENE_CAMERA_ZOOM): it
+ * is the full 44 px disc proof of MFW-59 AC3. HIGH / MEDIUM run at E2E_SWIFTSHADER_3D_VIEWPORT (360×640): SwiftShader cannot keep
+ * them above the FPS fallback on a bigger full-screen canvas under load. There the framed zoom is 50, so the proxy discs are
+ * ≈ 42.3 px, still wider than the probe ring (44 px − 2 × RING_INSET_PX); the 360-px shortfall is a follow-up (docs/follow-ups.md).
+ */
 const TIERS = [
-  { tier: "HIGH", memory: 8, cores: 8 },
-  { tier: "MEDIUM", memory: 4, cores: 6 },
-  { tier: "LOW", memory: 2, cores: 2 },
+  { tier: "HIGH", memory: 8, cores: 8, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },
+  { tier: "MEDIUM", memory: 4, cores: 6, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },
+  { tier: "LOW", memory: 2, cores: 2, viewport: { width: 390, height: 844 } },
 ] as const;
 const SPAWN_PROGRESS = [0.35, 0.5, 0.65];
 const TOUCH_VIEWPORT = { width: 390, height: 844 };
@@ -87,8 +95,9 @@ const tap = (page: Page, pointer: Pointer, p: ScreenPoint) =>
   pointer === "touch" ? page.touchscreen.tap(p.x, p.y) : page.mouse.click(p.x, p.y);
 
 function defineTierTests(pointer: Pointer) {
-  for (const { tier, memory, cores } of TIERS) {
+  for (const { tier, memory, cores, viewport } of TIERS) {
     test(`${tier}: water, lamp and krathong react`, async ({ page }) => {
+      await page.setViewportSize(viewport); // MFW-54: see TIERS
       const errors = collectErrors(page);
       await installSceneProbe(page);
       await setTier(page, memory, cores);
@@ -99,6 +108,7 @@ function defineTierTests(pointer: Pointer) {
       await waitForCameraRest(page);
 
       await expect(hint(page)).toBeVisible();
+      await expectTapHintUnoccluded(page); // MFW-54: above the bottom sheet
       const base = Number(await scene(page).getAttribute("data-gimmick-count"));
 
       // Water
@@ -154,9 +164,10 @@ test.describe("FALLBACK_2D", () => {
     await routeZone(page);
     await walkToWorld(page);
     await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-    await expect(hint(page)).toBeVisible();
+    await expectTapHintUnoccluded(page);
     const target = page.locator('[data-input-target="krathong"]').first();
-    await target.scrollIntoViewIfNeeded();
+    // MFW-54: centred, so the click never lands on an overlay of the full-screen stage.
+    await target.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
     const box = (await target.boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
     expect(box.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
@@ -167,7 +178,8 @@ test.describe("FALLBACK_2D", () => {
 });
 
 test.describe("hint", () => {
-  test.use({ hasTouch: true, isMobile: true, viewport: TOUCH_VIEWPORT });
+  // MFW-54: these force HIGH; see TIERS for the viewport.
+  test.use({ hasTouch: true, isMobile: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT });
 
   test.describe("reduced motion", () => {
     test.use({ reducedMotion: "reduce" });
