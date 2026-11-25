@@ -22,4 +22,11 @@ describe("art-direction note (MFW-47 AC1)", () => {
     expect(doc).toContain("LOY_KRATHONG_RIVERSIDE_PATHS");
     expect(doc).toContain("riversidePathPoseInto");
   });
+
+  it("documents the foliage (MFW-70)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    expect(doc).toContain("FOLIAGE_TIERS");
+    expect(doc).toContain("RIVER_FOLIAGE_SWAY");
+    expect(doc).toContain("screenshots/mfw-70/");
+  });
 });

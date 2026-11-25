@@ -64,9 +64,9 @@ describe("RiverEnvironment", () => {
   it("renders every environment part once", () => {
     const { container } = render(<RiverEnvironment {...makeProps()} />);
     const names = [
-      "water", "bankLeft", "bankRight", "houseBodies", "houseRoofs", "treeTrunks", "treeCanopies",
+      "water", "bankLeft", "bankRight", "houseBodies", "houseRoofs", "treeTrunks", "leafClumps",
       "lampPosts", "lampHeads", "pierDeck", "pierPiles", "lampFocus",
-      "ground", "houseRoofsGable", "houseDoors", "houseWindows", "bushes", "rocks",
+      "ground", "houseRoofsGable", "houseDoors", "houseWindows", "riversidePlants", "rocks",
     ] as const;
     for (const key of names) {
       expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES[key]}"]`)).toHaveLength(1);
@@ -77,13 +77,14 @@ describe("RiverEnvironment", () => {
   it("riverside trees are instanced (backlog 8.2 AC1)", () => {
     const { container } = render(<RiverEnvironment {...makeProps()} />);
     expect(container.querySelectorAll(`instancedMesh[name="${SCENE_OBJECT_NAMES.treeTrunks}"]`)).toHaveLength(1);
-    expect(container.querySelectorAll(`instancedMesh[name="${SCENE_OBJECT_NAMES.treeCanopies}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`instancedMesh[name="${SCENE_OBJECT_NAMES.leafClumps}"]`)).toHaveLength(1);
     expect(container.querySelectorAll('mesh[name^="scene-tree"]')).toHaveLength(0);
+    expect(container.querySelectorAll('mesh[name^="scene-leaf"]')).toHaveLength(0);
   });
 
-  it("is static", () => {
+  it("registers frame work only for the two swaying foliage meshes (MFW-70)", () => {
     render(<RiverEnvironment {...makeProps()} />);
-    expect(useFrameSpy).not.toHaveBeenCalled();
+    expect(useFrameSpy).toHaveBeenCalledTimes(2);
   });
 
   it("renders the same tree with reduced motion on", () => {

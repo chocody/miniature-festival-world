@@ -126,6 +126,17 @@ describe("instancing audit (backlog 8.2)", () => {
     }
   });
 
+  it("the foliage sway allocates nothing per frame (MFW-70)", () => {
+    expect(functionSource(read("src/components/canvas3d/foliageSway.ts"), "writeFoliageSway")).not.toMatch(ALLOCATION);
+    expect(useFrameBody(read("src/components/canvas3d/SwayingInstancedPart.tsx"))).not.toMatch(ALLOCATION);
+    for (const file of ["src/components/canvas3d/SwayingInstancedPart.tsx", "src/components/models/loyKrathong/RiversideFoliage.tsx"]) {
+      const source = read(file);
+      expect(source, file).not.toMatch(NEW_RESOURCE);
+      expect(source, file).not.toMatch(TEXTURE_API);
+      expect(source, file).not.toMatch(CONSOLE);
+    }
+  });
+
   it("MFW-48 findings doc has the automated numbers", () => {
     expect(existsSync(join(process.cwd(), "docs/perf/MFW-48.md"))).toBe(true);
     const doc = read("docs/perf/MFW-48.md");
