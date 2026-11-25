@@ -2,15 +2,16 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_UI } from "./fixtures/uiFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
-import { E2E_MIN_TOUCH_TARGET_PX } from "./helpers/sceneProbe";
+import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { SCENE_SELECTOR, forceTier } from "./helpers/stage";
 import { CLEAN_WISH, WISH_TEXT_LABEL, completeWishStep } from "./helpers/wishStep";
 
 /**
  * Backlog 10.3 (MFW-55): a minimal UI over the scene. One primary action per step, the scene centre stays visible, HUD
  * surfaces are translucent, every control is a 44 px target, the keyboard walks the flow with a visible focus ring, UI
- * transitions follow reduced motion, and one Thai web font from next/font is applied. LOW is forced in the 3D tests: it
- * has no FPS step-down, so the full-screen SwiftShader canvas is never re-created mid-test (as full-screen-stage.spec.ts).
+ * transitions follow reduced motion, and one Thai web font from next/font is applied. The 3D tests force LOW and open
+ * E2E_PINNED_TIER_URL, so the FPS watcher never swaps the SwiftShader canvas for 2D mid-test. The FALLBACK_2D and font tests
+ * are not pinned.
  */
 
 const NEXT = "ถัดไป";
@@ -39,7 +40,7 @@ async function openLow(page: Page): Promise<string[]> {
   const errors = collectPageErrors(page);
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL); // keeps LOW: CI's SwiftShader FPS would otherwise fall back to 2D mid-test
   await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);

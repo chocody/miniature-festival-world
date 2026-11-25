@@ -36,6 +36,18 @@ describe("ZoneNavigator", () => {
     expect(pagination.loadZone).toHaveBeenLastCalledWith(3);
   });
 
+  it("zone buttons are icon buttons named by the copy (MFW-55)", () => {
+    setWorld({ ...base, currentZoneId: 2, zoneCount: 3 });
+    render(<ZoneNavigator pagination={pagination} />);
+    const up = screen.getByRole("button", { name: ZONE_NAV_COPY.upstream });
+    const down = screen.getByRole("button", { name: ZONE_NAV_COPY.downstream });
+    expect(up).toHaveAttribute("aria-label", ZONE_NAV_COPY.upstream);
+    expect(down).toHaveAttribute("aria-label", ZONE_NAV_COPY.downstream);
+    expect(up.querySelector('[aria-hidden="true"]')).toHaveTextContent("‹");
+    expect(down.querySelector('[aria-hidden="true"]')).toHaveTextContent("›");
+    expect(screen.getAllByRole("button")).toEqual([up, down]);
+  });
+
   it("edges", () => {
     setWorld({ ...base, currentZoneId: 3, zoneCount: 3 });
     const { unmount } = render(<ZoneNavigator pagination={pagination} />);
