@@ -403,6 +403,366 @@
       ]
     },
     {
+      "id": "L9",
+      "summary": "Loop 9 — Visual Upgrade: Clay-toy Look & Living Riverside",
+      "description": "Owner request 2026-11-25 (open questions 26–38): the scene looks stiff, dark and lifeless. Target look: docs/spec/assets/loy-krathong-look-ref.png — soft clay / toy shapes, pastel colours, a wide river, a lit village, people walking along the river. Engine, coords and stored data stay as they are.",
+      "labels": [
+        "loop-9",
+        "loy-krathong",
+        "3d",
+        "art",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "9.1",
+          "summary": "Art direction & LookDev v2 — match the reference image",
+          "goal": "One shared look (palette, materials, light) that every model and scene card builds on, so the world reads soft, warm and alive like the reference instead of stiff and dark.",
+          "ac": [
+            "docs/spec/assets/loy-krathong-look-ref.png is the visual target; an art-direction note (docs/design/loy-krathong-look.md) records the palette, material rules, light setup and time of day (open question 32); every value lives in config (scene.config.ts or a look config), no inline magic numbers",
+            "Materials read as soft clay / toy: rounded (bevelled) silhouettes, matte pastel colours, no hard black shadows; soft contact or blob shadows under objects on every 3D tier (a cheap variant on LOW)",
+            "Light is bright enough that land, houses and trees are clearly readable at all times; the village is never a dark silhouette; candle flames still glow visibly",
+            "Applied to the existing scene without changing any stored coord or appearance data; quality tiers and reduced motion are respected and the per-tier budgets in performance.config.ts hold (r3f-perf-reviewer PASS)",
+            "Before / after screenshots at phone and desktop size are attached to the PR"
+          ],
+          "labels": [
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "3.1",
+            "8.2"
+          ]
+        },
+        {
+          "id": "9.2",
+          "summary": "Krathong model v2 — layered leaves, flowers, glowing candle",
+          "goal": "The krathong, the star of the scene, looks hand-made and charming like the reference.",
+          "ac": [
+            "Every customizer option in the appearance registry (base, leaves, flowers, candle, incense) has a v2 model in the new look; appearance keys and stored appearance data are unchanged, so krathongs already saved render with the new models",
+            "Layered banana-leaf petals around a rounded base, flowers with visible petals and a centre, a candle whose flame glows and flickers gently (static under reduced motion; flicker within WCAG 2.3.1)",
+            "The same v2 models are used in the customizer preview, the pier / release ritual and the river",
+            "Repeated parts stay instanced and a full 80-item zone stays within the tier budgets; draw calls and FPS are recorded in the PR the same way as docs/perf/MFW-34.md",
+            "Geometry and materials are shared and disposed on unmount / zone switch; no per-frame allocation"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.1",
+            "4.1"
+          ]
+        },
+        {
+          "id": "9.3",
+          "summary": "Riverside environment v2 — wider river, rounded land, lit village",
+          "goal": "A bigger river in a soft, lit, lived-in riverside like the reference.",
+          "ac": [
+            "The river is clearly wider and is the main feature of the view (open question 38). The lane geometry is widened in config only: stored SplinePathCoord values stay valid, the 3D ↔ 2D round-trip tests still pass, and collision spacing and the 80-item zone capacity are re-checked by tests",
+            "Land has soft rounded banks and gentle height changes; puffy rounded trees, bushes, rocks and a wooden pier as in the reference",
+            "Village: several houses with different roofs and colours, warm lit windows and riverside lanterns, so the village is never dark; krathongs remain the most prominent objects",
+            "Stylized water: soft colour with gentle moving highlights / ripples near banks and krathongs (static under reduced motion; a cheap variant on LOW)",
+            "Repeated scenery uses InstancedMesh, everything is disposed on zone switch / unmount, and the tier budgets hold (r3f-perf-reviewer PASS; draw calls and FPS recorded in the PR)"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.1",
+            "6.1"
+          ]
+        },
+        {
+          "id": "9.4",
+          "summary": "Living world — villagers walking along the river and ambient life",
+          "goal": "The riverside feels alive: people stroll along the river and small things move.",
+          "ac": [
+            "Small toy-like villagers walk along riverside paths and some stop to watch the river; their positions are derived deterministically from a path parameter and the clock (no physics, no stored state)",
+            "Villager count per tier comes from config (fewer on MEDIUM, fewest or none on LOW); they are instanced or share geometry and material; no per-frame allocation",
+            "Ambient life, at least two of: fireflies / floating light motes, chimney smoke, swaying trees, ducks or birds, flickering lanterns (the lead picks; values in config)",
+            "Reduced motion: villagers stand still and ambient motion is off; nothing flashes faster than WCAG 2.3.1 allows",
+            "Villagers never cover krathongs on the water and do not block taps on the river"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.3"
+          ]
+        },
+        {
+          "id": "9.5",
+          "summary": "2D fallback matches the new look",
+          "goal": "FALLBACK_2D shows the same world, not an older-looking one.",
+          "ac": [
+            "FlatRiverView and FlatKrathongPreview use the v2 palette and redrawn shapes (krathong parts, banks, houses, trees) so the 2D view reads as the same world as 3D",
+            "2D reads the same coords and appearance keys as 3D (invariant B): the wider river from 9.3 arrives through the shared lane projection, not a 2D-only number; round-trip tests stay green",
+            "FALLBACK_2D still downloads no three.js code; the FALLBACK_2D e2e flow is green; before / after screenshots are attached to the PR"
+          ],
+          "labels": [
+            "fallback2d",
+            "art",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.2",
+            "9.3",
+            "8.1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L10",
+      "summary": "Loop 10 — Full-screen Stage, Minimal UI & Automatic Event",
+      "description": "Owner request 2026-11-25 (open questions 26, 28, 33): no event picker — the app shows the festival that is on now (Loy Krathong only during the private test); the world fills the whole screen; the web UI is minimal and beautiful.",
+      "labels": [
+        "loop-10",
+        "ui",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "10.1",
+          "summary": "Active event by date — remove the event selector",
+          "goal": "People land directly in the festival that is happening now; there is nothing to choose.",
+          "ac": [
+            "Each event config declares its date window (start / end, Asia/Bangkok); a pure resolver returns the active event for a given time; unit tests cover inside, outside and boundary times",
+            "The app opens straight into the active event; the event selector, the festival list and the Coming Soon cards are removed from the user flow (supersedes open question 19)",
+            "Private-test override: one server-side config value forces the active event; it is set to Loy Krathong now, so the test shows only Loy Krathong whatever the date",
+            "When no event is active (open question 33) the app shows one calm screen with the next festival's name and dates, and nothing can be created",
+            "The API uses the same resolver: creating for an event that is not active is rejected; reads keep working for the active event"
+          ],
+          "labels": [
+            "events",
+            "ui"
+          ],
+          "blockedBy": [
+            "1.1"
+          ]
+        },
+        {
+          "id": "10.2",
+          "summary": "Full-screen stage layout — the world fills the viewport, UI floats on top",
+          "goal": "The scene is the whole screen on phone and desktop.",
+          "ac": [
+            "In every mode that shows the scene, the 3D canvas (and the 2D fallback) fills the whole viewport (100dvh × 100vw, safe-area insets respected) on phone and desktop: no page chrome, no letterboxing, no page scroll",
+            "All controls (customizer, wish, release, zone navigation, My Creations, inspect) are overlays — bottom sheets and floating buttons on phones, side panels on wide screens — and never push or shrink the canvas",
+            "The scene stays framed at any aspect ratio (camera zoom adapts; pier and river stay in view); rotating the phone or resizing the window does not reset the camera or the flow state",
+            "Overlays receive their own touches and the stage receives the rest; e2e covers 360×640, 390×844 and 1440×900",
+            "Lazy loading from 3.4 is kept: no three.js chunk is downloaded before the tier is decided, and FALLBACK_2D never downloads it"
+          ],
+          "labels": [
+            "ui",
+            "3d",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "3.4",
+            "8.1"
+          ]
+        },
+        {
+          "id": "10.3",
+          "summary": "Minimal UI redesign — design tokens and restyle of every screen",
+          "goal": "A calm, minimal, beautiful interface that lets the scene be the hero.",
+          "ac": [
+            "Design tokens (colour, type scale, radius, spacing, shadow, motion) are defined once (Tailwind theme / CSS variables) and documented in docs/design/ui.md; one Thai-capable web font is loaded with next/font",
+            "Every screen is restyled with the tokens: intro, customizer, wish, release, world HUD, zone navigation, My Creations, inspect popup, owner wish section, notices and the 2D fallback frame",
+            "Minimal: at most one primary action is visible per step, secondary actions sit behind icons or sheets, and overlays are light enough that the scene stays visible",
+            "Accessible: touch targets at least MIN_TOUCH_TARGET_PX, WCAG AA contrast on top of the scene, visible focus, keyboard reachable, UI transitions off under reduced motion",
+            "Behaviour is unchanged (look and layout only); all existing e2e flows are green; before / after screenshots are attached to the PR"
+          ],
+          "labels": [
+            "ui",
+            "design",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "10.2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L11",
+      "summary": "Loop 11 — Explore the World: Camera Travel, Endless River & Scene Gimmicks",
+      "description": "Owner request 2026-11-25 (open questions 30, 34, 35, 37): dragging moves the camera along the world instead of only rotating; the scene keeps rendering as you travel; things in the scene react when pressed.",
+      "labels": [
+        "loop-11",
+        "loy-krathong",
+        "3d",
+        "interaction",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "11.1",
+          "summary": "Camera drag-to-travel — drag pans the camera, not only rotates",
+          "goal": "People can drag to move around the world freely.",
+          "ac": [
+            "WORLD_EXPLORE: a one-finger or mouse drag moves the camera across the world, following the finger; pinch (or wheel) zooms; rotation is kept or dropped as the owner decides (open question 34)",
+            "The camera itself moves (the legacy scene-group pan / rotate transform is removed); lights stay world-fixed; fly-to, the highlight ring, Find My and tap picking keep working after any pan or zoom",
+            "Soft bounds keep the river in view; release has a gentle ease-out (none under reduced motion)",
+            "Tap and drag stay separated (a short tap interacts, a drag travels); CUSTOMIZE and RITUAL_RELEASE gestures are unchanged; unit tests cover the gesture mapping and the bounds, e2e covers drag-pan with touch and mouse",
+            "No per-frame allocation while dragging"
+          ],
+          "labels": [
+            "3d",
+            "camera",
+            "interaction",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "3.2",
+            "3.3"
+          ]
+        },
+        {
+          "id": "11.2",
+          "summary": "Endless river — the scene keeps rendering as you travel",
+          "goal": "Drag along the river and the world keeps going: no dead end and no manual zone switch (open question 37).",
+          "ac": [
+            "Travelling along the river never reaches an edge: banks, trees, houses and villagers continue ahead and behind, generated deterministically from the position along the river (everyone sees the same scenery)",
+            "Zones stream in seamlessly: the neighbouring zone's krathongs load before they come into view, far zones are unloaded and disposed, and the number of rendered items stays within the tier budget (80 per zone, invariant E); the zone navigator becomes a position indicator and jump shortcut",
+            "Positions are still derived only from stored coords (zone_id + SplinePathCoord); nothing new is persisted; the 2D fallback shows the same continuous river from the same data",
+            "Memory stays flat during a long travel and no hitch exceeds the tier budget when a zone streams in (probe numbers recorded in the PR the same way as docs/perf/MFW-34.md)",
+            "Find My and fly-to work along the whole river; reduced motion uses instant cuts"
+          ],
+          "labels": [
+            "3d",
+            "world",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "11.1",
+            "9.3",
+            "5.3",
+            "7.1"
+          ]
+        },
+        {
+          "id": "11.3",
+          "type": "Bug",
+          "summary": "Bug: nothing in the scene reacts to taps",
+          "goal": "Owner report 2026-11-25: on the deployed app nothing in the scene can be pressed. Taps must work and be easy to discover.",
+          "ac": [
+            "Reproduce on the production build on a phone and on a desktop browser and record the cause in the PR (which taps fail — water, lamp, krathong — in which mode and with which pointer type)",
+            "In WORLD_EXPLORE a short tap or click on water makes a ripple, on a lamp lights it, and on a krathong opens the inspect popup — with touch and mouse, on every 3D tier; the krathong tap also works in FALLBACK_2D",
+            "Tap targets are at least MIN_TOUCH_TARGET_PX on screen (invisible hit proxies where the model is smaller, e.g. lamps)",
+            "A first-visit hint shows that the scene can be tapped; it goes away after the first tap and is static under reduced motion",
+            "An e2e test taps water, a lamp and a krathong on the production build and asserts each reaction"
+          ],
+          "labels": [
+            "bug",
+            "interaction",
+            "loy-krathong"
+          ],
+          "blockedBy": [
+            "6.2"
+          ]
+        },
+        {
+          "id": "11.4",
+          "summary": "More scene gimmicks — houses, trees, villagers and sky lanterns react to taps",
+          "goal": "Small delights everywhere: most things in the scene answer a tap.",
+          "ac": [
+            "New tap reactions (final list: open question 35; default set): house → windows light up with a puff of chimney smoke; tree → leaves shake and a few fall; villager → waves or hops; lantern → a sky lantern (โคมลอย) rises and fades",
+            "Every interactive object uses the same feedback language (small bounce + glow) so people learn what can be tapped",
+            "Every effect comes from ObjectPoolManager with a fixed cap from config: no new objects per tap and no per-frame allocation (r3f-perf-reviewer PASS)",
+            "Reduced motion: reactions are instant state changes without bounce or particles; nothing flashes faster than WCAG 2.3.1 allows",
+            "Unit tests cover each reaction's timing and pool cap; e2e taps at least one new gimmick"
+          ],
+          "labels": [
+            "loy-krathong",
+            "interaction",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "11.3",
+            "9.3",
+            "9.4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L12",
+      "summary": "Loop 12 — Wish Visibility Switch & Display Name",
+      "description": "Owner request 2026-11-25 (open questions 29, 36): the wish is private by default and its owner can switch it open or closed; when open, everyone sees both the name and the wish. Replaces the one-time private / anonymous-public choice of spec §6.4 Task 4.3.",
+      "labels": [
+        "loop-12",
+        "privacy",
+        "loy-krathong",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "12.1",
+          "summary": "Wish visibility switch & display name — data and API",
+          "goal": "The server lets an owner open or close a wish at any time without ever leaking a closed one.",
+          "ac": [
+            "New migration file (existing migrations untouched): a nullable public display_name on creations_public and an encrypted private display name next to the private wish; RLS and grants stay closed (anon and authenticated denied on every table, view and function)",
+            "POST /api/creations accepts displayName; the name passes the same server moderation guard as public wish text (PII and profanity, Thai and English) and a length limit from config (open question 36)",
+            "A new ownership endpoint (POST; raw owner token only in the body; constant-time hash compare; uniform not-found answer) switches a creation open or closed. Opening: the server decrypts the wish and name, runs the moderation guard, and only if it passes writes public_wish_text and display_name and clears the ciphertext. Closing: encrypts both back into the private table and clears them from the public row",
+            "The text and name exist in exactly one store at a time; a wish hidden by reports or moderation stays hidden whatever the switch says",
+            "Public responses carry display_name and public_wish_text only for open, visible wishes; a test asserts owner_token, owner_token_hash and private_wish_text never appear",
+            "Works with the in-memory repository when Supabase env is absent; tests cover open → close → open, a moderation rejection on open, and a wrong token"
+          ],
+          "labels": [
+            "privacy",
+            "db",
+            "migration",
+            "api",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "2.4",
+            "7.2"
+          ]
+        },
+        {
+          "id": "12.2",
+          "summary": "Wish visibility switch & display name — UI",
+          "goal": "Writing a wish is simple: a name, the wish, and one switch that says who can see it.",
+          "ac": [
+            "Wish step: a name field and a single switch \"เปิดให้ทุกคนเห็น\" (off = private) replace the two-option choice; the helper text says clearly that when it is on, everyone sees the name and the wish (name rules: open question 36)",
+            "The owner can flip the switch later from My Creations / the owner section of the inspect popup on the owning device; the change shows at once and survives a reload; a moderation rejection shows the reasons and the wish stays private",
+            "Inspect popup: an open wish shows name + wish + Report; a closed wish shows only the krathong to everyone else (no name, no text)",
+            "The raw token is sent only in the POST body; the name and wish are not kept on the device outside the existing owner flow; the 2D fallback has the same switch and popup",
+            "Component tests cover the switch states and errors; e2e covers create-open, switch to private and switch back"
+          ],
+          "labels": [
+            "privacy",
+            "ui",
+            "loy-krathong",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "12.1",
+            "4.3"
+          ]
+        }
+      ]
+    },
+    {
       "id": "LS",
       "summary": "Festival Config Stubs (Roadmap 2026–2027)",
       "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",

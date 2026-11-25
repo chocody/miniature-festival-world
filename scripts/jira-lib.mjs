@@ -34,6 +34,8 @@ export const LABEL_HANDED_OFF = "handed-off";
 /** Every comment written by the automation starts with this marker, so human comments can be told apart. */
 export const BOT_PREFIX = "[mfw-loop]";
 export const RISK_LABELS = ["privacy", "db", "migration"];
+/** Owner rule 2026-11-25: a card with this label runs its dev agent on opus (looks, scene design, key features). */
+export const DEV_OPUS_LABEL = "dev-opus";
 
 const KEY_RE = /^MFW-\d+$/;
 
@@ -872,7 +874,8 @@ const SIZES = ["S", "M", "L"];
 /**
  * Mechanical baseline for the S/M/L estimate. The skill may only raise it (cross-cutting work or a
  * new subsystem → L); it never goes below the risk floor. `devModel` is `sonnet` for every size (owner rule
- * 2026-11-23: dev runs on sonnet when the lead's spec is file-level; the skill switches to opus only if it is not).
+ * 2026-11-23: dev runs on sonnet when the lead's spec is file-level; the skill switches to opus only if it is not),
+ * except cards labelled `dev-opus` (owner rule 2026-11-25: model / scene looks, scene design and key features) → `opus`.
  * @param {{ acCount: number, labels: string[] }} input
  */
 export function suggestSize({ acCount, labels }) {
@@ -885,7 +888,9 @@ export function suggestSize({ acCount, labels }) {
     reasons.push(`risk label(s) ${risky.join(", ")} → at least M`);
     if (SIZES.indexOf(size) < SIZES.indexOf(floor)) size = floor;
   }
-  return { size, floor, reasons, devModel: "sonnet" };
+  const devModel = labels.includes(DEV_OPUS_LABEL) ? "opus" : "sonnet";
+  if (devModel === "opus") reasons.push(`label ${DEV_OPUS_LABEL} → dev on opus`);
+  return { size, floor, reasons, devModel };
 }
 
 /** The only marker that closes an open question: `Decided in MFW-<n>` (optionally followed by `: <decision>`). */

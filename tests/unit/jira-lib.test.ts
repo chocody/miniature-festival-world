@@ -330,6 +330,12 @@ describe("size estimate", () => {
     expect(suggestSize({ acCount: 5, labels: [] })).toMatchObject({ size: "L", devModel: "sonnet" });
   });
 
+  it("runs the dev on opus only for cards labelled dev-opus", () => {
+    expect(suggestSize({ acCount: 5, labels: ["3d", "dev-opus"] })).toMatchObject({ size: "L", devModel: "opus" });
+    expect(suggestSize({ acCount: 5, labels: ["3d", "art"] })).toMatchObject({ devModel: "sonnet" });
+    expect(suggestSize({ acCount: 2, labels: ["dev-opus"] }).reasons).toContain("label dev-opus → dev on opus");
+  });
+
   it("puts privacy/db/migration work at M or above", () => {
     expect(suggestSize({ acCount: 1, labels: ["privacy"] })).toMatchObject({ size: "M", floor: "M" });
     expect(suggestSize({ acCount: 6, labels: ["db"] })).toMatchObject({ size: "L", floor: "M" });
