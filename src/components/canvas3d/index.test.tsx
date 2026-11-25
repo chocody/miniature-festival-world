@@ -23,7 +23,9 @@ import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.rive
 import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
-import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes } from "@/core/world";
+import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes, getRiverItemPositionAt } from "@/core/world";
+import { getCameraFlightPose } from "@/core/camera";
+import { HIGHLIGHT_RING_SIZES } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
@@ -106,7 +108,7 @@ vi.mock("./RiverFlow", async (importOriginal) => {
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
   camera: null as OrthographicCamera | null,
-  flightStarts: [] as { immediate: boolean }[],
+  flightStarts: [] as { immediate: boolean; to?: object }[],
   bounceStarts: [] as { immediate: boolean; from?: { scale: number }; to: { scale: number } }[],
 }));
 
@@ -920,5 +922,178 @@ describe("scene gimmicks (MFW-28)", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("Find My (MFW-30)", () => {
+  const storeItem = (zoneId: number, i: number): PublicCreation => ({
+    id: `00000000-0000-4000-8000-${String(zoneId * 1000 + i).padStart(12, "0")}`,
+    eventId: "loy_krathong",
+    zoneId,
+    appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+    coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    publicWishText: null,
+    createdAt: "2026-11-24T12:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  const setWorld = (zoneId: number, items: PublicCreation[]) =>
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: zoneId, zoneCount: 3, zoneStatus: "ready", zoneItems: items });
+    });
+  const focus = (id: string | null, request: number) =>
+    act(() => useWorldStore.setState({ focusedCreationId: id, focusRequestId: request }));
+  const riverGroups = (c: HTMLElement) => [...c.querySelectorAll('[name^="river-item-"]')];
+  const anchor = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.findMyAnchor}"]`);
+  const expectedWorld = (c: PublicCreation) => {
+    const lanes = getLoyKrathongRiverLanes();
+    const [prepared] = prepareRiverItems([{ id: c.id, coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) }], lanes);
+    return getRiverItemPositionAt(prepared, lanes, Date.now())!.world;
+  };
+  const useAttributePositions = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(this: Element, target: Vector3) {
+        const [x = 0, y = 0, z = 0] = (this.getAttribute("position") ?? "0,0,0").split(",").map(Number);
+        target.set(x, y, z);
+        return target;
+      },
+    });
+  const restoreStub = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(target: Vector3) {
+        target.set(0, 0, 0);
+        return target;
+      },
+    });
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-9);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-11-24T12:00:30.000Z"));
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useAttributePositions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreStub();
+  });
+
+  it("a focus request flies to the krathong's current position", () => {
+    const items = [storeItem(2, 1), storeItem(2, 2)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[1].id, 1);
+    expect(viewport()).toHaveAttribute("data-selected-target", "riverKrathong");
+    expect(viewport()).toHaveAttribute("data-find-my", "following");
+    const node = anchor(container)!;
+    expect(container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!.contains(node)).toBe(true);
+    const world = expectedWorld(items[1]);
+    const [x, y, z] = node.getAttribute("position")!.split(",").map(Number);
+    near(x, world.x);
+    near(y, world.y);
+    near(z, world.z);
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    const flight = r3f.flightStarts[before];
+    expect(flight.immediate).toBe(false);
+    const pose = getCameraFlightPose(world);
+    for (const [k, v] of Object.entries(pose)) near((flight.to as Record<string, number>)[k], v);
+  });
+
+  it("reduced motion: the Find My flight is an instant cut", () => {
+    useDeviceStore.setState({ reducedMotion: true });
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    expect(r3f.flightStarts[before].immediate).toBe(true);
+  });
+
+  it("selecting the same krathong again flies again", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    focus(items[0].id, 2);
+    expect(r3f.flightStarts).toHaveLength(before + 2);
+  });
+
+  it("the highlight targets the focused krathong", () => {
+    const items = [storeItem(2, 1), storeItem(2, 2)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(container.querySelector("ringgeometry")).toBeNull();
+    focus(items[1].id, 1);
+    expect(viewport()).toHaveAttribute("data-selected-target", "riverKrathong");
+    const ring = container.querySelector("ringgeometry")!;
+    const { innerRadius, outerRadius } = HIGHLIGHT_RING_SIZES.riverKrathong;
+    expect(ring.getAttribute("args")!.startsWith(`${innerRadius},${outerRadius},`)).toBe(true);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(viewport()).not.toHaveAttribute("data-find-my");
+    expect(container.querySelector(`[name="river-item-${items[1].id}"]`)).not.toBeNull();
+  });
+
+  it("a zone switch drops the focus", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(items[0].id, 1);
+    expect(anchor(container)).not.toBeNull();
+    act(() => useWorldStore.setState({ focusedCreationId: null, zoneItems: [storeItem(3, 1)], currentZoneId: 3 }));
+    expect(anchor(container)).toBeNull();
+    expect(viewport()).not.toHaveAttribute("data-selected-target");
+    expect(viewport()).not.toHaveAttribute("data-find-my");
+  });
+
+  it("an unknown id does not fly", () => {
+    setWorld(2, [storeItem(2, 1)]);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    focus("00000000-0000-4000-8000-999999999999", 1);
+    expect(r3f.flightStarts).toHaveLength(before);
+    expect(anchor(container)).toBeNull();
+  });
+
+  it("outside WORLD_EXPLORE nothing happens", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    const before = r3f.flightStarts.length;
+    focus(items[0].id, 1);
+    expect(anchor(container)).toBeNull();
+    expect(r3f.flightStarts).toHaveLength(before);
+  });
+
+  it("a tier-hidden focus is pinned and followed", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const items = Array.from({ length: 80 }, (_, i) => storeItem(2, i + 1));
+    const cap = TIER_BUDGETS.LOW.riverItemCap;
+    const prepared = prepareRiverItems(
+      items.map((c) => ({ id: c.id, coord: c.coord as never, createdAtMs: Date.parse(c.createdAt) })),
+      getLoyKrathongRiverLanes(),
+    );
+    const shown = new Set(selectVisibleRiverItems(prepared, cap).map((i) => i.id));
+    const hidden = items.find((c) => !shown.has(c.id))!;
+    setWorld(2, items);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(hidden.id, 1);
+    expect(container.querySelector(`[name="river-item-${hidden.id}"]`)).not.toBeNull();
+    expect(anchor(container)).not.toBeNull();
+    expect(riverGroups(container)).toHaveLength(cap);
+  });
+
+  it("no data-* attribute contains the focused id", () => {
+    const items = [storeItem(2, 1)];
+    setWorld(2, items);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    focus(items[0].id, 1);
+    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+      expect(viewport().getAttribute(attr)).not.toContain(items[0].id);
+    }
   });
 });

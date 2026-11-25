@@ -63,8 +63,9 @@ import {
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
-import { getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems, type RiverSpot } from "@/core/world";
+import { findFocusedRiverItem, getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems, type RiverSpot } from "@/core/world";
 import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseKind, type OwnKrathongPoseKind, type RitualState } from "@/core/ritual";
+import { FindMyAnchor } from "./FindMyAnchor";
 import { OwnKrathong } from "./OwnKrathong";
 import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
@@ -150,6 +151,8 @@ interface ToyNightSceneProps {
   onTouchedDown: (attempt: number, at: WorldXZ) => void;
   onSettled: (attempt: number) => void;
   pierFocusRef: RefObject<Group | null>;
+  findMyItem: RiverFlowItem | null;
+  findMyAnchorRef: RefObject<Group | null>;
 }
 
 const ToyNightScene = memo(function ToyNightScene({
@@ -181,6 +184,8 @@ const ToyNightScene = memo(function ToyNightScene({
   onTouchedDown,
   onSettled,
   pierFocusRef,
+  findMyItem,
+  findMyAnchorRef,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   return (
@@ -237,6 +242,9 @@ const ToyNightScene = memo(function ToyNightScene({
           pinnedIds={pinnedRiverIds}
           onItemTapped={onRiverItemTapped}
         />
+        {findMyItem && (
+          <FindMyAnchor item={findMyItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} anchorRef={findMyAnchorRef} />
+        )}
         <SceneEffects
           handleRef={effectsRef}
           caps={effectCaps}
@@ -385,6 +393,13 @@ export function SceneViewport({
     () => excludeOwnAndCap(visibleRiverItems, ritual.saved?.id ?? null, ownShown),
     [visibleRiverItems, ritual.saved, ownShown],
   );
+  const focusRequestId = useWorldStore((s) => s.focusRequestId);
+  const findMyItem = useMemo(
+    () => (mode === "WORLD_EXPLORE" ? findFocusedRiverItem(visibleRiverItems, focusedCreationId) : null),
+    [mode, visibleRiverItems, focusedCreationId],
+  );
+  const findMyAnchorRef = useRef<Group | null>(null);
+  const [seenFocusRequestId, setSeenFocusRequestId] = useState(0);
   const pinnedRiverIds = useMemo(
     () => (focusedCreationId === null ? NO_PINNED_RIVER_IDS : Object.freeze([focusedCreationId])),
     [focusedCreationId],
@@ -421,6 +436,14 @@ export function SceneViewport({
     setSelectedTarget(null);
     setInspectedId(null);
   }
+  if (seenFocusRequestId !== focusRequestId) {
+    setSeenFocusRequestId(focusRequestId);
+    if (findMyItem !== null) {
+      setSelectedTarget("riverKrathong");
+      setFlyRequestId((requestId) => requestId + 1);
+    }
+  }
+  if (selectedTarget === "riverKrathong" && findMyItem === null) setSelectedTarget(null); // zone switch / leave cleared the focus
   const onTargetSelected = useCallback((target: CameraTargetKind) => {
     // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
     if (mode !== "WORLD_EXPLORE") return;
@@ -480,7 +503,9 @@ export function SceneViewport({
       ? krathongTargetRef
       : selectedTarget === "lamp"
         ? lampTargetRef
-        : null;
+        : selectedTarget === "riverKrathong"
+          ? findMyAnchorRef
+          : null;
   const cameraTargetRef: TargetRef | null =
     activeTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
 
@@ -621,6 +646,7 @@ export function SceneViewport({
       style={{ backgroundColor: TOY_SCENE_LIGHTING.background }}
       data-quality-tier={qualityTier}
       data-selected-target={selectedTarget ?? undefined}
+      data-find-my={selectedTarget === "riverKrathong" ? "following" : undefined}
       data-interaction-mode={mode ?? undefined}
       data-zone-id={mode === "WORLD_EXPLORE" ? worldZoneId ?? undefined : undefined}
       data-river-item-count={visibleRiverItems.length}
@@ -684,6 +710,8 @@ export function SceneViewport({
             onTouchedDown={onTouchedDown}
             onSettled={onSettled}
             pierFocusRef={pierFocusRef}
+            findMyItem={findMyItem}
+            findMyAnchorRef={findMyAnchorRef}
           />
           {cameraTargetRef && (
             <CameraFlightController

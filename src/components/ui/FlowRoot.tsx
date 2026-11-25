@@ -7,10 +7,12 @@ import { useUIStore } from "@/store/useUIStore";
 import { isRitualBumped } from "@/core/ritual";
 import { getReleaseCreation } from "@/services/api/releaseCreation";
 import { getZonePagination } from "@/services/api/zonePagination";
+import { installMyCreationsRecorder } from "@/services/auth/myCreationsVault";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
+import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { WishModal } from "./WishModal";
 import { ZoneNavigator } from "./ZoneNavigator";
@@ -39,6 +41,9 @@ export function FlowRoot() {
   const show3D = profiled && qualityTier !== "FALLBACK_2D";
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
+
+  // Every saved release is recorded in this device's creation list (MFW-30; owner decision 12).
+  useEffect(() => installMyCreationsRecorder(getReleaseCreation()), []);
 
   // The ritual finishes only after the release settled (or completed instantly without a scene).
   useEffect(() => {
@@ -80,6 +85,7 @@ export function FlowRoot() {
         </Suspense>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
+      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
       ) : flowState === "CUSTOMIZE_OBJECT" ? (

@@ -9,7 +9,8 @@ import { WISH_COPY } from "@/config/wish.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
 import { buildReleaseCoord } from "@/core/ritual";
-import { DEVICE_OWNER_TOKEN_STORAGE_KEY } from "@/config/ownership.config";
+import { DEVICE_OWNER_TOKEN_STORAGE_KEY, MY_CREATIONS_STORAGE_KEY } from "@/config/ownership.config";
+import { MY_CREATION_ENTRY_KEYS, MY_CREATIONS_COPY } from "@/config/myCreations.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 
@@ -264,7 +265,7 @@ describe("FlowRoot", () => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
     });
     expect(screen.getByTestId("zone-navigator")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([MY_CREATIONS_COPY.openButton]);
   });
 
   it("WRITE_WISH renders the wish modal; SUBMIT_WISH needs a valid wish", () => {
@@ -337,5 +338,37 @@ describe("FlowRoot", () => {
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("WRITE_WISH"));
     expect(useBuilderStore.getState().wishServerReasons).toEqual(["phone"]);
+  });
+
+  it("a saved release is recorded in the device's creation list", async () => {
+    const { container } = render(<FlowRoot />);
+    walkToRitual();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    const raw = window.localStorage.getItem(MY_CREATIONS_STORAGE_KEY)!;
+    const list = JSON.parse(raw) as Record<string, unknown>[];
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe("0f8b6c1e-3a2d-4c5b-9e7f-1a2b3c4d5e6f");
+    expect(list[0].zoneId).toBe(1);
+    expect(Object.keys(list[0])).toEqual([...MY_CREATION_ENTRY_KEYS]);
+    expect(raw).not.toContain(window.localStorage.getItem(DEVICE_OWNER_TOKEN_STORAGE_KEY)!);
+    expect(raw.toLowerCase()).not.toContain("wish");
+    expect(raw).not.toContain("ownerToken");
+    expect(raw).not.toContain("coord");
+  });
+
+  it("the drawer appears only in SHARED_WORLD_EXPLORE", async () => {
+    render(<FlowRoot />);
+    walkToRitual();
+    expect(screen.queryByTestId("my-creations")).toBeNull();
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    expect(screen.queryByTestId("my-creations")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    const open = await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton });
+    fireEvent.click(open);
+    const list = await screen.findByTestId("my-creations-list");
+    expect(list).toHaveTextContent("คุ้งน้ำที่ 1");
   });
 });

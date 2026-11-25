@@ -84,5 +84,6 @@ test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) 
   await expect(viewport).toHaveAttribute("data-river-item-count", "3");
   await expect(viewport).toHaveAttribute("data-zone-id", "1");
   await expect(page.locator("canvas")).toHaveCount(1);
-  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

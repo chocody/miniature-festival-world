@@ -43,5 +43,6 @@ test("flow walks from landing to SHARED_WORLD_EXPLORE", async ({ page }) => {
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   await expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
-  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("button")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });
