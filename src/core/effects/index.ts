@@ -1,2 +1,4 @@
 /** ObjectPoolManager (Ripples, Fireworks, Confetti, Glow) */
-export {};
+export * from "./objectPool";
+export * from "./objectPoolManager";
+export * from "./gimmickCurves";

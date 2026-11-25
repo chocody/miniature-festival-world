@@ -1,6 +1,10 @@
-import { act, cleanup, render } from "@testing-library/react";
-import { Euler, Vector3 } from "three";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { BufferGeometry, Euler, Vector3 } from "three";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { GIMMICK_BOUNCE } from "@/config/gimmicks.config";
+import { createBounceFrame, writeBounceAt } from "@/core/effects";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import type { SplinePathCoord } from "@/core/coordinates";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
@@ -33,6 +37,7 @@ vi.mock("@/components/models/loyKrathong", async () => {
 
 const vectors = new WeakMap<object, Vector3>();
 const eulers = new WeakMap<object, Euler>();
+const scales = new WeakMap<object, Vector3>();
 
 beforeAll(() => {
   Object.defineProperty(HTMLUnknownElement.prototype, "position", {
@@ -40,6 +45,13 @@ beforeAll(() => {
     get() {
       if (!vectors.has(this)) vectors.set(this, new Vector3());
       return vectors.get(this);
+    },
+  });
+  Object.defineProperty(HTMLUnknownElement.prototype, "scale", {
+    configurable: true,
+    get() {
+      if (!scales.has(this)) scales.set(this, new Vector3(1, 1, 1));
+      return scales.get(this);
     },
   });
   Object.defineProperty(HTMLUnknownElement.prototype, "rotation", {
@@ -54,6 +66,7 @@ beforeAll(() => {
 afterAll(() => {
   delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).position;
   delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).rotation;
+  delete (HTMLUnknownElement.prototype as unknown as Record<string, unknown>).scale;
 });
 
 let NOW = 1_700_000_000_000 + 30_000;
@@ -68,8 +81,8 @@ const mk = (id: string, laneId = 1, spawnProgress = 0.2): RiverFlowItem => ({
 const itemA = mk("a");
 const items = [itemA, mk("b", 1, 0.6), mk("bad", 99)];
 const el = (c: HTMLElement, id: string) => c.querySelector(`[name="river-item-${id}"]`) as unknown as { position: Vector3; rotation: Euler };
-const ui = (props: { items?: readonly RiverFlowItem[]; reducedMotion?: boolean; shadows?: boolean } = {}) => (
-  <RiverFlow items={props.items ?? items} lanes={lanes} shadows={props.shadows ?? true} reducedMotion={props.reducedMotion ?? false} now={() => NOW} />
+const ui = (props: { items?: readonly RiverFlowItem[]; reducedMotion?: boolean; shadows?: boolean; onItemTapped?: (id: string) => void } = {}) => (
+  <RiverFlow items={props.items ?? items} lanes={lanes} shadows={props.shadows ?? true} reducedMotion={props.reducedMotion ?? false} now={() => NOW} onItemTapped={props.onItemTapped} />
 );
 
 beforeEach(() => {
@@ -160,7 +173,6 @@ describe("river render budget (MFW-25)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(ui({ items: many(85) }));
     expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(80);
-    expect(container.querySelector('[name="river-flow"]')!.getAttribute("data-visible-cap")).toBe("80");
   });
 
   it("LOW renders at most its tier cap", () => {
@@ -229,5 +241,86 @@ describe("river render budget (MFW-25)", () => {
     useDeviceStore.getState().setQualityTier("FALLBACK_2D");
     const { container } = render(ui({ items: many(5) }));
     expect(container.querySelector('[name="river-flow"]')).toBeNull();
+  });
+});
+
+describe("river krathong tap (MFW-28)", () => {
+  const scaleX = (c: HTMLElement, id: string) => (c.querySelector(`[name="river-bounce-${id}"]`) as unknown as { scale: Vector3 }).scale.x;
+  const tap = (c: HTMLElement, id: string) => fireEvent.click(c.querySelector(`[name="river-hit-${id}"]`)!);
+
+  it("has no hit proxies without onItemTapped", () => {
+    const { container } = render(ui());
+    expect(container.querySelectorAll('[name^="river-hit-"]')).toHaveLength(0);
+  });
+
+  it("renders one invisible hit proxy per item after the bounce group", () => {
+    const { container } = render(ui({ onItemTapped: vi.fn() }));
+    const proxies = container.querySelectorAll('[name^="river-hit-"]');
+    expect(proxies).toHaveLength(2);
+    for (const p of proxies) {
+      expect(p.previousElementSibling?.getAttribute("name")).toMatch(/^river-bounce-/);
+    }
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(2);
+    // React's DOM stub drops visible={false}, so the invisibility is pinned in the source instead.
+    expect(readFileSync(join(process.cwd(), "src/components/canvas3d/RiverFlow.tsx"), "utf8")).toMatch(/name=\{`river-hit-[^`]*`\}[\s\S]{0,200}visible=\{false\}/);
+  });
+
+  it("bounces once and inspects", () => {
+    const onItemTapped = vi.fn();
+    const { container } = render(ui({ onItemTapped }));
+    r3f.invalidate.mockClear();
+    tap(container, "a");
+    expect(onItemTapped).toHaveBeenCalledTimes(1);
+    expect(onItemTapped).toHaveBeenCalledWith("a");
+    expect(r3f.invalidate).toHaveBeenCalled();
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(writeBounceAt(GIMMICK_BOUNCE.periodMs / 4, false, createBounceFrame()).scale);
+    expect(scaleX(container, "a")).toBeGreaterThan(1);
+    NOW += GIMMICK_BOUNCE.durationMs;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("reduced motion: inspects but never scales", () => {
+    const onItemTapped = vi.fn();
+    const { container } = render(ui({ onItemTapped, reducedMotion: true }));
+    tap(container, "a");
+    expect(onItemTapped).toHaveBeenCalledWith("a");
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("a tap on another krathong settles the first", () => {
+    const { container } = render(ui({ onItemTapped: vi.fn() }));
+    tap(container, "a");
+    NOW += GIMMICK_BOUNCE.periodMs / 4;
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBeGreaterThan(1);
+    tap(container, "b");
+    r3f.frame!();
+    expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("creates the proxy assets once and disposes them on unmount", () => {
+    const spy = vi.spyOn(BufferGeometry.prototype, "dispose");
+    const view = render(ui({ onItemTapped: vi.fn() }));
+    view.rerender(ui({ onItemTapped: vi.fn(), items: [itemA, mk("c", 1, 0.8)] }));
+    expect(spy).toHaveBeenCalledTimes(0);
+    view.unmount();
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});
+
+describe("R3F props (QA crash regression)", () => {
+  it("RiverFlow puts no dashed data-* prop on a three.js element (R3F reads dashes as a pierce path and crashes)", () => {
+    const src = readFileSync(join(__dirname, "RiverFlow.tsx"), "utf8");
+    expect(src).not.toMatch(/\sdata-[a-z-]+=\{/);
   });
 });

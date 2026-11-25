@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_QUALITY_TIER,
+  EFFECT_KINDS,
+  EFFECT_POOL_CAPS,
   FALLBACK_FPS_THRESHOLD,
   FPS_SAMPLE_WINDOW_MS,
   FPS_STALL_GAP_MS,
@@ -64,5 +66,18 @@ describe("performance.config (owner numbers, open question #5)", () => {
   it("antialias per tier (lead decision, MFW-27)", () => {
     expect(TIER_ANTIALIAS).toEqual({ HIGH: true, MEDIUM: true, LOW: false });
     expect(Object.isFrozen(TIER_ANTIALIAS)).toBe(true);
+  });
+  it("effect pool caps per tier (lead decision, MFW-28)", () => {
+    expect(Object.isFrozen(EFFECT_POOL_CAPS)).toBe(true);
+    for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) {
+      const caps = EFFECT_POOL_CAPS[tier];
+      expect(Object.isFrozen(caps)).toBe(true);
+      expect(Object.keys(caps).sort()).toEqual([...EFFECT_KINDS].sort());
+      for (const kind of EFFECT_KINDS) expect(Number.isInteger(caps[kind]) && caps[kind] > 0).toBe(true);
+    }
+    for (const kind of EFFECT_KINDS) {
+      expect(EFFECT_POOL_CAPS.HIGH[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.MEDIUM[kind]);
+      expect(EFFECT_POOL_CAPS.MEDIUM[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.LOW[kind]);
+    }
   });
 });

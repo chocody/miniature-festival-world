@@ -67,6 +67,7 @@ describe("RiverEnvironment", () => {
     const { container } = render(<RiverEnvironment {...props} />);
     fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.water}"]`)!);
     expect(props.onWaterSelected).toHaveBeenCalledTimes(1);
+    expect(props.onWaterSelected).toHaveBeenCalledWith(null);
     fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.lampHeads}"]`)!);
     expect(props.onLampSelected).toHaveBeenCalledWith(0);
   });

@@ -26,8 +26,13 @@ import {
   SCENE_CAMERA_NEAR,
   SCENE_CAMERA_ZOOM,
 } from "@/config/camera.config";
-import type { QualityTier, RenderTier } from "@/config/performance.config";
-import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import type { EffectPoolCaps, QualityTier, RenderTier } from "@/config/performance.config";
+import { EFFECT_POOL_CAPS, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import type { WorldXZ } from "@/core/coordinates";
+import { InspectPopup } from "@/components/ui/InspectPopup";
+import { findInspectedCreation } from "@/components/ui/inspectedCreation";
+import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
 import { createCameraController, updateHighlightPosition } from "@/core/camera";
 import type { CameraTargetKind } from "@/core/camera";
@@ -129,6 +134,10 @@ interface ToyNightSceneProps {
   waterTargetRef: RefObject<Mesh | null>;
   krathongTargetRef: RefObject<Group | null>;
   lampTargetRef: RefObject<Group | null>;
+  effectCaps: EffectPoolCaps;
+  effectsRef: Ref<SceneEffectsHandle>;
+  onWaterSelected: (tap: WorldXZ | null) => void;
+  onRiverItemTapped?: (id: string) => void;
 }
 
 function ToyNightScene({
@@ -147,6 +156,10 @@ function ToyNightScene({
   waterTargetRef,
   krathongTargetRef,
   lampTargetRef,
+  effectCaps,
+  effectsRef,
+  onWaterSelected,
+  onRiverItemTapped,
 }: ToyNightSceneProps) {
   return (
     <>
@@ -170,7 +183,7 @@ function ToyNightScene({
           layout={LOY_KRATHONG_RIVER_LAYOUT}
           shadows={shadows}
           waterRef={waterTargetRef}
-          onWaterSelected={() => onTargetSelected("water")}
+          onWaterSelected={onWaterSelected}
           lampFocusRef={lampTargetRef}
           selectedLampIndex={selectedLampIndex}
           onLampSelected={onLampSelected}
@@ -200,6 +213,15 @@ function ToyNightScene({
           shadows={shadows}
           reducedMotion={reducedMotion}
           pinnedIds={pinnedRiverIds}
+          onItemTapped={onRiverItemTapped}
+        />
+        <SceneEffects
+          handleRef={effectsRef}
+          caps={effectCaps}
+          reducedMotion={reducedMotion}
+          waterSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
+          lamps={LOY_KRATHONG_RIVER_LAYOUT.lamps}
+          lampHead={RIVER_ENVIRONMENT_PARTS.lampHead}
         />
       </group>
     </>
@@ -336,9 +358,14 @@ export function SceneViewport({
   const [selectedTarget, setSelectedTarget] = useState<CameraTargetKind | null>(null);
   const [flyRequestId, setFlyRequestId] = useState(0);
   const [selectionMode, setSelectionMode] = useState(mode);
+  const effectsRef = useRef<SceneEffectsHandle | null>(null);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [gimmick, setGimmick] = useState<{ kind: SceneGimmickKind | null; count: number }>({ kind: null, count: 0 });
+  const recordGimmick = useCallback((kind: SceneGimmickKind) => setGimmick((g) => ({ kind, count: g.count + 1 })), []);
   if (selectionMode !== mode) {
     setSelectionMode(mode);
     setSelectedTarget(null);
+    setInspectedId(null);
   }
   const onTargetSelected = useCallback((target: CameraTargetKind) => {
     // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
@@ -347,12 +374,36 @@ export function SceneViewport({
     setFlyRequestId((requestId) => requestId + 1);
   }, [mode]);
 
+  const onWaterSelected = useCallback((tap: WorldXZ | null) => {
+    if (mode !== "WORLD_EXPLORE") return;
+    onTargetSelected("water");
+    if (tap && effectsRef.current) {
+      effectsRef.current.spawnRipple(tap);
+      recordGimmick("ripple");
+    }
+  }, [mode, onTargetSelected, recordGimmick]);
+
   const onLampSelected = useCallback((index: number) => {
     if (mode !== "WORLD_EXPLORE") return;
     setSelectedLampIndex(index);
     setSelectedTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
-  }, [mode]);
+    if (effectsRef.current) {
+      effectsRef.current.lightLamp(index);
+      recordGimmick("lamp-glow");
+    }
+  }, [mode, recordGimmick]);
+
+  const onRiverItemTapped = useCallback((id: string) => {
+    if (mode !== "WORLD_EXPLORE") return;
+    setInspectedId(id);
+    recordGimmick("inspect");
+  }, [mode, recordGimmick]);
+
+  const inspected = useMemo(
+    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedCreation(visibleRiverItems, inspectedId) : null),
+    [mode, inspectedId, visibleRiverItems],
+  );
 
   const activeTargetRef = selectedTarget === "water"
     ? waterTargetRef
@@ -459,8 +510,10 @@ export function SceneViewport({
   if (!profiled || qualityTier === "FALLBACK_2D") return null;
 
   const settings = getSceneRenderSettings(qualityTier as Exclude<QualityTier, "FALLBACK_2D">);
+  const effectCaps = EFFECT_POOL_CAPS[qualityTier as RenderTier];
 
   return (
+    <>
     <section
       aria-label="Toy-like night river preview"
       className="relative mb-8 h-64 w-full touch-none select-none overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
@@ -473,6 +526,8 @@ export function SceneViewport({
       data-camera-locked={mode ? String(isCameraLocked(mode)) : undefined}
       data-last-interaction={lastInteraction ?? undefined}
       data-input-target={mode === "WORLD_EXPLORE" ? "water" : undefined}
+      data-last-gimmick={gimmick.kind ?? undefined}
+      data-gimmick-count={gimmick.count}
       ref={viewportRef}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -514,6 +569,10 @@ export function SceneViewport({
             waterTargetRef={waterTargetRef}
             krathongTargetRef={krathongTargetRef}
             lampTargetRef={lampTargetRef}
+            effectCaps={effectCaps}
+            effectsRef={effectsRef}
+            onWaterSelected={onWaterSelected}
+            onRiverItemTapped={mode === "WORLD_EXPLORE" ? onRiverItemTapped : undefined}
           />
           {activeTargetRef && selectedTarget && (
             <>
@@ -542,5 +601,7 @@ export function SceneViewport({
         {lastInteraction ? `Selected ${lastInteraction}` : ""}
       </span>
     </section>
+    {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} />}
+    </>
   );
 }
