@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation, type MockCreateOptions } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 test.use({ hasTouch: true });
 
@@ -36,7 +37,7 @@ async function disableWebGl(page: Page) {
 
 async function toRitual(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");

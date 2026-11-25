@@ -29,7 +29,7 @@ src/
 │   ├── models/
 │   │   └── loyKrathong/        # [PHASE 1] โมเดลฐานกระทง ใบตอง ดอกไม้ เทียน บ้านริมน้ำ
 │   └── ui/                     # Mobile-first Overlay UI
-│       ├── EventSelector.tsx       # หน้าเลือกเทศกาล (เปิด Loy Krathong, เทศกาลอื่นขึ้น Coming Soon)
+│       ├── NoActiveEventScreen.tsx # หน้าจอเมื่อไม่มีเทศกาลที่เปิดอยู่ (MFW-53: ไม่มีหน้าเลือกเทศกาล, open questions 26/33)
 │       ├── CustomizerPanel.tsx     # แผงเลือกชิ้นส่วน สี ลวดลาย
 │       ├── WishModal.tsx           # หน้าต่างเขียนคำอวยพร + Toggle Public/Private + PII Warning
 │       ├── MyCreationsDrawer.tsx   # ปุ่มและรายการ "ค้นหาของฉัน"

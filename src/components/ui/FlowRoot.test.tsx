@@ -127,11 +127,8 @@ const stateOf = (container: HTMLElement) =>
   container.querySelector("[data-flow-state]")?.getAttribute("data-flow-state");
 
 describe("FlowRoot", () => {
-  it("clicks through all 5 states", async () => {
-    const { container } = render(<FlowRoot />);
-    expect(stateOf(container)).toBe("LANDING_EVENT_SELECT");
-    expect(container.querySelector("[data-flow-state]")).not.toHaveAttribute("data-interaction-mode");
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+  it("clicks through all 4 states", async () => {
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -146,9 +143,7 @@ describe("FlowRoot", () => {
   });
 
   it("shows the ownership notice only in WRITE_WISH", async () => {
-    render(<FlowRoot />);
-    expect(screen.queryByRole("note")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     expect(screen.queryByRole("note")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
@@ -162,9 +157,7 @@ describe("FlowRoot", () => {
   });
 
   it("CUSTOMIZE_OBJECT shows the customizer panel only in that step", () => {
-    render(<FlowRoot />);
-    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
@@ -172,8 +165,7 @@ describe("FlowRoot", () => {
 
   it("3D tier: the bar's view buttons drive the scene", async () => {
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
-    render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     await screen.findByTestId("scene-viewport");
     fireEvent.click(screen.getByRole("button", { name: "หมุนขวา" }));
     expect(viewSpies.rotate).toHaveBeenCalledWith(1);
@@ -182,8 +174,7 @@ describe("FlowRoot", () => {
   });
 
   it("FALLBACK_2D and unprofiled: bar without view buttons", async () => {
-    render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
@@ -192,14 +183,19 @@ describe("FlowRoot", () => {
     expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
   });
 
-  it("clicking a Coming Soon festival keeps landing", () => {
-    const { container } = render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Christmas/ }));
-    expect(stateOf(container)).toBe("LANDING_EVENT_SELECT");
+  it("opens straight into the active event: no selector, festival list or Coming Soon", () => {
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+    expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-active-event", "loy_krathong");
+    expect(useUIStore.getState().selectedEventId).toBe("loy_krathong");
+    expect(screen.queryByText("Coming Soon")).toBeNull();
+    expect(screen.queryByText("เลือกเทศกาล")).toBeNull();
+    expect(container.querySelector("[data-event-id]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Christmas|New Year|Songkran|Halloween/ })).toBeNull();
   });
 
   it("exposes quality tier and reduced motion from the device store", () => {
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     const root = container.querySelector("[data-flow-state]")!;
     expect(root).toHaveAttribute("data-quality-tier", "MEDIUM");
     expect(root).toHaveAttribute("data-reduced-motion", "false");
@@ -213,11 +209,7 @@ describe("FlowRoot", () => {
 
   it("mounts the lazy scene only in canvas modes on a profiled 3D tier", async () => {
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
-    const { container } = render(<FlowRoot />);
-    await act(async () => {});
-    expect(screen.queryByTestId("scene-viewport")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
 
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -233,8 +225,7 @@ describe("FlowRoot", () => {
   });
 
   it("never mounts the scene before profiling or on FALLBACK_2D", async () => {
-    render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     await act(async () => {});
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
 
@@ -245,9 +236,7 @@ describe("FlowRoot", () => {
 
   it("FALLBACK_2D mounts the flat viewport per mode (MFW-33)", async () => {
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-    render(<FlowRoot />);
-    expect(screen.queryByTestId("flat-viewport")).toBeNull(); // landing has no interaction mode
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     expect(await screen.findByTestId("flat-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
     expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
@@ -258,8 +247,7 @@ describe("FlowRoot", () => {
   });
 
   it("a 3D tier or an unprofiled device never mounts the flat viewport", async () => {
-    render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    render(<FlowRoot eventId="loy_krathong" />);
     await act(async () => {});
     expect(screen.queryByTestId("flat-viewport")).toBeNull();
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
@@ -268,8 +256,7 @@ describe("FlowRoot", () => {
   });
 
   it("enters the shared world once when the ritual starts and leaves on unmount", async () => {
-    const { unmount } = render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    const { unmount } = render(<FlowRoot eventId="loy_krathong" />);
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
     expect(zones.enterWorld).toHaveBeenCalledTimes(1);
@@ -283,9 +270,8 @@ describe("FlowRoot", () => {
   });
 
   it("shows the zone navigator only at SHARED_WORLD_EXPLORE, without buttons in a 1-zone world", async () => {
-    render(<FlowRoot />);
+    render(<FlowRoot eventId="loy_krathong" />);
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
@@ -302,8 +288,7 @@ describe("FlowRoot", () => {
   });
 
   it("WRITE_WISH renders the wish modal; SUBMIT_WISH needs a valid wish", () => {
-    const { container } = render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
     expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
@@ -319,8 +304,7 @@ describe("FlowRoot", () => {
 
   it("FALLBACK_2D: the wish modal works and no scene mounts", async () => {
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-    const { container } = render(<FlowRoot />);
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
     expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
@@ -332,14 +316,13 @@ describe("FlowRoot", () => {
   });
 
   const walkToRitual = () => {
-    fireEvent.click(screen.getByRole("button", { name: /Loy Krathong/ }));
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
   };
 
   it("release finishes the ritual (FALLBACK_2D)", async () => {
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
@@ -354,7 +337,7 @@ describe("FlowRoot", () => {
   it("a failed save stays in the ritual", async () => {
     api.status = 503;
     api.body = { error: "unavailable" };
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-ritual-error", "unavailable"));
@@ -366,7 +349,7 @@ describe("FlowRoot", () => {
   it("moderation-blocked returns to the wish", async () => {
     api.status = 422;
     api.body = { error: "moderation_blocked", reasons: ["phone"] };
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("WRITE_WISH"));
@@ -374,7 +357,7 @@ describe("FlowRoot", () => {
   });
 
   it("a saved release is recorded in the device's creation list", async () => {
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
@@ -391,7 +374,7 @@ describe("FlowRoot", () => {
   });
 
   it("the drawer appears only in SHARED_WORLD_EXPLORE", async () => {
-    render(<FlowRoot />);
+    render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     expect(screen.queryByTestId("my-creations")).toBeNull();
     act(() => {
@@ -406,7 +389,7 @@ describe("FlowRoot", () => {
   });
 
   it("the drawer entry offers the private wish reveal (MFW-31)", async () => {
-    const { container } = render(<FlowRoot />);
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     act(() => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });

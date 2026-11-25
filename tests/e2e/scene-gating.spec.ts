@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 test.use({ hasTouch: true });
 
@@ -33,7 +34,7 @@ async function expectNoScene(page: Page) {
 const nextFrames = (page: Page) =>
   page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
-test("3D tier: landing ships no WebGL chunk; canvas only in canvas modes; ritual taps never select", async ({ page }) => {
+test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ page }) => {
   await mockCreateCreation(page);
   const scriptBodies = collectScriptBodies(page);
   await page.addInitScript(() => {
@@ -42,10 +43,7 @@ test("3D tier: landing ships no WebGL chunk; canvas only in canvas modes; ritual
   });
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
-  await expectNoScene(page);
-  expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(false);
-
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(true);
 
@@ -83,7 +81,7 @@ test("FALLBACK_2D: no canvas and no WebGL chunk across the whole flow", async ({
   await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
   await expectNoScene(page);
 
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
   await expectNoScene(page);
 

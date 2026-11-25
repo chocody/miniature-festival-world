@@ -3,6 +3,7 @@ import { makeOwnZoneItem } from "./fixtures/findMyFixtures";
 import { E2E_CREATION_ID, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 test.use({ hasTouch: true });
 
@@ -71,7 +72,7 @@ async function setUp(page: Page) {
 }
 
 async function walkToWorld(page: Page) {
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
@@ -86,7 +87,7 @@ test("FALLBACK_2D customizer previews the krathong in flat vector", async ({ pag
   const errors = await setUp(page);
   await page.setViewportSize({ width: 360, height: 640 });
   await page.goto("/");
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
   await expect(page.locator(`${PREVIEW} svg`)).toBeVisible();
   await expect(page.locator(PREVIEW)).toHaveAttribute("data-krathong-base", "banana_trunk_01");

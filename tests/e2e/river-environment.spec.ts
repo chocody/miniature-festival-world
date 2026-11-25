@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 test.use({ hasTouch: true });
 
@@ -32,7 +33,7 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
     await page.goto("/");
     await expect(root(page)).toHaveAttribute("data-quality-tier", tier);
 
-    await page.getByRole("button", { name: /Loy Krathong/ }).click();
+    await waitForActiveEvent(page);
     await expect(page.locator("canvas")).toHaveCount(1);
 
     await page.getByRole("button", { name: "ถัดไป" }).click();

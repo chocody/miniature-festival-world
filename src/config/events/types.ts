@@ -12,8 +12,16 @@ export const FESTIVAL_EVENT_IDS = [
 
 export type FestivalEventId = (typeof FESTIVAL_EVENT_IDS)[number];
 
+/** A date window, ISO-8601 at a Bangkok midnight with "+07:00". startsAt inclusive, endsAt exclusive. */
+export interface EventDateWindow {
+  readonly startsAt: string;
+  readonly endsAt: string;
+}
+
 export interface FestivalEventConfig {
   readonly id: FestivalEventId;
   readonly name: string;
   readonly nameTh: string;
+  /** Roadmap occurrences, chronological, at least one (MFW-53). */
+  readonly dateWindows: readonly [EventDateWindow, ...EventDateWindow[]];
 }

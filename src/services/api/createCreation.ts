@@ -1,9 +1,9 @@
 import type { FestivalEventId } from "@/config/events/types";
-import { isEventEnabled } from "@/config/featureFlags.config";
 import { CREATE_CREATION_MAX_ATTEMPTS, CREATE_CREATION_REQUEST_MAX_BYTES } from "@/config/creationWrite.config";
 import { parseEventAppearance } from "@/core/customization/appearanceRegistry";
 import { hashOwnerToken } from "@/services/auth";
 import { toModerationBlockedBody } from "@/services/moderation";
+import { isServerActiveEvent } from "./activeEvent";
 import type { CreateCreationErrorBody, CreateCreationField, CreateCreationResponseBody } from "./createCreationTypes";
 import { parseCreateCreationRequest } from "./createCreationRequest";
 import { getCreationPlacementStrategy, type CreationPlacementStrategy, type PlacementSource } from "./creationPlacement";
@@ -21,6 +21,7 @@ export interface CreateCreationDeps {
   readonly isProduction: boolean;
   readonly now?: () => number; // default Date.now
   readonly getPlacementStrategy?: (eventId: FestivalEventId) => CreationPlacementStrategy | null;
+  readonly isEventActive?: (eventId: FestivalEventId, nowMs: number) => boolean; // default isServerActiveEvent (MFW-53)
 }
 
 const HTTP_CREATED = 201;
@@ -49,6 +50,7 @@ function unavailable(): Response {
 export async function handleCreateCreation(request: Request, deps: CreateCreationDeps): Promise<Response> {
   const now = deps.now ?? (() => Date.now());
   const placementFor = deps.getPlacementStrategy ?? getCreationPlacementStrategy;
+  const isActive = deps.isEventActive ?? isServerActiveEvent;
 
   if (!JSON_CONTENT_TYPE.test(request.headers.get("content-type") ?? "")) {
     return respond(HTTP_UNSUPPORTED_MEDIA_TYPE, { error: "unsupported_media_type" });
@@ -80,7 +82,7 @@ export async function handleCreateCreation(request: Request, deps: CreateCreatio
 
   const strategy = placementFor(eventId);
   const expiresAt = computeCreationExpiresAt(eventId);
-  if (!isEventEnabled(eventId) || strategy === null || expiresAt === null || expiresAt.getTime() <= now()) {
+  if (!isActive(eventId, now()) || strategy === null || expiresAt === null || expiresAt.getTime() <= now()) {
     return respond(HTTP_CONFLICT, { error: "event_closed" });
   }
   if (!strategy.acceptsCoord(coord)) return invalidBody("coord");
@@ -151,5 +153,6 @@ export function getDefaultCreateCreationDeps(): CreateCreationDeps {
     isProduction: isProductionDeployment(process.env),
     now: () => Date.now(),
     getPlacementStrategy: getCreationPlacementStrategy,
+    isEventActive: isServerActiveEvent,
   };
 }

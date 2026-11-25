@@ -14,6 +14,7 @@ import {
 } from "./fixtures/perfAudit";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 
 /** Phone-sized viewport: far fewer pixels for SwiftShader, so these long renders do not starve the other 3D tests running in parallel. */
 const PHONE_VIEWPORT = { width: 360, height: 800 };
@@ -109,7 +110,7 @@ async function routeZones(page: Page, zoneCount: number, sizes: Record<number, n
 
 async function walkToWorld(page: Page) {
   await page.goto("/" + E2E_PERF_PROBE_QUERY);
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
