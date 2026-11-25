@@ -107,6 +107,26 @@ async function openWorld(page: Page) {
   return errors;
 }
 
+/** MFW-57 × MFW-55: the rotate button is visible and clear of every overlay slot (top card, bottom sheet, hint). */
+async function expectRotateButtonClear(page: Page) {
+  const button = page.getByRole("button", { name: E2E_WORLD_ROTATE_BUTTON_NAME });
+  await expect(button).toBeVisible();
+  const b = (await button.boundingBox())!;
+  expect(b.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
+  expect(b.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
+  const vp = page.viewportSize()!;
+  expect(b.x).toBeGreaterThanOrEqual(0);
+  expect(b.y).toBeGreaterThanOrEqual(0);
+  expect(b.x + b.width).toBeLessThanOrEqual(vp.width);
+  expect(b.y + b.height).toBeLessThanOrEqual(vp.height);
+  for (const slot of await page.locator("[data-overlay-slot]").all()) {
+    const o = await slot.boundingBox();
+    if (!o || o.width === 0 || o.height === 0) continue;
+    const overlaps = b.x < o.x + o.width && o.x < b.x + b.width && b.y < o.y + o.height && o.y < b.y + b.height;
+    expect(overlaps, `rotate button overlaps the ${await slot.getAttribute("data-overlay-slot")} slot`).toBe(false);
+  }
+}
+
 const gimmickCount = async (page: Page) => Number(await scene(page).getAttribute("data-gimmick-count"));
 
 /** Steps 1–5: drag pans the camera (world follows the pointer), interacts with nothing, and a tap afterwards still ripples. */
@@ -175,10 +195,7 @@ test.describe("mouse", () => {
 
     // Rotate button turns the view about the focus.
     const button = page.getByRole("button", { name: E2E_WORLD_ROTATE_BUTTON_NAME });
-    await expect(button).toBeVisible();
-    const buttonBox = (await button.boundingBox())!;
-    expect(buttonBox.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
-    expect(buttonBox.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
+    await expectRotateButtonClear(page);
     const beforeRotate = (await readCamera(page))!;
     await button.click();
     await expect
@@ -219,4 +236,19 @@ test.describe("touch", () => {
     expect(errors.pageErrors).toEqual([]);
     expect(errors.consoleErrors).toEqual([]);
   });
+});
+
+test.describe("rotate button layout", () => {
+  for (const viewport of [E2E_SWIFTSHADER_3D_VIEWPORT, { width: 390, height: 844 }]) {
+    test(`${viewport.width}×${viewport.height}: the rotate button is clear of the top card and the bottom sheet`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      const errors = await openWorld(page);
+      await expectRotateButtonClear(page);
+      await page.getByRole("button", { name: "ค้นหาของฉัน" }).click(); // the top card grows with My Creations
+      await expect(page.getByTestId("my-creations")).toHaveAttribute("data-open", "true");
+      await expectRotateButtonClear(page);
+      expect(errors.pageErrors).toEqual([]);
+      expect(errors.consoleErrors).toEqual([]);
+    });
+  }
 });

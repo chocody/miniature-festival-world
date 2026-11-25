@@ -27,5 +27,5 @@ export const WHEEL_ZOOM_PER_PIXEL = 0.002;
 export const WHEEL_LINE_HEIGHT_PX = 16;
 /** One tap on the world rotate button turns the view by this much (8 taps = one turn). PLACEHOLDER (spec silent; MFW-57). */
 export const WORLD_VIEW_ROTATE_STEP_RADIANS = Math.PI / 4;
-/** World rotate button copy. DRAFT (MFW-55 restyles). */
-export const WORLD_VIEW_ROTATE_BUTTON_COPY = Object.freeze({ label: "หมุน", ariaLabel: "หมุนมุมมอง" });
+/** World rotate button: an icon button (glyph aria-hidden, the copy is its accessible name, as UI_GLYPHS). DRAFT. */
+export const WORLD_VIEW_ROTATE_BUTTON_COPY = Object.freeze({ glyph: "↻", ariaLabel: "หมุนมุมมอง" });

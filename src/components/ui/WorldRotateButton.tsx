@@ -1,11 +1,14 @@
 "use client";
 
-import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { WORLD_VIEW_ROTATE_BUTTON_COPY } from "@/config/interaction.config";
+import { UI_CLASSES } from "./uiClasses";
 
-/** DRAFT placement (MFW-57; MFW-55 restyles): fixed at the right edge, mid-height, outside the scene section. */
-export const WORLD_ROTATE_BUTTON_CLASSES =
-  "pointer-events-auto fixed top-[50dvh] right-[max(0.75rem,env(safe-area-inset-right))] z-20 -translate-y-1/2 grid place-items-center rounded-full bg-white/90 px-3 text-sm font-semibold text-zinc-900 shadow-lg dark:bg-zinc-900/90 dark:text-zinc-100";
+/**
+ * MFW-55 icon button on the translucent veil (it floats over the scene), 44 px (`min-h-11 min-w-11` = MIN_TOUCH_TARGET_PX);
+ * the focus ring is the global `:focus-visible` rule in globals.css. DRAFT placement (MFW-57): right edge, just below the
+ * middle of the screen, outside the scene section, clear of the world top card (max 50dvh) and the bottom sheet.
+ */
+export const WORLD_ROTATE_BUTTON_CLASSES = `${UI_CLASSES.iconButton.replace("bg-paper", "bg-veil")} shadow-float pointer-events-auto fixed top-[58dvh] right-[max(var(--spacing-gutter),env(safe-area-inset-right))] z-20`;
 
 /** WORLD_EXPLORE rotate button (open question 34): one tap turns the view by WORLD_VIEW_ROTATE_STEP_RADIANS. */
 export function WorldRotateButton({ onRotate }: { onRotate: () => void }) {
@@ -14,10 +17,9 @@ export function WorldRotateButton({ onRotate }: { onRotate: () => void }) {
       type="button"
       aria-label={WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel}
       className={WORLD_ROTATE_BUTTON_CLASSES}
-      style={{ minWidth: MIN_TOUCH_TARGET_PX, minHeight: MIN_TOUCH_TARGET_PX }}
       onClick={onRotate}
     >
-      {WORLD_VIEW_ROTATE_BUTTON_COPY.label}
+      <span aria-hidden="true">{WORLD_VIEW_ROTATE_BUTTON_COPY.glyph}</span>
     </button>
   );
 }
