@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { memo, useMemo, useRef } from "react";
 import type { Mesh } from "three";
+import { KRATHONG_HERO_LOD } from "@/config/krathongModel.config";
 import { assembleKrathong, type KrathongAppearance, type KrathongPartInstance } from "@/core/customization";
 import { useKrathongAssets } from "./KrathongAssetsProvider";
 import { UprightAnchor } from "./UprightAnchor";
@@ -31,7 +32,7 @@ function FlameMesh({ part, shadows }: PartMeshProps) {
     <mesh
       ref={ref}
       name={part.id}
-      geometry={assets.geometry(part.geometryKey)}
+      geometry={assets.geometry(part.geometryKey, KRATHONG_HERO_LOD)}
       material={assets.material(part.materialKey)}
       position={part.localPosition}
       rotation={[0, part.rotationY, 0]}
@@ -52,7 +53,7 @@ function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
       <mesh
         key={part.id}
         name={part.id}
-        geometry={assets.geometry(part.geometryKey)}
+        geometry={assets.geometry(part.geometryKey, KRATHONG_HERO_LOD)}
         material={assets.material(part.materialKey)}
         position={part.localPosition}
         rotation={[0, part.rotationY, 0]}

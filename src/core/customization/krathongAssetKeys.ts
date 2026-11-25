@@ -14,10 +14,14 @@ import {
   KRATHONG_INCENSE_MODEL,
   KRATHONG_LEAF_MODELS,
   KRATHONG_MATTE_SURFACE,
+  KRATHONG_RIVER_LOD_BY_TIER,
+  type KrathongLod,
+  type KrathongMeshLodSpecs,
   type KrathongMeshSpec,
   type MatteMaterialSpec,
   type PrimitiveGeometrySpec,
 } from "@/config/krathongModel.config";
+import type { QualityTier } from "@/config/performance.config";
 import type { KrathongGeometryKey, KrathongMaterialKey } from "./types";
 
 export const KRATHONG_GEOMETRY_KEYS: readonly KrathongGeometryKey[] = Object.freeze([
@@ -52,6 +56,7 @@ function has(list: readonly string[], value: string | undefined): value is strin
 interface PartShapeSpec {
   readonly geometry: PrimitiveGeometrySpec;
   readonly mesh: KrathongMeshSpec;
+  readonly lod: KrathongMeshLodSpecs;
 }
 
 function partShapeFor(key: KrathongGeometryKey): PartShapeSpec | undefined {
@@ -78,11 +83,16 @@ export function geometrySpecFor(key: KrathongGeometryKey): PrimitiveGeometrySpec
   return shape.geometry;
 }
 
-/** The v2 3D mesh (MFW-48), built by krathongMeshData. */
-export function meshSpecFor(key: KrathongGeometryKey): KrathongMeshSpec {
+/** The 3D mesh of a key at a level of detail (MFW-69; `full` = the hero / own-krathong model), built by krathongMeshData. */
+export function meshSpecFor(key: KrathongGeometryKey, lod: KrathongLod = "full"): KrathongMeshSpec {
   const shape = partShapeFor(key);
   if (shape === undefined) throw new Error(`unknown krathong mesh key: ${key}`);
-  return shape.mesh;
+  return lod === "full" ? shape.mesh : shape.lod[lod];
+}
+
+/** River-batch LOD of a quality tier (MFW-69). FALLBACK_2D draws no 3D river; "low" keeps the function total. */
+export function krathongRiverLod(tier: QualityTier): KrathongLod {
+  return tier === "FALLBACK_2D" ? "low" : KRATHONG_RIVER_LOD_BY_TIER[tier];
 }
 
 export function materialSpecFor(key: KrathongMaterialKey): MatteMaterialSpec {

@@ -38,7 +38,11 @@ function Scene({ reducedMotion = false, now }: { reducedMotion?: boolean; now?: 
 
 const lastFrame = () => r3f.frames[r3f.frames.length - 1];
 
+/** jsdom's `document.hidden` stubbed explicitly (MFW-69: the redraw interval pauses while hidden). */
+let hidden = false;
 beforeEach(() => {
+  hidden = false;
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useDeviceStore.getState().setQualityTier("HIGH");
 });
@@ -106,5 +110,30 @@ describe("FlameFlicker (MFW-48)", () => {
     expect(set).toHaveBeenCalledTimes(1);
     expect(probe.assets!.flameFlicker).toEqual({ heightScale: 1, widthScale: 1, emissiveScale: 1 });
     expect(probe.assets!.material("flame").emissiveIntensity).toBe(BASE);
+  });
+
+  it("pauses the redraw interval while the document is hidden", () => {
+    const set = vi.spyOn(window, "setInterval");
+    const clear = vi.spyOn(window, "clearInterval");
+    render(<Scene />);
+    expect(set).toHaveBeenCalledTimes(1);
+    const id = set.mock.results[0].value;
+    hidden = true;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(clear).toHaveBeenCalledWith(id);
+    hidden = false;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(set).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes the visibility listener on unmount", () => {
+    const remove = vi.spyOn(document, "removeEventListener");
+    const { unmount } = render(<Scene />);
+    unmount();
+    expect(remove).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
   });
 });

@@ -185,6 +185,8 @@ Captured on the production build with SwiftShader WebGL (HIGH tier, before the f
 
 ## 10. Krathong v2 (MFW-48)
 
+Superseded in part by §11 (krathong v3 detail, MFW-69): leaves, flowers, base lip, candle and flame shapes and the per-tier LOD.
+
 Backlog 9.2. Every value mirrors `src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it
 from the screenshots below. Appearance keys and stored appearance data are unchanged, so saved krathongs render with v2.
 The same model is drawn in the customizer, at the pier and on the river; the river uses the instanced batch.
@@ -396,3 +398,68 @@ Before = the MFW-47 screenshots (256-px stage).
 |---|---|---|---|
 | World, 1440×900 | ![day](screenshots/mfw-47/after-desktop-world-day.png) ![night](screenshots/mfw-47/after-desktop-world-night.png) | ![day](screenshots/mfw-49/after-desktop-1440x900-world-day.png) | ![night](screenshots/mfw-49/after-desktop-1440x900-world-night.png) |
 | World, 390×844 | — | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) |
+## 12. Krathong v3 detail (MFW-69)
+
+Backlog 13.5. Owner (2026-11-25): the leaves and flowers were "only squares and triangles". Every value mirrors
+`src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it from the screenshots below.
+Appearance keys, geometry / material keys, river buckets, the assembler and stored data are unchanged, so saved krathongs
+render with v3. The customizer, pier and river use the same models (the river at a lighter LOD).
+
+### Shapes
+
+- **Leaf shell** (`LeafShellSpec`, `buildLeafShellMeshData`): a curved, tapered blade, built as a thin closed lens with
+  shared edges. Width follows `width · sin(π·t^e)^fullness` (peak at `widestAt`). The spine tilts out from the base and bends
+  outward along its length (`baseTiltRad`, `bendRad`). The upper face carries a V fold (the midrib crease, `fold`) and a rounded
+  cup (`cup`); the lower face bulges by `thickness`. Petals use the same shell.
+- **Leaves**: 8 units of two overlapping layers.
+  - Outer leaf: broad, tucked inside the base lip (`OUTER_LEAF_OFFSET`), flaring outward over it.
+  - Inner leaf: taller and more upright, on the flower-socket angle, so the two layers overlap around the ring (tested).
+  - style_01: pointed (`widestAt` ≈ 0.4); style_02: rounder and broader (`widestAt` 0.55, `fullness` 0.55).
+- **Flowers** (`PetalRingSpec`, `buildPetalRingMeshData`): rings of cupped shell petals around a raised yellow centre, each
+  petal varied by `PETAL_JITTER` (scale / yaw / tilt).
+  - marigold: ruffled, 7 + 5 short rounded petals in two rings;
+  - orchid: 3 narrow sepals, 2 broad petals and a cupped lip;
+  - lotus: 6 + 4 pointed petals in an upright cup.
+- **Bases**: banana trunk with a belly and a rounded lip; bread with a rounded shoulder; lotus = a bowl inside two rings of
+  cupped petals.
+- **Candle**: rounded lip and two wax drips (no wick: a wick needs a new material and river bucket).
+- **Flame**: a larger soft teardrop (height 0.34, radius 0.085; v2 0.26 / 0.065).
+- No halo, ring or glow disc was added.
+
+### Levels of detail
+
+| Where | LOD |
+|---|---|
+| Own krathong (customizer, pier) | full (`KRATHONG_HERO_LOD`) |
+| River, HIGH | medium — **PLACEHOLDER** (lead decision; the AC says full; lever `KRATHONG_RIVER_LOD_BY_TIER.HIGH = "full"`) |
+| River, MEDIUM | medium |
+| River, LOW | low |
+
+- medium: the same leaf shells with 3 columns (outer 2 rows, inner 3 rows); flowers are cupped lobed petal discs; lighter
+  lathes for the base, candle, flame and centre.
+- low: leaf shells with 2 rows each; fewer lobes and segments.
+- Triangles per krathong (worst): full 3 708 / medium 992 / low 808 (guards `KRATHONG_MAX_TRIANGLES_BY_LOD` 3 800 / 1 088 / 900).
+  Details and the zone budget per tier: `docs/perf/MFW-69.md`.
+
+### DRAFT list
+
+- Every `LeafShellSpec` / `PetalRingSpec` / lathe value, `OUTER_LEAF_OFFSET`, `PETAL_JITTER`, `CANDLE_DRIP` and the drip
+  placement, the flame size.
+- The iterated shapes differ from the lead's draft (leaves wider, flatter fold and cup, more rows; outer leaves more upright;
+  marigold petals blunter; the lotus base's inner petals moved to the bowl rim); see the MFW-69 dev report.
+- `KRATHONG_RIVER_LOD_BY_TIER.HIGH` = "medium" is PLACEHOLDER (owner decides after the phone check).
+- Lead guards (not product numbers): `KRATHONG_MAX_TRIANGLES_BY_LOD`, `KRATHONG_FLOWER_CENTRE_MIN_RAISE`.
+
+### Before / after (MFW-69)
+
+Captured on the production build with SwiftShader WebGL, 390×844 at device pixel ratio 4, cropped (CUSTOMIZE zoomed in with
+"+" three times; the river zoomed in with the mouse wheel).
+
+| | Before (MFW-48, BASE ce0f2e4) | After |
+|---|---|---|
+| Own krathong, day | ![before](screenshots/mfw-69/before-customize-day.png) | ![after](screenshots/mfw-69/after-customize-day.png) |
+| Own krathong, night | ![before](screenshots/mfw-69/before-customize-night.png) | ![after](screenshots/mfw-69/after-customize-night.png) |
+| River on HIGH (medium LOD), day | — | ![after](screenshots/mfw-69/after-river-high-day.png) |
+| River on HIGH (medium LOD), night | — | ![after](screenshots/mfw-69/after-river-high-night.png) |
+| River on LOW (low LOD), day | — | ![after](screenshots/mfw-69/after-river-low-day.png) |
+| Lotus base, style_02, orchids (own krathong), day | — | ![after](screenshots/mfw-69/after-variant-lotus-style02-orchid-day.png) |

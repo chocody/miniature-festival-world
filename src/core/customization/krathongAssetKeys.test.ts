@@ -6,10 +6,12 @@ import {
   LEAF_COLOR_PALETTE,
   LEAF_FOLD_STYLE_IDS,
 } from "@/config/events/loyKrathong.config";
+import { KRATHONG_LODS, KRATHONG_RIVER_LOD_BY_TIER } from "@/config/krathongModel.config";
 import {
   geometrySpecFor,
   KRATHONG_GEOMETRY_KEYS,
   KRATHONG_MATERIAL_KEYS,
+  krathongRiverLod,
   materialSpecFor,
   meshSpecFor,
 } from "./krathongAssetKeys";
@@ -57,5 +59,21 @@ describe("krathong asset keys", () => {
   it("the flower centre is a matte yellow part (MFW-48)", () => {
     expect(materialSpecFor("flowerCentre").roughness).toBe(1);
     expect(geometrySpecFor("flowerCentre").type).toBe("sphere");
+  });
+  it("meshSpecFor: every key has a full, medium and low mesh; full is the default", () => {
+    for (const key of KRATHONG_GEOMETRY_KEYS) {
+      expect(meshSpecFor(key)).toBe(meshSpecFor(key, "full"));
+      for (const lod of KRATHONG_LODS) {
+        const data = buildKrathongMeshData(meshSpecFor(key, lod));
+        expect(data.triangleCount, `${key}@${lod}`).toBeGreaterThan(0);
+      }
+    }
+    expect(() => meshSpecFor("nope" as never, "low")).toThrow("unknown krathong mesh key");
+  });
+  it("krathongRiverLod (MFW-69)", () => {
+    expect(krathongRiverLod("HIGH")).toBe(KRATHONG_RIVER_LOD_BY_TIER.HIGH);
+    expect(krathongRiverLod("MEDIUM")).toBe("medium");
+    expect(krathongRiverLod("LOW")).toBe("low");
+    expect(krathongRiverLod("FALLBACK_2D")).toBe("low");
   });
 });
