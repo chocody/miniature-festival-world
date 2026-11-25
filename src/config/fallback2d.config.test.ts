@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_SIZES } from "./camera.config";
 import * as cfg from "./fallback2d.config";
+import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
 import { MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
 import { EFFECT_POOL_CAPS, FALLBACK_2D_EFFECT_POOL_CAPS } from "./performance.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
 describe("fallback2d.config", () => {
+  it("2D tap radius floor", () => {
+    expect(cfg.FLAT_MIN_TAP_RADIUS_PX).toBe(MIN_TOUCH_TARGET_PX / 2);
+  });
+
   it("derives the view angles from the 3D camera offset", () => {
     expect(cfg.FLAT_KRATHONG_VIEW_AZIMUTH_RAD).toBe(Math.atan2(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]));
     expect(cfg.FLAT_KRATHONG_VIEW_ELEVATION_RAD).toBe(

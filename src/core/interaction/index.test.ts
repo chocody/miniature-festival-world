@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CUSTOMIZE_ROTATE_STEP_RADIANS,
   CUSTOMIZE_ZOOM_STEP_SCALE,
+  DRAG_START_DISTANCE_PX,
   PINCH_ZOOM_MAX,
   PINCH_ZOOM_MIN,
   ROTATION_RADIANS_PER_PIXEL,
 } from "@/config/interaction.config";
 import {
+  capturesOnPointerDown,
   createInputSeparator,
   getInteractionMode,
   getRotationAfterDrag,
@@ -77,6 +79,36 @@ describe("interaction mode routing", () => {
     input.pointerDown({ pointerId: 1, x: 0, y: 0, time: 0, target: "water" });
     input.pointerUp({ pointerId: 1, x: 0, y: 0, time: 400, target: "water" });
     expect(actions).not.toHaveBeenCalled();
+  });
+});
+
+describe("isDragging and capturesOnPointerDown (MFW-59)", () => {
+  const sample = (x: number, time = 0) => ({ pointerId: 1, x, y: 0, time, target: "water" as const });
+  it("isDragging is false until a move crosses DRAG_START_DISTANCE_PX", () => {
+    const input = createInputSeparator("WORLD_EXPLORE", vi.fn());
+    expect(input.isDragging(1)).toBe(false);
+    input.pointerDown(sample(0));
+    expect(input.isDragging(1)).toBe(false);
+    input.pointerMove(sample(DRAG_START_DISTANCE_PX - 1, 10));
+    expect(input.isDragging(1)).toBe(false);
+    input.pointerMove(sample(DRAG_START_DISTANCE_PX, 20));
+    expect(input.isDragging(1)).toBe(true);
+    expect(input.isDragging(2)).toBe(false);
+    input.pointerUp(sample(DRAG_START_DISTANCE_PX, 30));
+    expect(input.isDragging(1)).toBe(false);
+  });
+  it("cancel resets isDragging", () => {
+    const input = createInputSeparator("WORLD_EXPLORE", vi.fn());
+    input.pointerDown(sample(0));
+    input.pointerMove(sample(DRAG_START_DISTANCE_PX + 5, 10));
+    expect(input.isDragging(1)).toBe(true);
+    input.pointerCancel(1);
+    expect(input.isDragging(1)).toBe(false);
+  });
+  it("capturesOnPointerDown", () => {
+    expect(capturesOnPointerDown("WORLD_EXPLORE")).toBe(false);
+    expect(capturesOnPointerDown("CUSTOMIZE")).toBe(true);
+    expect(capturesOnPointerDown("RITUAL_RELEASE")).toBe(true);
   });
 });
 

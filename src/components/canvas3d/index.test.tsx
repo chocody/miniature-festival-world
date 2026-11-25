@@ -34,6 +34,10 @@ import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
+import { DRAG_START_DISTANCE_PX } from "@/config/interaction.config";
+import { SCENE_TAP_HINT_COPY, SCENE_TAP_HINT_SEEN_VALUE, SCENE_TAP_HINT_STORAGE_KEY } from "@/config/gimmicks.config";
+import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition } from "@/components/models/loyKrathong/riverLayout";
 import {
   getSceneRenderSettings,
   SceneViewport,
@@ -1210,5 +1214,111 @@ describe("river batch and perf probe (MFW-34)", () => {
     expect(screen.queryByRole("button", { name: "Run zone-switch soak" })).toBeNull();
     rerender(<SceneViewport mode="WORLD_EXPLORE" />);
     expect(screen.getByRole("button", { name: "Run zone-switch soak" })).toBeTruthy();
+  });
+});
+
+describe("pointer capture (MFW-59)", () => {
+  let setSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    setSpy = vi.spyOn(HTMLElement.prototype, "setPointerCapture");
+  });
+  afterEach(() => setSpy.mockRestore());
+
+  it("a short WORLD_EXPLORE tap never captures", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.pointerDown(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(viewport()).toHaveAttribute("data-last-interaction", "water");
+  });
+
+  it("a WORLD_EXPLORE drag captures once it becomes a drag", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.pointerDown(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(viewport(), { pointerId: 1, clientX: 100 + DRAG_START_DISTANCE_PX - 1, clientY: 100 });
+    expect(setSpy).not.toHaveBeenCalled();
+    fireEvent.pointerMove(viewport(), { pointerId: 1, clientX: 100 + DRAG_START_DISTANCE_PX, clientY: 100 });
+    expect(setSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).toHaveBeenCalledWith(1);
+    const hasSpy = vi.spyOn(HTMLElement.prototype, "hasPointerCapture").mockReturnValue(true);
+    fireEvent.pointerMove(viewport(), { pointerId: 1, clientX: 100 + DRAG_START_DISTANCE_PX + 20, clientY: 100 });
+    expect(setSpy).toHaveBeenCalledTimes(1);
+    hasSpy.mockRestore();
+  });
+
+  it("CUSTOMIZE captures on pointerdown", () => {
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    fireEvent.pointerDown(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(setSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("RITUAL_RELEASE captures on pointerdown on the chip", () => {
+    const { container } = render(<SceneViewport mode="RITUAL_RELEASE" onReleaseDrop={vi.fn()} />);
+    fireEvent.pointerDown(container.querySelector('[data-input-target="krathong"]')!, { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(setSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("lamp proxy tap lights that lamp", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(container.querySelector('[name="scene-lamp-tap-3"]')!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "lamp-glow");
+    expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
+    const want = lampHeadPosition(LOY_KRATHONG_RIVER_LAYOUT.lamps[3], RIVER_ENVIRONMENT_PARTS.lampHead.yOffset).join(",");
+    expect(container.querySelector('[name="scene-lamp-focus"]')!.getAttribute("position")).toBe(want);
+  });
+});
+
+describe("scene tap hint (MFW-59)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useDeviceStore.getState().setQualityTier("HIGH");
+  });
+  const hintEl = () => screen.queryByTestId("scene-tap-hint");
+
+  it("shows a pulsing, tap-through hint in WORLD_EXPLORE", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const el = screen.getByTestId("scene-tap-hint");
+    expect(el).toHaveTextContent(SCENE_TAP_HINT_COPY.scene3d);
+    expect(el.className).toContain("pointer-events-none");
+    expect(el).toHaveAttribute("data-motion", "pulse");
+    expect(el.className).toContain("animate-pulse");
+  });
+
+  it("is static under reduced motion", () => {
+    act(() => useDeviceStore.getState().setReducedMotion(true));
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const el = screen.getByTestId("scene-tap-hint");
+    expect(el).toHaveAttribute("data-motion", "static");
+    expect(el.className).not.toContain("animate-pulse");
+  });
+
+  it("goes away after a short tap and is remembered", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.pointerDown(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(hintEl()).toBeNull();
+    expect(localStorage.getItem(SCENE_TAP_HINT_STORAGE_KEY)).toBe(SCENE_TAP_HINT_SEEN_VALUE);
+  });
+
+  it("is not shown to a returning visitor", () => {
+    localStorage.setItem(SCENE_TAP_HINT_STORAGE_KEY, SCENE_TAP_HINT_SEEN_VALUE);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(hintEl()).toBeNull();
+  });
+
+  it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("is not shown in %s", (mode) => {
+    render(<SceneViewport mode={mode} />);
+    expect(hintEl()).toBeNull();
+  });
+
+  it("dismissing it does not re-render RiverFlow beyond one render", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = riverRenders.count;
+    fireEvent.pointerDown(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(viewport(), { pointerId: 1, clientX: 100, clientY: 100 });
+    expect(hintEl()).toBeNull();
+    // interaction state (lastInteraction) already re-renders the viewport once per tap; the hint adds no extra render
+    expect(riverRenders.count - before).toBeLessThanOrEqual(1);
   });
 });

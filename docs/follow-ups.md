@@ -6,6 +6,8 @@ real device. Newest first. Remove an item when its fix is merged.
 
 | Card | Severity | Item | Kind |
 |---|---|---|---|
+| MFW-59 | — | Owner product decisions shipped with DRAFT defaults: (1) hint copy and look (`SCENE_TAP_HINT_COPY`, pulsing pill; alternatives: reword, icon / finger animation); (2) hint frequency = once per device (alternatives: per session, per festival); (3) a long press without movement still ripples / lights / opens (R3F clicks ignore `TAP_MAX_DURATION_MS`); (4) where enlarged targets overlap, the lamp proxy beats the water and in 2D the topmost krathong circle wins. | owner · decide |
+| MFW-59 | — | Re-test on real iOS Safari / Android hardware: mouse and touch taps on water, lamp and krathong in WORLD_EXPLORE (touch was emulated with `hasTouch` + `isMobile`; the deployed site was not reachable from the dev container). | owner · re-test on device |
 | MFW-62 | — | Owner: apply 20261126000000_mfw62_wish_visibility_switch.sql (after MFW-12 → 13 → 45 → 31) BEFORE deploying this build — GET/POST /api/creations select display_name and call mfw_insert_creation_guarded_v2 and answer 503 until it is applied; verify with the anon key that the 4 new functions and the view are denied. | owner |
 | MFW-62 | Low | Drop the v1 SQL function mfw_insert_creation_guarded once no deployment calls it; no rate limit on POST /api/wish-visibility (each open re-runs decryption + moderation). | fix later |
 | MFW-62 | — | Shipped defaults for the spec's open questions (owner to confirm): (1) `DISPLAY_NAME_MAX_LENGTH = 40` UTF-16 units after trim, PLACEHOLDER (options 20 / 30 / 40 / 50); (2) the name of a **private** wish is moderated at create too (literal AC2; option: only when it becomes public — it is re-checked on open either way); (3) `report_count` is kept across close / reopen (option: reset on close); (4) closing a hidden wish is allowed (it can never be reopened; option: refuse with 409 hidden). | owner decision |
@@ -29,7 +31,7 @@ real device. Newest first. Remove an item when its fix is merged.
 | MFW-24 | Low | Client clock skew can briefly shrink spacing on a skewed device (MFW-8 clamp); use server time in MFW-23/45. | fix later |
 | MFW-24 | Low | Capacity margin thin (82 vs cap 80 in a greedy fill); zone also full when `findNearestFreeSpot` returns null. | re-test |
 | MFW-20 | Low | Tabs lack arrow-key/roving-tabindex; view buttons show before the lazy scene mounts; bar ~40 % of a 360×640 screen. | fix later · re-test on device |
-| MFW-27 | Low | Canvas re-creation on a mid-session tier drop resets the camera but keeps the selection ring; lamp tap target tiny (~4 px); only the pier tip in view. | fix later · re-test on device |
+| MFW-27 | Low | Canvas re-creation on a mid-session tier drop resets the camera but keeps the selection ring; only the pier tip in view. | fix later · re-test on device |
 | MFW-19 | Low | Dev-mode StrictMode may skip freeing shared krathong assets; no real-R3F-frame test of `UprightAnchor`. | fix later |
 | MFW-11 | — | Where/how often the loss warning shows; behaviour when LocalStorage is unavailable (`persisted: false`). | owner decision |
 | all 3D | — | On-device checks: FPS/draw calls on LOW, memory across zone switches, antialias flip on LOW, moon shadow coverage. | re-test on device |

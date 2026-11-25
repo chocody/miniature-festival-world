@@ -20,6 +20,8 @@ import {
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { createRiverTapProxy } from "./effects/riverTapProxy";
 import { isTapClick } from "./effects/tapPoint";
+import { pickNearestRiverHitId } from "./effects/riverHitPick";
+import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 
 /** One krathong on the shared river. Public data only (invariant C): no owner token, hash or private wish. */
 export interface RiverFlowItem {
@@ -159,19 +161,20 @@ export const RiverFlow = memo(function RiverFlow({
               />
               {hitProxy && (
                 <mesh
-                  name={`river-hit-${item.id}`}
+                  name={`${SCENE_OBJECT_NAMES.riverHitPrefix}${item.id}`}
                   geometry={hitProxy.geometry}
                   material={hitProxy.material}
                   visible={false}
                   onClick={(event: ThreeEvent<MouseEvent>) => {
                     if (!isTapClick(event)) return;
                     event.stopPropagation(); // the water behind must not also ripple
+                    const id = pickNearestRiverHitId(event.intersections, event.ray) ?? item.id;
                     const b = bounce.current;
-                    if (b.id !== null && b.id !== item.id) b.resetId = b.id;
-                    b.id = item.id;
+                    if (b.id !== null && b.id !== id) b.resetId = b.id;
+                    b.id = id;
                     b.startMs = now();
                     invalidate();
-                    onItemTapped?.(item.id);
+                    onItemTapped?.(id);
                   }}
                 />
               )}

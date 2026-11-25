@@ -9,11 +9,12 @@ import {
   FLAT_RIVER_HIGHLIGHT,
   FLAT_RIVER_PROP_SIZES,
   FLAT_RIVER_SPRITE_SCALE,
+  FLAT_MIN_TAP_RADIUS_PX,
   FLAT_RIVER_TAP_RADIUS,
   FLAT_VIEW_COLORS,
   FLAT_VIEW_COPY,
 } from "@/config/fallback2d.config";
-import { RIPPLE_LOOK } from "@/config/gimmicks.config";
+import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { FALLBACK_2D_EFFECT_POOL_CAPS } from "@/config/performance.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { createObjectPoolManager } from "@/core/effects/objectPoolManager";
@@ -39,7 +40,9 @@ import { publicCreationsToRiverItems } from "@/core/world/zoneRiverItems";
 import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
 import type { KrathongAppearance } from "@/core/customization/types";
 import { InspectPopup } from "@/components/ui/InspectPopup";
+import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
+import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
@@ -197,7 +200,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
 
   const clockOffsetMs = saved?.serverClockOffsetMs ?? 0;
   const spritePx = FLAT_RIVER_SPRITE_SCALE * projection.scale;
-  const tapPx = FLAT_RIVER_TAP_RADIUS * projection.scale;
+  const tapPx = Math.max(FLAT_RIVER_TAP_RADIUS * projection.scale, FLAT_MIN_TAP_RADIUS_PX);
   const ringRadiusPx = ((FLAT_RIVER_HIGHLIGHT.innerRadius + FLAT_RIVER_HIGHLIGHT.outerRadius) / HALF) * projection.scale;
   const ringStrokePx = (FLAT_RIVER_HIGHLIGHT.outerRadius - FLAT_RIVER_HIGHLIGHT.innerRadius) * projection.scale;
 
@@ -343,6 +346,8 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     scrolledFor.current = key;
   }, [focusId, focusRequestId, items, reducedMotion, clockOffsetMs, now, projection, mapWidth]);
 
+  const tapHint = useSceneTapHint(mode === "WORLD_EXPLORE");
+  const dismissTapHint = tapHint.dismiss;
   const onActionRef = useRef<(action: InteractionAction) => void>(() => undefined);
   const onAction = useCallback(
     (action: InteractionAction) => {
@@ -353,6 +358,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         return;
       }
       if (action.type !== "TAP_INTERACT") return;
+      dismissTapHint();
       const tap = pendingTap.current;
       if (!tap) return;
       if (tap.target === "water") {
@@ -366,7 +372,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         recordGimmick("inspect");
       }
     },
-    [pools, projection, now, recordGimmick],
+    [pools, projection, now, recordGimmick, dismissTapHint],
   );
   useLayoutEffect(() => {
     onActionRef.current = onAction;
@@ -509,6 +515,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
             />
           </svg>
         </div>
+        {tapHint.visible && <SceneTapHint text={SCENE_TAP_HINT_COPY.flat2d} reducedMotion={reducedMotion} />}
       </section>
       {inspected && <InspectPopup key={inspected.id} creation={inspected} onClose={() => setInspectedId(null)} />}
     </>

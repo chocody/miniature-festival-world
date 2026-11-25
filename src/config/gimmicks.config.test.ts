@@ -6,10 +6,16 @@ import {
   LAMP_GLOW_LOOK,
   MS_PER_SECOND,
   RIPPLE_LOOK,
+  LAMP_TAP_RADIUS,
   RIVER_KRATHONG_TAP_RADIUS,
+  SCENE_TAP_HINT_COPY,
+  SCENE_TAP_HINT_STORAGE_KEY,
+  TAP_PROXY_INRADIUS_RATIO,
   WCAG_MAX_FLASHES_PER_SECOND,
 } from "./gimmicks.config";
-import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE, RIVER_MIN_CENTER_SPACING } from "./riverFlow.config";
+import { SCENE_CAMERA_ZOOM } from "./camera.config";
+import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
+import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
 describe("gimmick config", () => {
   it("ripple look is sane", () => {
@@ -40,8 +46,22 @@ describe("gimmick config", () => {
     expect(RIPPLE_LOOK.color).toMatch(/^#[0-9a-f]{6}$/i);
     expect(LAMP_GLOW_LOOK.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
-  it("tap radius covers the model and never overlaps a neighbour", () => {
+  // MFW-59: replaces "tap radius covers the model and never overlaps a neighbour" (AC3 drops the no-overlap cap).
+  it("tap proxies are at least MIN_TOUCH_TARGET_PX on screen", () => {
+    const krathongPx = 2 * RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE * TAP_PROXY_INRADIUS_RATIO * SCENE_CAMERA_ZOOM;
+    const lampPx = 2 * LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO * SCENE_CAMERA_ZOOM;
+    expect(krathongPx).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+    expect(lampPx).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+  });
+  it("the krathong proxy still covers the model", () => {
     expect(RIVER_KRATHONG_TAP_RADIUS).toBeGreaterThanOrEqual(KRATHONG_MODEL_FOOTPRINT_RADIUS);
-    expect(2 * RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE).toBeLessThanOrEqual(RIVER_MIN_CENTER_SPACING + 1e-12);
+  });
+  it("TAP_PROXY_INRADIUS_RATIO is the icosahedron inradius ratio", () => {
+    expect(TAP_PROXY_INRADIUS_RATIO).toBeCloseTo(0.7947, 4);
+  });
+  it("hint constants", () => {
+    expect(SCENE_TAP_HINT_STORAGE_KEY).toMatch(/^mfw:[A-Za-z]+:v\d+$/);
+    expect(SCENE_TAP_HINT_COPY.scene3d.length).toBeGreaterThan(0);
+    expect(SCENE_TAP_HINT_COPY.flat2d.length).toBeGreaterThan(0);
   });
 });

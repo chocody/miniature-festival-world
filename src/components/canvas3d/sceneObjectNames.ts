@@ -21,4 +21,6 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   findMyAnchor: "scene-find-my-anchor",
   riverKrathongBatch: "river-krathong-batch",
   riverBatchMeshPrefix: "river-batch-",
+  lampTapPrefix: "scene-lamp-tap-",
+  riverHitPrefix: "river-hit-",
 });

@@ -1,4 +1,5 @@
 import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_COLOR, HIGHLIGHT_RING_OPACITY, HIGHLIGHT_RING_SIZES } from "./camera.config";
+import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
 import { MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 import { TOY_MATTE_MATERIALS, TOY_SCENE_LIGHTING } from "./scene.config";
@@ -35,6 +36,9 @@ export const FLAT_RIVER_FRAME_INTERVAL_MS = MS_PER_SECOND / FLAT_RIVER_TARGET_FP
 export const FLAT_RIVER_SPRITE_SCALE = RIVER_KRATHONG_SCALE;
 /** Tap target radius of a river krathong in world units = MFW-28's 3D hit proxy (model units) × river scale. */
 export const FLAT_RIVER_TAP_RADIUS = RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE;
+
+/** Minimum on-screen radius of a 2D krathong hit circle (CSS px; the river SVG is drawn 1:1). */
+export const FLAT_MIN_TAP_RADIUS_PX = MIN_TOUCH_TARGET_PX / 2;
 /** Find My ring around a river krathong, world units (MFW-17 krathong ring × river scale) and look. */
 export const FLAT_RIVER_HIGHLIGHT = Object.freeze({
   innerRadius: HIGHLIGHT_RING_SIZES.krathong.innerRadius * RIVER_KRATHONG_SCALE,

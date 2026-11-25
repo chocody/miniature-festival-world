@@ -14,6 +14,13 @@ import { prepareRiverItems, selectVisibleRiverItems } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 
+const pick = vi.hoisted(() => ({ override: null as string | null }));
+// The DOM stub's click cannot carry R3F's `intersections` / `ray`: this makes the wiring testable (the real picker has its own tests).
+vi.mock("./effects/riverHitPick", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./effects/riverHitPick")>();
+  return { pickNearestRiverHitId: (...args: Parameters<typeof actual.pickNearestRiverHitId>) => pick.override ?? actual.pickNearestRiverHitId(...args) };
+});
+
 const r3f = vi.hoisted(() => ({ frame: null as null | (() => void), invalidate: vi.fn() }));
 
 vi.mock("@react-three/fiber", () => ({
@@ -412,7 +419,7 @@ describe("river krathong tap (MFW-28)", () => {
     }
     expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(2);
     // React's DOM stub drops visible={false}, so the invisibility is pinned in the source instead.
-    expect(readFileSync(join(process.cwd(), "src/components/canvas3d/RiverFlow.tsx"), "utf8")).toMatch(/name=\{`river-hit-[^`]*`\}[\s\S]{0,200}visible=\{false\}/);
+    expect(readFileSync(join(process.cwd(), "src/components/canvas3d/RiverFlow.tsx"), "utf8")).toMatch(/name=\{`\$\{SCENE_OBJECT_NAMES\.riverHitPrefix\}\$\{item\.id\}`\}[\s\S]{0,200}visible=\{false\}/);
   });
 
   it("bounces once and inspects", () => {
@@ -444,6 +451,19 @@ describe("river krathong tap (MFW-28)", () => {
     NOW += GIMMICK_BOUNCE.periodMs / 4;
     r3f.frame!();
     expect(scaleX(container, "a")).toBe(1);
+  });
+
+  it("a proxy click reports the nearest krathong (MFW-59)", () => {
+    const onItemTapped = vi.fn();
+    const { container } = render(ui({ onItemTapped }));
+    pick.override = "b";
+    try {
+      tap(container, "a");
+    } finally {
+      pick.override = null;
+    }
+    expect(onItemTapped).toHaveBeenCalledTimes(1);
+    expect(onItemTapped).toHaveBeenCalledWith("b");
   });
 
   it("a tap on another krathong settles the first", () => {
