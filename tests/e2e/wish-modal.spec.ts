@@ -3,19 +3,21 @@ import {
   CLEAN_WISH,
   completeWishStep,
   WISH_DIALOG_TITLE,
-  WISH_PRIVATE_LABEL,
-  WISH_PUBLIC_LABEL,
+  WISH_NAME_LABEL,
   WISH_SUBMIT_LABEL,
+  WISH_SWITCH_LABEL,
   WISH_TEXT_LABEL,
 } from "./helpers/wishStep";
+import { PHONE_REASON } from "./fixtures/wishCopy";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 
 const SMALL_PHONE = { width: 360, height: 640 } as const;
 /** Duplicated literal of MIN_TOUCH_TARGET_PX in src/config/customizer.config.ts (do not import src/ into Playwright). */
 const MIN_TOUCH_TARGET_PX = 44;
-/** Duplicated literal of MODERATION_COPY.reasons.phone in src/config/moderation.config.ts. */
-const PHONE_REASON = "มีเบอร์โทรศัพท์อยู่ในข้อความ";
+/** Duplicated literal of MODERATION_COPY.reasons.email in src/config/moderation.config.ts. */
+const EMAIL_REASON = "มีอีเมลอยู่ในข้อความ";
 const PII_WISH = "โทรหาฉัน 081-234-5678";
+const PII_NAME = "someone@example.com";
 
 test.use({ viewport: SMALL_PHONE, hasTouch: true });
 
@@ -28,7 +30,7 @@ async function toWishStep(page: Page) {
   await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
 }
 
-test("360 px: explicit choice, PII blocked publicly, private allowed, no request, nothing stored", async ({ page }) => {
+test("360 px: name + switch, off by default, PII blocked when on, private allowed, no request, nothing stored", async ({ page }) => {
   const errors: Error[] = [];
   page.on("pageerror", (e) => errors.push(e));
   await toWishStep(page);
@@ -46,39 +48,61 @@ test("360 px: explicit choice, PII blocked publicly, private allowed, no request
   ]);
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   const submit = page.getByRole("button", { name: WISH_SUBMIT_LABEL });
+  const sw = page.getByRole("switch", { name: WISH_SWITCH_LABEL });
+  const name = page.getByRole("textbox", { name: WISH_NAME_LABEL });
+  const warning = page.getByTestId("wish-moderation-warning");
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("radio")).toHaveCount(0);
   await expect(submit).toBeDisabled();
 
   await page.getByRole("textbox", { name: WISH_TEXT_LABEL }).fill(PII_WISH);
-  await expect(submit).toBeDisabled();
-  await page.getByRole("radio", { name: WISH_PUBLIC_LABEL }).check();
-  await expect(page.getByTestId("wish-moderation-warning")).toContainText(PHONE_REASON);
+  await expect(submit).toBeEnabled(); // private: the wish text is not moderated
+  await sw.click();
+  await expect(sw).toHaveAttribute("aria-checked", "true");
+  await expect(warning).toContainText(PHONE_REASON);
   await expect(submit).toBeDisabled();
 
-  const targets = [...(await page.locator("[data-visibility]").all()), submit];
-  expect(targets.length).toBe(3);
+  await sw.click();
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await expect(warning).toHaveCount(0);
+  await name.fill(PII_NAME); // the name is checked even when private
+  await expect(warning).toContainText(EMAIL_REASON);
+  await expect(submit).toBeDisabled();
+  await name.fill("");
+  await expect(warning).toHaveCount(0);
+
+  const targets = [name, sw, submit];
   for (const el of targets) {
     const box = (await el.boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(SMALL_PHONE.width + 0.5);
     expect(Math.round(box.height)).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   }
+  const [scrollWidthAfter, clientWidthAfter] = await page.evaluate(() => [
+    document.documentElement.scrollWidth,
+    document.documentElement.clientWidth,
+  ]);
+  expect(scrollWidthAfter).toBeLessThanOrEqual(clientWidthAfter);
 
-  await page.getByRole("radio", { name: WISH_PRIVATE_LABEL }).check();
-  await expect(page.getByTestId("wish-moderation-warning")).toHaveCount(0);
+  await expect(submit).toBeEnabled();
   await submit.click();
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
 
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   expect(stored).not.toContain("081");
+  expect(stored).not.toContain(PII_NAME);
   expect(apiUrls).toEqual([]);
   expect(errors).toEqual([]);
 });
 
-test("public anonymous wish passes with the hint", async ({ page }) => {
+test("switch on shows the helper and the public hint", async ({ page }) => {
   const errors: Error[] = [];
   page.on("pageerror", (e) => errors.push(e));
   await toWishStep(page);
+  const sw = page.getByRole("switch", { name: WISH_SWITCH_LABEL });
+  await expect(sw).toHaveAccessibleDescription(/ชื่อและคำอธิษฐาน/);
   await page.getByRole("textbox", { name: WISH_TEXT_LABEL }).fill(CLEAN_WISH);
-  await page.getByRole("radio", { name: WISH_PUBLIC_LABEL }).check();
+  await expect(page.getByTestId("wish-public-hint")).toHaveCount(0);
+  await sw.click();
   await expect(page.getByTestId("wish-public-hint")).toBeVisible();
   await expect(page.getByTestId("wish-moderation-warning")).toHaveCount(0);
   await page.getByRole("button", { name: WISH_SUBMIT_LABEL }).click();

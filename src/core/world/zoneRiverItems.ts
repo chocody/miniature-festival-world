@@ -6,10 +6,11 @@ import { parseEventAppearance, type KrathongAppearance } from "@/core/customizat
 import type { PublicCreation } from "@/services/api/creationTypes";
 import type { RiverRenderSource } from "./riverFlow";
 
-/** One renderable krathong of the visible zone. Public fields only (invariant C). Copies the public wish (a public field) for the InspectPopup (MFW-28). Never copy expiresAt or any non-public field. Structurally a RiverFlowItem. */
+/** One renderable krathong of the visible zone. Public fields only (invariant C). Copies the public wish and display name (public fields) for the InspectPopup (MFW-28, MFW-63). Never copy expiresAt or any non-public field. Structurally a RiverFlowItem. */
 export interface ZoneRiverItem extends RiverRenderSource {
   readonly appearance: KrathongAppearance;
   readonly publicWishText: string | null;
+  readonly displayName: string | null; // only with an open wish (owner decision 29)
 }
 export interface ZoneRiverItemsQuery {
   readonly eventId: FestivalEventId;
@@ -35,7 +36,16 @@ export function publicCreationsToRiverItems(
     const appearance = parseEventAppearance(query.eventId, c.appearance);
     if (!appearance.ok) continue;
     seen.add(c.id);
-    out.push(Object.freeze({ id: c.id, coord, createdAtMs, appearance: appearance.appearance, publicWishText: c.publicWishText }));
+    out.push(
+      Object.freeze({
+        id: c.id,
+        coord,
+        createdAtMs,
+        appearance: appearance.appearance,
+        publicWishText: c.publicWishText,
+        displayName: c.publicWishText === null ? null : (c.displayName ?? null),
+      }),
+    );
   }
   return Object.freeze(out);
 }

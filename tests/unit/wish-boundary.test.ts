@@ -11,6 +11,8 @@ const WISH_FILES = [
   "src/services/api/wishPayload.ts",
   "src/store/useBuilderStore.ts",
   "src/components/ui/WishModal.tsx",
+  "src/services/api/wishComposer.ts",
+  "src/components/ui/WishVisibilitySwitch.tsx",
 ];
 /** The wish never leaves the device in this card (MFW-23 / MFW-45 send it). */
 const IO = /\bfetch\(|localStorage|sessionStorage|indexedDB|document\.cookie|sendBeacon|XMLHttpRequest|\bconsole\./;

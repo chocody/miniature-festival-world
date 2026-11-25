@@ -35,6 +35,9 @@ const OWNER_UI_FILES = [
   "src/config/ownerWish.config.ts",
   "src/services/auth/ownedCreationHint.ts",
   "src/services/api/ownerWishClient.ts",
+  "src/components/ui/OwnerWishControls.tsx",
+  "src/services/api/wishVisibilityClient.ts",
+  "src/services/api/ownedWishState.ts",
 ];
 
 describe("owner wish boundary (MFW-31)", () => {
@@ -57,7 +60,7 @@ describe("owner wish boundary (MFW-31)", () => {
     expect(client.filter((f) => SERVER_ONLY.test(read(f)))).toEqual([]);
     expect('import x from "@/services/auth/ownerProof"').toMatch(SERVER_ONLY);
     const barrel = read("src/services/api/index.ts");
-    expect(barrel).not.toMatch(/from\s+["']\.\/(ownerWishReveal|ownerWishClient|requestBody)["']/);
+    expect(barrel).not.toMatch(/from\s+["']\.\/(ownerWishReveal|ownerWishClient|requestBody|wishVisibilityClient|ownedWishState)["']/);
   });
 
   it("the client transport is body-only and hardened", () => {
@@ -75,6 +78,30 @@ describe("owner wish boundary (MFW-31)", () => {
     ]) {
       expect(src).not.toContain(bad);
     }
+  });
+
+  it("the switch client transport is body-only and hardened (MFW-63)", () => {
+    const src = read("src/services/api/wishVisibilityClient.ts");
+    for (const needed of ['redirect: "error"', 'credentials: "omit"', 'method: "POST"', 'referrerPolicy: "no-referrer"']) {
+      expect(src).toContain(needed);
+    }
+    for (const bad of [
+      "searchParams",
+      "URLSearchParams",
+      "WISH_VISIBILITY_PATH +",
+      "${WISH_VISIBILITY_PATH}",
+      "localStorage",
+      "sessionStorage",
+      "getOrCreate",
+      "console.",
+      "Authorization",
+      "wishVisibilitySwitch",
+    ]) {
+      expect(src).not.toContain(bad);
+    }
+    // The state reader works from public data only: no token, no auth.
+    const state = read("src/services/api/ownedWishState.ts");
+    for (const bad of ["@/services/auth", "ownerToken", "localStorage", "sessionStorage"]) expect(state).not.toContain(bad);
   });
 
   it("the proof compare has no early exit or string compare", () => {
@@ -110,8 +137,9 @@ describe("owner wish boundary (MFW-31)", () => {
       publicWishText: "w",
     });
     const keys = Object.keys(picked);
-    expect(keys).toEqual(["id", "appearance", "publicWishText"]);
-    expect(keys.filter((k) => IDENTITY.test(k))).toEqual([]);
+    // owner decision 29 (MFW-63): the popup shows the display name next to an open wish
+    expect(keys).toEqual(["id", "appearance", "publicWishText", "displayName"]);
+    expect(keys.filter((k) => IDENTITY.test(k))).toEqual(["displayName"]);
     expect("ownerToken").toMatch(IDENTITY);
   });
 });

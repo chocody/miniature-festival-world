@@ -24,12 +24,14 @@ describe("zustand stores", () => {
     expect(builder.appearance).toBeNull();
     expect(builder.wish).toBeNull();
     expect(builder.wishServerReasons).toBeNull();
+    expect(builder.wishDisplayName).toBeNull(); // MFW-63
     expect(Object.keys(builder).sort()).toEqual([
       "appearance",
       "chooseKrathong",
       "rejectWishFromServer",
       "submitWish",
       "wish",
+      "wishDisplayName",
       "wishServerReasons",
     ]);
     for (const action of ["chooseKrathong", "submitWish", "rejectWishFromServer"] as const) {

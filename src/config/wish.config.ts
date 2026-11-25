@@ -21,33 +21,42 @@ export const WISH_TEXT_MAX_LENGTH = 280;
 /** Visible textarea rows. Lead decision (layout only). */
 export const WISH_TEXTAREA_ROWS = 4;
 
-export interface WishVisibilityOptionCopy {
-  readonly label: string;
-  readonly description: string;
-}
+/** How an open wish without a name is shown (owner decision 36). Spec word. */
+export const DISPLAY_NAME_FALLBACK = "ไม่ระบุชื่อ";
 
-/** Thai UI copy. Labels of the two options are the spec words; everything else is DRAFT copy (Open question 4). */
+/** Composer issues, in display order (name field first, then the wish). MFW-63. */
+export const WISH_COMPOSER_ISSUES = Object.freeze([
+  "name_too_long",
+  "name_invalid",
+  "name_blocked",
+  "text_empty",
+  "text_too_long",
+  "wish_blocked",
+] as const);
+export type WishComposerIssue = (typeof WISH_COMPOSER_ISSUES)[number];
+
+/** The single visibility switch (owner decisions 29 and 36). Label = AC words; helper = DRAFT copy, PLACEHOLDER (owner may edit). */
+export const WISH_SWITCH_COPY = Object.freeze({
+  label: "เปิดให้ทุกคนเห็น",
+  helper:
+    "เมื่อเปิด ทุกคนจะเห็นชื่อและคำอธิษฐานนี้ เมื่อปิด คำอธิษฐานจะเป็นส่วนตัว อ่านได้เฉพาะคุณจากอุปกรณ์นี้ เปลี่ยนได้ภายหลังที่ “ค้นหาของฉัน”",
+});
+
+/** Thai UI copy. MFW-63: name + switch; DRAFT copy, PLACEHOLDER (owner may edit). */
 export const WISH_COPY = Object.freeze({
   title: "เขียนคำอธิษฐาน",
   textLabel: "คำอธิษฐานหรือสิ่งที่อยากปล่อยวาง",
   textPlaceholder: "เขียนสิ่งที่อยากขอ หรือสิ่งที่อยากปล่อยไปกับสายน้ำ",
-  visibilityLegend: "จะให้ข้อความนี้เป็นแบบไหน",
-  options: Object.freeze({
-    private: Object.freeze({
-      label: "เก็บข้อความเป็นส่วนตัว",
-      description: "ไม่แสดงให้คนอื่นเห็น อ่านได้เฉพาะคุณจากอุปกรณ์นี้",
-    }),
-    public: Object.freeze({
-      label: "เผยแพร่แบบไม่ระบุตัวตน (Anonymous)",
-      description: "ทุกคนอ่านได้ โดยไม่แสดงชื่อหรือโปรไฟล์ของคุณ",
-    }),
-  }) satisfies Readonly<Record<WishVisibility, WishVisibilityOptionCopy>>,
+  nameLabel: "ชื่อที่จะแสดง (ไม่ใส่ก็ได้)",
+  namePlaceholder: "เช่น ชื่อเล่น",
+  nameHint: `ถ้าไม่ใส่ จะแสดงเป็น “${DISPLAY_NAME_FALLBACK}” และชื่อจะแสดงเฉพาะเมื่อเปิดให้ทุกคนเห็น`,
   /** Status line for the first non-moderation issue (the moderation warning has its own copy in MODERATION_COPY). */
   issues: Object.freeze({
+    name_too_long: "ชื่อยาวเกินกำหนด",
+    name_invalid: "ชื่อมีอักขระที่ใช้ไม่ได้",
     text_empty: "เขียนคำอธิษฐานก่อน",
     text_too_long: "ข้อความยาวเกินกำหนด",
-    visibility_missing: "เลือกก่อนว่าจะเก็บเป็นส่วนตัวหรือเผยแพร่แบบไม่ระบุตัวตน",
-  }) satisfies Readonly<Record<Exclude<WishDraftIssue, "moderation_blocked">, string>>,
+  }) satisfies Readonly<Record<Exclude<WishComposerIssue, "name_blocked" | "wish_blocked">, string>>,
   /** Same label as the other flow steps; e2e and FlowRoot tests click it by this name. */
   submit: "ถัดไป",
 });

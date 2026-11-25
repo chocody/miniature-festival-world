@@ -3,45 +3,63 @@
 import { useId, useState, type FormEvent } from "react";
 import { MODERATION_COPY } from "@/config/moderation.config";
 import {
+  DISPLAY_NAME_MAX_LENGTH,
   WISH_COPY,
   WISH_TEXT_MAX_LENGTH,
   WISH_TEXTAREA_ROWS,
-  WISH_VISIBILITIES,
-  type WishVisibility,
+  type WishComposerIssue,
 } from "@/config/wish.config";
-import { evaluateWishDraft } from "@/services/api/wishPayload";
+import { evaluateWishComposer } from "@/services/api/wishComposer";
 import { describeModerationReasons, type ModerationReason } from "@/services/moderation";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { OwnershipNotice } from "./OwnershipNotice";
+import { WishVisibilitySwitch } from "./WishVisibilitySwitch";
+
+type StatusIssue = Exclude<WishComposerIssue, "name_blocked" | "wish_blocked">;
+/** The moderation issues have their own warning block; every other issue gets the status line. */
+function isStatusIssue(issue: WishComposerIssue): issue is StatusIssue {
+  return issue !== "name_blocked" && issue !== "wish_blocked";
+}
 
 export interface WishModalProps {
   /** Called after the composed wish is in useBuilderStore; FlowRoot dispatches SUBMIT_WISH. */
   onSubmitted: () => void;
 }
 
-/** Wish / let-go composer (backlog 4.3): text, explicit private vs anonymous-public choice, live 2.3 guard warning. */
+/**
+ * Wish / let-go composer (backlog 4.3, 12.2): optional display name, the wish text and one switch "เปิดให้ทุกคนเห็น"
+ * (off = private, the default). Live 2.3 guard warning: the name always, the wish only when the switch is on.
+ * No request and no storage: the composed wish and name stay in useBuilderStore memory until the release.
+ */
 export function WishModal({ onSubmitted }: WishModalProps) {
   const ids = useId();
   const storedWish = useBuilderStore((s) => s.wish);
+  const storedDisplayName = useBuilderStore((s) => s.wishDisplayName);
   const storedServerReasons = useBuilderStore((s) => s.wishServerReasons);
   const submitWish = useBuilderStore((s) => s.submitWish);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);
   // Initial values only: re-opening the step shows the stored wish; later store changes do not overwrite typing.
+  const [name, setName] = useState(storedDisplayName ?? "");
   const [text, setText] = useState(storedWish?.text ?? "");
-  const [visibility, setVisibility] = useState<WishVisibility | null>(storedWish?.visibility ?? null);
+  const [open, setOpen] = useState(storedWish?.visibility === "public");
   const [serverReasons, setServerReasons] = useState<readonly ModerationReason[] | null>(storedServerReasons);
 
-  const evaluation = evaluateWishDraft({ text, visibility });
-  const reasons = serverReasons ?? (evaluation.ok ? [] : evaluation.moderationReasons);
+  const evaluation = evaluateWishComposer({ text, open, displayName: name });
+  const reasons =
+    serverReasons ?? (evaluation.ok ? [] : [...evaluation.wishModerationReasons, ...evaluation.nameModerationReasons]);
   const warning = reasons.length > 0 ? describeModerationReasons(reasons) : null;
-  const firstIssue = evaluation.ok ? undefined : evaluation.issues.find((i) => i !== "moderation_blocked");
+  const firstIssue = evaluation.ok ? undefined : evaluation.issues.find(isStatusIssue);
   const status = firstIssue === undefined ? null : WISH_COPY.issues[firstIssue];
+  const nameInvalid = !evaluation.ok && evaluation.issues.some((i) => i.startsWith("name_"));
+  const textInvalid = (!evaluation.ok && evaluation.issues.includes("wish_blocked")) || serverReasons !== null;
   const canSubmit = evaluation.ok && serverReasons === null;
   // Invariant F: colour transitions only, and none under reduced motion.
   const transition = reducedMotion ? "" : " transition-colors";
 
   const titleId = `${ids}-title`;
+  const nameId = `${ids}-name`;
+  const nameHintId = `${ids}-name-hint`;
   const textId = `${ids}-text`;
   const countId = `${ids}-count`;
   const warningId = `${ids}-warning`;
@@ -49,7 +67,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) return;
-    if (submitWish({ text, visibility }).ok) onSubmitted();
+    if (submitWish({ text, open, displayName: name }).ok) onSubmitted();
   };
 
   return (
@@ -65,6 +83,29 @@ export function WishModal({ onSubmitted }: WishModalProps) {
       </h2>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
+          <label htmlFor={nameId} className="text-sm font-medium">
+            {WISH_COPY.nameLabel}
+          </label>
+          <input
+            id={nameId}
+            type="text"
+            value={name}
+            maxLength={DISPLAY_NAME_MAX_LENGTH}
+            autoComplete="off"
+            placeholder={WISH_COPY.namePlaceholder}
+            aria-describedby={warning && nameInvalid ? `${nameHintId} ${warningId}` : nameHintId}
+            aria-invalid={nameInvalid || undefined}
+            onChange={(e) => {
+              setName(e.target.value);
+              setServerReasons(null);
+            }}
+            className="min-h-11 w-full rounded-2xl border border-black/15 bg-white p-3 text-base dark:border-white/20 dark:bg-zinc-800"
+          />
+          <p id={nameHintId} className="text-xs text-zinc-600 dark:text-zinc-300">
+            {WISH_COPY.nameHint}
+          </p>
+        </div>
+        <div className="flex flex-col gap-1">
           <label htmlFor={textId} className="text-sm font-medium">
             {WISH_COPY.textLabel}
           </label>
@@ -74,8 +115,8 @@ export function WishModal({ onSubmitted }: WishModalProps) {
             rows={WISH_TEXTAREA_ROWS}
             maxLength={WISH_TEXT_MAX_LENGTH}
             placeholder={WISH_COPY.textPlaceholder}
-            aria-describedby={warning ? `${countId} ${warningId}` : countId}
-            aria-invalid={warning ? true : undefined}
+            aria-describedby={warning && textInvalid ? `${countId} ${warningId}` : countId}
+            aria-invalid={textInvalid || undefined}
             onChange={(e) => {
               setText(e.target.value);
               setServerReasons(null);
@@ -86,49 +127,15 @@ export function WishModal({ onSubmitted }: WishModalProps) {
             {`${text.length}/${WISH_TEXT_MAX_LENGTH}`}
           </p>
         </div>
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-medium">{WISH_COPY.visibilityLegend}</legend>
-          {WISH_VISIBILITIES.map((v) => {
-            const option = WISH_COPY.options[v];
-            const inputId = `${ids}-vis-${v}`;
-            return (
-              <label
-                key={v}
-                htmlFor={inputId}
-                data-visibility={v}
-                className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border p-3${transition} ${
-                  visibility === v
-                    ? "border-amber-500 bg-amber-50 dark:bg-amber-400/10"
-                    : "border-black/10 dark:border-white/15"
-                }`}
-              >
-                <input
-                  id={inputId}
-                  type="radio"
-                  name={`${ids}-visibility`}
-                  value={v}
-                  checked={visibility === v}
-                  aria-labelledby={`${inputId}-label`}
-                  aria-describedby={`${inputId}-desc`}
-                  onChange={() => {
-                    setVisibility(v);
-                    setServerReasons(null);
-                  }}
-                  className="mt-0.5 h-5 w-5 shrink-0"
-                />
-                <span className="flex flex-col">
-                  <span id={`${inputId}-label`} className="font-semibold">
-                    {option.label}
-                  </span>
-                  <span id={`${inputId}-desc`} className="text-sm text-zinc-600 dark:text-zinc-300">
-                    {option.description}
-                  </span>
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
-        {visibility === "public" && (
+        <WishVisibilitySwitch
+          checked={open}
+          onToggle={() => {
+            setOpen(!open);
+            setServerReasons(null);
+          }}
+          animate={!reducedMotion}
+        />
+        {open && (
           <p data-testid="wish-public-hint" className="text-sm text-zinc-700 dark:text-zinc-200">
             {MODERATION_COPY.publicHint}
           </p>

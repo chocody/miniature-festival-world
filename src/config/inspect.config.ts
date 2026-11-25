@@ -1,10 +1,12 @@
-/** InspectPopup copy (spec §3 "ดูคำอวยพรคนอื่นแบบ Anonymous + ปุ่ม Report"). DRAFT Thai copy, PLACEHOLDER (spec silent; MFW-28 plan §11 Q1). */
+/**
+ * InspectPopup copy (spec §3 "ดูคำอวยพรคนอื่นแบบ Anonymous + ปุ่ม Report"). DRAFT Thai copy, PLACEHOLDER (spec silent; MFW-28 plan §11 Q1).
+ * Owner decision 29 (MFW-63): an open wish shows its display name ("fromLabel" + name, DRAFT).
+ */
 export const INSPECT_POPUP_COPY = Object.freeze({
   dialogTitle: "กระทงในสายน้ำ",
-  anonymousNote: "ไม่ระบุชื่อผู้ปล่อย",
   appearanceHeading: "รูปลักษณ์",
   wishHeading: "คำอธิษฐาน",
-  noPublicWish: "ไม่มีคำอธิษฐานสาธารณะ",
+  fromLabel: "จาก",
   close: "ปิด",
   report: "รายงาน",
   reportPrompt: "รายงานคำอธิษฐานนี้ว่าไม่เหมาะสมใช่ไหม",

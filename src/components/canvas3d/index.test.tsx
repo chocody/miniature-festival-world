@@ -966,7 +966,7 @@ describe("owner private wish reveal in the popup (MFW-31)", () => {
   it("AC1: someone else's private krathong shows no reveal", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
     fireEvent.click(hit(container));
-    expect(screen.getByRole("dialog")).toHaveTextContent(INSPECT_POPUP_COPY.noPublicWish);
+    expect(screen.getByRole("dialog")).not.toHaveTextContent(INSPECT_POPUP_COPY.wishHeading);
     expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
   });
 
