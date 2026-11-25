@@ -101,3 +101,9 @@ export interface GuardedNewCreation extends NewCreation {
 export type GuardedInsertResult =
   | { readonly status: "inserted"; readonly creation: PublicCreation }
   | { readonly status: "zone_changed" }; // the zone changed or is full: re-read and retry
+
+/** Ownership row of one non-expired creation, for the owner proof (MFW-31). Server-only: never sent in any response, never logged. */
+export interface CreationOwnershipRecord {
+  readonly ownerTokenHash: OwnerTokenHash;
+  readonly privateWish: EncryptedPrivateWish | null; // null when the creation's wish is public
+}

@@ -434,3 +434,72 @@ describe("supabase repository: MFW-45 zone RPCs and guarded insert", () => {
     expect(text).not.toHaveBeenCalled();
   });
 });
+
+describe("supabase repository: readOwnership (MFW-31)", () => {
+  const ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const FULL = {
+    owner_token_hash: OWNER_HASH_FIXTURE,
+    private_wish_text: PRIVATE_CIPHERTEXT_FIXTURE,
+    private_wish_key_id: KEY_ID_FIXTURE,
+  };
+
+  it("sends only the creation id to the RPC with the service-role headers", async () => {
+    const { fetchMock, repo } = make([]);
+    expect(await repo.readOwnership(ID)).toBeNull();
+    const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_creation_ownership");
+    expect(init.method).toBe("POST");
+    expect(String(init.body)).toBe(JSON.stringify({ p_creation_id: ID }));
+    expect(String(init.body)).not.toContain(OWNER_HASH_FIXTURE);
+    const headers = new Headers(init.headers);
+    expect(headers.get("apikey")).toBe(KEY);
+    expect(headers.get("authorization")).toBe(`Bearer ${KEY}`);
+  });
+
+  it("maps rows", async () => {
+    expect(await make([FULL]).repo.readOwnership(ID)).toEqual({
+      ownerTokenHash: OWNER_HASH_FIXTURE,
+      privateWish: { ciphertext: PRIVATE_CIPHERTEXT_FIXTURE, keyId: KEY_ID_FIXTURE },
+    });
+    expect(
+      await make([{ owner_token_hash: OWNER_HASH_FIXTURE, private_wish_text: null, private_wish_key_id: null }]).repo.readOwnership(ID),
+    ).toEqual({ ownerTokenHash: OWNER_HASH_FIXTURE, privateWish: null });
+  });
+
+  it("malformed answers fail closed", async () => {
+    const bad: unknown[] = [
+      [FULL, FULL],
+      {},
+      null,
+      [{ ...FULL, owner_token_hash: "nope" }],
+      [{ ...FULL, private_wish_key_id: null }],
+      [{ ...FULL, private_wish_text: null }],
+      [{ ...FULL, private_wish_text: "not-a-ciphertext" }],
+      [{ owner_token_hash: OWNER_HASH_FIXTURE, private_wish_text: FULL.private_wish_text }],
+      ["row"],
+    ];
+    for (const body of bad) {
+      await expect(make(body).repo.readOwnership(ID)).rejects.toMatchObject({
+        code: "invalid_backend_response",
+        detail: "ownership",
+      });
+    }
+  });
+
+  it("non-2xx does not read the body; a non-uuid makes no request", async () => {
+    const res = new Response(`{"leak":"${OWNER_HASH_FIXTURE}"}`, { status: 500 });
+    const textSpy = vi.spyOn(res, "text");
+    const jsonSpy = vi.spyOn(res, "json");
+    const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
+      void args;
+      return res;
+    });
+    const repo = createSupabaseCreationRepository({ url: URL_OK, serviceRoleKey: KEY, fetch: fetchMock });
+    await expect(repo.readOwnership(ID)).rejects.toMatchObject({ code: "backend_request_failed" });
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(jsonSpy).not.toHaveBeenCalled();
+    const other = make([]);
+    await expect(other.repo.readOwnership("nope")).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+    expect(other.fetchMock).not.toHaveBeenCalled();
+  });
+});

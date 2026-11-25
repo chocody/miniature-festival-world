@@ -13,6 +13,7 @@ import { CustomizerPanel } from "./CustomizerPanel";
 import { EventSelector } from "./EventSelector";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
+import { PrivateWishReveal } from "./PrivateWishReveal";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { WishModal } from "./WishModal";
 import { ZoneNavigator } from "./ZoneNavigator";
@@ -85,7 +86,7 @@ export function FlowRoot() {
         </Suspense>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && <ZoneNavigator />}
-      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer />}
+      {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer renderEntryExtra={(entry) => <PrivateWishReveal creationId={entry.id} />} />}
       {flowState === "LANDING_EVENT_SELECT" ? (
         <EventSelector onSelect={(eventId) => dispatch({ type: "SELECT_EVENT", eventId })} />
       ) : flowState === "CUSTOMIZE_OBJECT" ? (

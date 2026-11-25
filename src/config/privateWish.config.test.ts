@@ -9,6 +9,10 @@ import {
   PRIVATE_WISH_KEY_BASE64_PATTERN,
   PRIVATE_WISH_CIPHERTEXT_PATTERN,
   PRIVATE_WISH_KEY_ID_PATTERN,
+  PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR,
+  PRIVATE_WISH_RETIRED_KEYS_ENV,
+  PRIVATE_WISH_RETIRED_KEYS_MAX,
+  PRIVATE_WISH_RETIRED_KEYS_SEPARATOR,
 } from "./privateWish.config";
 
 const BITS_PER_BYTE = 8;
@@ -50,5 +54,24 @@ describe("MFW-45 key constants", () => {
   it("the key pattern accepts padded base64 of 32 bytes and rejects unpadded", () => {
     expect(PRIVATE_WISH_KEY_BASE64_PATTERN.test(Buffer.alloc(32).toString("base64"))).toBe(true);
     expect(PRIVATE_WISH_KEY_BASE64_PATTERN.test("A".repeat(43))).toBe(false);
+  });
+});
+
+describe("retired keys config (MFW-31)", () => {
+  it("env name is server-only", () => {
+    expect(PRIVATE_WISH_RETIRED_KEYS_ENV).toBe("PRIVATE_WISH_RETIRED_KEYS");
+    expect(PRIVATE_WISH_RETIRED_KEYS_ENV.startsWith("NEXT_PUBLIC_")).toBe(false);
+  });
+
+  it("separators occur in neither key ids nor standard base64", () => {
+    for (const sep of [PRIVATE_WISH_RETIRED_KEYS_SEPARATOR, PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR]) {
+      expect(PRIVATE_WISH_KEY_ID_PATTERN.test(`a${sep}b`)).toBe(false);
+      expect(Buffer.alloc(32, 255).toString("base64")).not.toContain(sep);
+      expect(PRIVATE_WISH_KEY_BASE64_PATTERN.test(`${"A".repeat(42)}${sep}=`)).toBe(false);
+    }
+  });
+
+  it("the max is a positive integer", () => {
+    expect(Number.isInteger(PRIVATE_WISH_RETIRED_KEYS_MAX) && PRIVATE_WISH_RETIRED_KEYS_MAX > 0).toBe(true);
   });
 });

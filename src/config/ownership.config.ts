@@ -26,3 +26,11 @@ export const OWNER_TOKEN_HASH_PATTERN = /^[0-9a-f]{64}$/;
  * Public fields only: id, eventId, zoneId, createdAt, expiresAt. Versioned like the token key.
  */
 export const MY_CREATIONS_STORAGE_KEY = "mfw:myCreations:v1";
+
+/** Length of OWNER_TOKEN_HASH_PATTERN (SHA-256 as hex). The constant-time compare always walks exactly this many characters. */
+export const OWNER_TOKEN_HASH_HEX_LENGTH = 64;
+/**
+ * Compared against when a creation has no stored hash (unknown id), so a miss costs the same loop as a mismatch.
+ * Never stored and never accepted: ownerTokenHashesMatch returns false whenever the stored side is absent.
+ */
+export const OWNER_TOKEN_HASH_COMPARE_PLACEHOLDER = "0".repeat(OWNER_TOKEN_HASH_HEX_LENGTH);
