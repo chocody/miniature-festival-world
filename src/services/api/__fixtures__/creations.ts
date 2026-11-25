@@ -30,6 +30,8 @@ export function makeNewCreation(overrides: Partial<NewCreation> = {}): NewCreati
     expiresAt: overrides.expiresAt !== undefined ? overrides.expiresAt : FAR_FUTURE,
     ownerTokenHash: overrides.ownerTokenHash !== undefined ? overrides.ownerTokenHash : OWNER_HASH_FIXTURE,
     privateWish: "privateWish" in overrides ? (overrides.privateWish ?? null) : null,
+    displayName: "displayName" in overrides ? (overrides.displayName ?? null) : null,
+    privateDisplayName: "privateDisplayName" in overrides ? (overrides.privateDisplayName ?? null) : null,
   };
 }
 

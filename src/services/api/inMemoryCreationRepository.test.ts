@@ -371,3 +371,148 @@ describe("in-memory repository: readOwnership (MFW-31)", () => {
     expect((await repo.readOwnership(c.id))!.privateWish!.keyId).toBe(KEY_ID_FIXTURE);
   });
 });
+
+describe("wish switch (MFW-62)", async () => {
+  const { makeTestCipher } = await import("./__fixtures__/createCreation");
+  const { cipher } = await makeTestCipher();
+  const WISH = "ขอให้สอบติด";
+  const NAME = "สมชาย";
+
+  async function seedPrivate(repo: ReturnType<typeof setup>["repo"], expiresAt = new Date(START + 60_000)) {
+    const privateWish = await cipher.encrypt(WISH, OWNER_HASH_FIXTURE);
+    const privateDisplayName = await cipher.encrypt(NAME, OWNER_HASH_FIXTURE, "displayName");
+    const c = await repo.insertCreation(makeNewCreation({ publicWishText: null, privateWish, privateDisplayName, expiresAt }));
+    return { id: c.id, privateWish, privateDisplayName };
+  }
+  const openOf = (id: string, expected: string) => ({
+    creationId: id,
+    expectedPrivateWish: expected as ReturnType<typeof makePrivateWish>["ciphertext"],
+    publicWishText: WISH,
+    displayName: NAME,
+  });
+  async function closeOf(id: string, expectedDisplayName: string | null = NAME) {
+    return {
+      creationId: id,
+      expectedPublicWishText: WISH,
+      expectedDisplayName,
+      privateWish: await cipher.encrypt(WISH, OWNER_HASH_FIXTURE),
+      privateDisplayName: await cipher.encrypt(NAME, OWNER_HASH_FIXTURE, "displayName"),
+    };
+  }
+  /** Exactly one store holds the text, and the name never sits in both. */
+  async function expectOneStore(repo: ReturnType<typeof setup>["repo"], id: string) {
+    const s = await repo.readWishSwitchState(id);
+    expect(s).not.toBeNull();
+    if (s === null) return;
+    expect((s.publicWishText === null) !== (s.privateWish === null)).toBe(true);
+    expect(s.displayName !== null && s.privateDisplayName !== null).toBe(false);
+    if (s.displayName !== null) expect(s.publicWishText).not.toBeNull();
+    if (s.privateDisplayName !== null) expect(s.privateWish).not.toBeNull();
+  }
+
+  it("W1 lists a public name, never a closed one", async () => {
+    const { repo } = setup();
+    const pub = await repo.insertCreation(makeNewCreation({ displayName: NAME }));
+    const priv = await seedPrivate(repo);
+    const items = await repo.listPublicZone(Z1);
+    const pubItem = items.find((i) => i.id === pub.id);
+    const privItem = items.find((i) => i.id === priv.id);
+    expect(pubItem).toMatchObject({ publicWishText: "ขอให้ทุกคนมีความสุข", displayName: NAME });
+    expect(Object.keys(pubItem ?? {})).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(privItem).toMatchObject({ publicWishText: null, displayName: null });
+    expect(JSON.stringify(privItem)).not.toContain(NAME);
+  });
+
+  it("W2 readWishSwitchState", async () => {
+    const { repo } = setup();
+    expect(await repo.readWishSwitchState("00000000-0000-4000-8000-000000000999")).toBeNull();
+    await expect(repo.readWishSwitchState("NOPE")).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+    const { id, privateWish, privateDisplayName } = await seedPrivate(repo);
+    expect(await repo.readWishSwitchState(id)).toEqual({
+      ownerTokenHash: OWNER_HASH_FIXTURE,
+      hidden: false,
+      publicWishText: null,
+      displayName: null,
+      privateWish,
+      privateDisplayName,
+    });
+  });
+
+  it("W2 expired creations have no state", async () => {
+    let t = START;
+    const repo = createInMemoryCreationRepository({ now: () => t });
+    const { id } = await seedPrivate(repo, new Date(START + 10));
+    expect(await repo.readWishSwitchState(id)).not.toBeNull();
+    t = START + 10;
+    expect(await repo.readWishSwitchState(id)).toBeNull();
+    expect(await repo.openWish(openOf(id, "v1.AAAAAAAAAAAAAAAA.SECRETxPRIVATExWISHxCIPHERTEXT"))).toBe("conflict");
+  });
+
+  it("W3 open moves text and name to the public row once", async () => {
+    const { repo } = setup();
+    const { id, privateWish } = await seedPrivate(repo);
+    expect(await repo.openWish(openOf(id, privateWish.ciphertext))).toBe("switched");
+    const s = await repo.readWishSwitchState(id);
+    expect(s).toMatchObject({ publicWishText: WISH, displayName: NAME, privateWish: null, privateDisplayName: null });
+    expect((await repo.listPublicZone(Z1))[0]).toMatchObject({ id, publicWishText: WISH, displayName: NAME });
+    expect(await repo.openWish(openOf(id, privateWish.ciphertext))).toBe("conflict");
+  });
+
+  it("W4 close moves them back; repeated or mismatched closes conflict", async () => {
+    const { repo } = setup();
+    const { id, privateWish } = await seedPrivate(repo);
+    await repo.openWish(openOf(id, privateWish.ciphertext));
+    expect(await repo.closeWish(await closeOf(id, "someone else"))).toBe("conflict");
+    expect((await repo.readWishSwitchState(id))?.publicWishText).toBe(WISH);
+    const input = await closeOf(id);
+    expect(await repo.closeWish(input)).toBe("switched");
+    const s = await repo.readWishSwitchState(id);
+    expect(s).toMatchObject({ publicWishText: null, displayName: null, privateWish: input.privateWish, privateDisplayName: input.privateDisplayName });
+    expect((await repo.listPublicZone(Z1))[0]).toMatchObject({ publicWishText: null, displayName: null });
+    expect(await repo.closeWish(await closeOf(id))).toBe("conflict");
+  });
+
+  it("W5 one store at a time through create / open / close / reopen", async () => {
+    const { repo } = setup();
+    const { id, privateWish } = await seedPrivate(repo);
+    await expectOneStore(repo, id);
+    await repo.openWish(openOf(id, privateWish.ciphertext));
+    await expectOneStore(repo, id);
+    const closing = await closeOf(id);
+    await repo.closeWish(closing);
+    await expectOneStore(repo, id);
+    expect(await repo.openWish(openOf(id, closing.privateWish.ciphertext))).toBe("switched");
+    await expectOneStore(repo, id);
+  });
+
+  it("W6 a hidden wish cannot be opened; it can be closed; moderation state is untouched", async () => {
+    const { repo } = setup();
+    const flagged = await seedPrivate(repo);
+    repo.setModeration(flagged.id, { moderationStatus: "flagged" });
+    expect((await repo.readWishSwitchState(flagged.id))?.hidden).toBe(true);
+    expect(await repo.openWish(openOf(flagged.id, flagged.privateWish.ciphertext))).toBe("conflict");
+    expect(await repo.readWishSwitchState(flagged.id)).toMatchObject({ publicWishText: null, privateWish: flagged.privateWish });
+
+    const reported = await seedPrivate(repo);
+    repo.setModeration(reported.id, { reportCount: AUTO_HIDE_REPORT_THRESHOLD });
+    expect((await repo.readWishSwitchState(reported.id))?.hidden).toBe(true);
+    expect(await repo.openWish(openOf(reported.id, reported.privateWish.ciphertext))).toBe("conflict");
+
+    const open = await seedPrivate(repo);
+    await repo.openWish(openOf(open.id, open.privateWish.ciphertext));
+    repo.setModeration(open.id, { reportCount: AUTO_HIDE_REPORT_THRESHOLD, moderationStatus: "flagged" });
+    expect(await repo.closeWish(await closeOf(open.id))).toBe("switched");
+    expect(repo.getModerationState(open.id)).toEqual({ reportCount: AUTO_HIDE_REPORT_THRESHOLD, moderationStatus: "flagged" });
+    expect(repo.getModerationState(flagged.id)).toEqual({ reportCount: 0, moderationStatus: "flagged" });
+  });
+
+  it("W7 a blocked public text is rejected before any change", async () => {
+    const { repo } = setup();
+    const { id, privateWish } = await seedPrivate(repo);
+    await expect(repo.openWish({ ...openOf(id, privateWish.ciphertext), publicWishText: "โทร 0812345678" })).rejects.toMatchObject({
+      code: "invalid_input",
+      detail: "publicWishText",
+    });
+    expect(await repo.readWishSwitchState(id)).toMatchObject({ publicWishText: null, privateWish });
+  });
+});

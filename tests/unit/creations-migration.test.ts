@@ -107,7 +107,8 @@ describe("creations migration (static)", () => {
       .slice(start, end)
       .split(",")
       .map((c) => c.trim().replace(/^p\./, ""));
-    expect(cols).toEqual([...PUBLIC_CREATION_COLUMNS]);
+    // MFW-62 appends display_name in its own migration
+    expect(cols).toEqual(PUBLIC_CREATION_COLUMNS.filter((c) => c !== "display_name"));
   });
 
   it("insert function is server-only", () => {

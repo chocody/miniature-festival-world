@@ -33,6 +33,7 @@ export {
 } from "./wishPayload";
 export {
   CREATE_CREATION_BODY_KEYS,
+  CREATE_CREATION_OPTIONAL_BODY_KEYS,
   type CreateCreationErrorBody,
   type CreateCreationField,
   type CreateCreationRequestBody,
@@ -52,3 +53,17 @@ export {
   type OwnerWishRevealRequestBody,
   type OwnerWishRevealResponseBody,
 } from "./ownerWishRevealTypes";
+export {
+  evaluateDisplayName,
+  isStorableDisplayName,
+  normalizeDisplayName,
+  type DisplayNameEvaluation,
+  type DisplayNameIssue,
+} from "./displayName";
+export {
+  WISH_VISIBILITY_BODY_KEYS,
+  WISH_VISIBILITY_PATH,
+  type WishVisibilityErrorBody,
+  type WishVisibilityRequestBody,
+  type WishVisibilityResponseBody,
+} from "./wishVisibilityTypes";

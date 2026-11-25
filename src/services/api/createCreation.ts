@@ -13,6 +13,7 @@ import { getPrivateWishCipher, type PrivateWishCipher } from "./privateWishCiphe
 import { pickPublicCreation } from "./publicCreation";
 import { computeCreationExpiresAt } from "./retention";
 import { cloneJsonObject } from "./json";
+import { evaluateDisplayName } from "./displayName";
 import { evaluateWishDraft, toWishColumns } from "./wishPayload";
 
 export interface CreateCreationDeps {
@@ -93,16 +94,22 @@ export async function handleCreateCreation(request: Request, deps: CreateCreatio
   if (appearance === null) return invalidBody("appearance");
 
   const evaluation = evaluateWishDraft({ text: req.wishText, visibility: req.wishVisibility });
-  if (!evaluation.ok) {
-    if (evaluation.issues.includes("text_empty") || evaluation.issues.includes("text_too_long")) {
-      return invalidBody("wishText");
-    }
-    if (evaluation.issues.includes("moderation_blocked")) {
-      return respond(HTTP_UNPROCESSABLE, toModerationBlockedBody(evaluation.moderationReasons));
-    }
-    return invalidBody("wishVisibility"); // visibility_missing cannot happen after parsing; fail closed
+  const nameEvaluation = evaluateDisplayName(req.displayName);
+  if (!evaluation.ok && (evaluation.issues.includes("text_empty") || evaluation.issues.includes("text_too_long"))) {
+    return invalidBody("wishText");
   }
+  if (!nameEvaluation.ok && nameEvaluation.issue !== "moderation_blocked") return invalidBody("displayName");
+  const blockedReasons = [
+    ...(!evaluation.ok && evaluation.issues.includes("moderation_blocked") ? evaluation.moderationReasons : []),
+    ...(!nameEvaluation.ok ? nameEvaluation.moderationReasons : []),
+  ];
+  if (blockedReasons.length > 0) return respond(HTTP_UNPROCESSABLE, toModerationBlockedBody(blockedReasons));
+  if (!evaluation.ok) return invalidBody("wishVisibility"); // visibility_missing cannot happen after parsing; fail closed
+  if (!nameEvaluation.ok) return invalidBody("displayName"); // unreachable; narrows the type
   const { publicWishText, privateWishPlaintext } = toWishColumns(evaluation.wish); // exactly one is non-null
+  // Owner decision 29: the name follows the switch — public with a public wish, encrypted with a private one.
+  const displayName = publicWishText === null ? null : nameEvaluation.name;
+  const privateDisplayNamePlaintext = publicWishText === null ? nameEvaluation.name : null;
 
   let repository: CreationRepository;
   try {
@@ -114,10 +121,13 @@ export async function handleCreateCreation(request: Request, deps: CreateCreatio
 
   try {
     const ownerTokenHash = await hashOwnerToken(req.ownerToken); // the raw token is not used after this line
+    const cipher = privateWishPlaintext === null ? null : await deps.getCipher(repository.backend);
     const privateWish =
-      privateWishPlaintext === null
+      cipher === null || privateWishPlaintext === null ? null : await cipher.encrypt(privateWishPlaintext, ownerTokenHash);
+    const privateDisplayName =
+      cipher === null || privateDisplayNamePlaintext === null
         ? null
-        : await (await deps.getCipher(repository.backend)).encrypt(privateWishPlaintext, ownerTokenHash);
+        : await cipher.encrypt(privateDisplayNamePlaintext, ownerTokenHash, "displayName");
     const source: PlacementSource = {
       zoneItemCounts: () => repository.zoneItemCounts(eventId),
       listZoneOccupants: (zoneId) => repository.listZoneOccupants({ eventId, zoneId }),
@@ -134,6 +144,8 @@ export async function handleCreateCreation(request: Request, deps: CreateCreatio
         expiresAt,
         ownerTokenHash,
         privateWish,
+        displayName,
+        privateDisplayName,
         createdAt: new Date(createdAtMs),
         expectedOccupantIds: placement.expectedOccupantIds,
       });

@@ -43,6 +43,7 @@ describe("resolveReleaseLandingForZone", () => {
     publicWishText: null,
     createdAt: new Date(NOW).toISOString(),
     expiresAt: "2099-01-01T00:00:00.000Z",
+    displayName: null,
   });
   it("uses the visible zone's items only", () => {
     const zone = { eventId: "loy_krathong" as const, zoneId: 1 };

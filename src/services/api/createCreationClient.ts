@@ -49,6 +49,7 @@ export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId):
   const publicWishText = raw.publicWishText;
   const createdAt = raw.createdAt;
   const expiresAt = raw.expiresAt;
+  const displayName = raw.displayName;
   if (typeof id !== "string" || id === "") return null;
   if (itemEvent !== eventId) return null;
   if (typeof zoneId !== "number" || !Number.isSafeInteger(zoneId) || zoneId < ZONE_ID_MIN) return null;
@@ -57,6 +58,8 @@ export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId):
   if (publicWishText !== null && typeof publicWishText !== "string") return null;
   if (!isIsoLike(createdAt) || !isIsoLike(expiresAt)) return null;
   if (containsPrivateKey(appearance) || containsPrivateKey(coord)) return null;
+  // MFW-62: absent (older server / mock) or null → null; any non-string → invalid; never a name without an open wish.
+  if (displayName !== undefined && displayName !== null && typeof displayName !== "string") return null;
   return {
     id,
     eventId,
@@ -66,6 +69,7 @@ export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId):
     publicWishText,
     createdAt,
     expiresAt,
+    displayName: publicWishText === null ? null : (displayName ?? null),
   };
 }
 

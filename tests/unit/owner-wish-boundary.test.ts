@@ -102,7 +102,8 @@ describe("owner wish boundary (MFW-31)", () => {
   });
 
   it("AC1: no identity fields in what other people see", () => {
-    expect(PUBLIC_CREATION_KEYS.filter((k) => IDENTITY.test(k))).toEqual([]);
+    // owner decision 29 (MFW-62): an open wish shows its display name
+    expect(PUBLIC_CREATION_KEYS.filter((k) => IDENTITY.test(k))).toEqual(["displayName"]);
     const picked = pickInspectedCreation({
       id: "950118ce-7d93-4cb6-bd84-44d91c5de9e3",
       appearance: DEFAULT_KRATHONG_APPEARANCE,

@@ -1,10 +1,13 @@
 import {
+  CLOSE_CREATION_WISH_RPC_PATH,
   CREATION_OWNERSHIP_RPC_PATH,
+  CREATION_WISH_STATE_RPC_PATH,
   CREATIONS_PUBLIC_VISIBLE_VIEW,
   HIGHEST_ZONE_ORDER,
-  INSERT_CREATION_GUARDED_RPC_PATH,
+  INSERT_CREATION_GUARDED_V2_RPC_PATH,
   INSERT_CREATION_RPC_PATH,
   LOCAL_SUPABASE_HOSTNAMES,
+  OPEN_CREATION_WISH_RPC_PATH,
   PUBLIC_CREATION_COLUMNS,
   PUBLIC_ZONE_ORDER,
   REPORT_CREATION_RPC_PATH,
@@ -25,12 +28,16 @@ import { isOwnerTokenHash } from "@/services/auth";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type {
   AppearanceJson,
+  CloseWishInput,
   CreationOwnershipRecord,
   GuardedInsertResult,
   GuardedNewCreation,
   NewCreation,
+  OpenWishInput,
   PrivateWishCiphertext,
   PublicCreation,
+  WishSwitchOutcome,
+  WishSwitchRecord,
   ZoneItemCount,
   ZoneOccupant,
   ZoneQuery,
@@ -39,8 +46,10 @@ import {
   isFestivalEventId,
   isZoneId,
   toIsoTimestamp,
+  validateCloseWishInput,
   validateGuardedNewCreation,
   validateNewCreation,
+  validateOpenWishInput,
 } from "./creationValidation";
 import { isPlainObject } from "./json";
 import { publicRowToCreation } from "./publicCreation";
@@ -62,6 +71,72 @@ function ownershipRowToRecord(row: unknown): CreationOwnershipRecord | null {
     ownerTokenHash: owner_token_hash,
     privateWish: { ciphertext: private_wish_text as PrivateWishCiphertext, keyId: private_wish_key_id },
   };
+}
+
+/** Body of POST /rest/v1/rpc/mfw_creation_wish_state (MFW-62); key equals the SQL parameter name. Carries no token and no hash. */
+export interface CreationWishStateRpcBody {
+  readonly p_creation_id: string;
+}
+
+/** Body of POST /rest/v1/rpc/mfw_open_creation_wish (MFW-62); keys equal the SQL parameter names. No token, no hash. */
+export interface OpenCreationWishRpcBody {
+  readonly p_creation_id: string;
+  readonly p_expected_private_wish_text: string; // ciphertext envelope (compare-and-set)
+  readonly p_public_wish_text: string;
+  readonly p_display_name: string | null;
+}
+
+/** Body of POST /rest/v1/rpc/mfw_close_creation_wish (MFW-62); keys equal the SQL parameter names. No token, no hash. */
+export interface CloseCreationWishRpcBody {
+  readonly p_creation_id: string;
+  readonly p_expected_public_wish_text: string;
+  readonly p_expected_display_name: string | null;
+  readonly p_private_wish_text: string; // ciphertext envelope, never plaintext
+  readonly p_private_wish_key_id: string;
+  readonly p_private_display_name: string | null; // ciphertext envelope under p_private_wish_key_id
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+/** One mfw_creation_wish_state row → record, or null if malformed (named keys only, no spreading; fail closed). */
+function wishStateRowToRecord(row: unknown): WishSwitchRecord | null {
+  if (!isPlainObject(row)) return null;
+  const { owner_token_hash, public_wish_text, display_name, private_wish_text, private_wish_key_id, private_display_name, hidden } =
+    row;
+  if (!isOwnerTokenHash(owner_token_hash)) return null;
+  if (typeof hidden !== "boolean") return null;
+  if (!isNullableString(public_wish_text) || !isNullableString(display_name)) return null;
+  if (display_name !== null && public_wish_text === null) return null;
+  let privateWish: { ciphertext: PrivateWishCiphertext; keyId: string } | null = null;
+  if (private_wish_text !== null || private_wish_key_id !== null) {
+    if (typeof private_wish_text !== "string" || !PRIVATE_WISH_CIPHERTEXT_PATTERN.test(private_wish_text)) return null;
+    if (typeof private_wish_key_id !== "string" || !PRIVATE_WISH_KEY_ID_PATTERN.test(private_wish_key_id)) return null;
+    privateWish = { ciphertext: private_wish_text as PrivateWishCiphertext, keyId: private_wish_key_id };
+  }
+  if (private_display_name !== null) {
+    if (typeof private_display_name !== "string" || !PRIVATE_WISH_CIPHERTEXT_PATTERN.test(private_display_name)) return null;
+    if (privateWish === null) return null;
+  }
+  if (public_wish_text !== null && privateWish !== null) return null;
+  return {
+    ownerTokenHash: owner_token_hash,
+    hidden,
+    publicWishText: public_wish_text,
+    displayName: display_name,
+    privateWish,
+    privateDisplayName:
+      private_display_name === null || privateWish === null
+        ? null
+        : { ciphertext: private_display_name as PrivateWishCiphertext, keyId: privateWish.keyId },
+  };
+}
+
+function toSwitchOutcome(data: unknown): WishSwitchOutcome {
+  if (data === true) return "switched";
+  if (data === false) return "conflict";
+  throw new CreationRepositoryError("invalid_backend_response", "wish_switch");
 }
 
 export interface SupabaseCreationRepositoryOptions {
@@ -101,6 +176,11 @@ export interface ZoneOccupantsRpcBody {
 export interface InsertCreationGuardedRpcBody extends InsertCreationRpcBody {
   readonly p_created_at: string; // ISO-8601, ms precision
   readonly p_expected_occupant_ids: readonly string[];
+}
+/** Keys equal the SQL parameter names of mfw_insert_creation_guarded_v2 (MFW-62). */
+export interface InsertCreationGuardedV2RpcBody extends InsertCreationGuardedRpcBody {
+  readonly p_display_name: string | null;
+  readonly p_private_display_name: string | null; // ciphertext only; its key id is p_private_wish_key_id
 }
 
 export function createSupabaseCreationRepository(options: SupabaseCreationRepositoryOptions): CreationRepository {
@@ -193,6 +273,9 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
 
     async insertCreation(input: NewCreation): Promise<PublicCreation> {
       const v = validateNewCreation(input, now());
+      // The unguarded v1 SQL function has no name parameters (seeding / tests only): refuse instead of dropping a name.
+      if ((v.displayName ?? null) !== null) throw new CreationRepositoryError("invalid_input", "displayName");
+      if ((v.privateDisplayName ?? null) !== null) throw new CreationRepositoryError("invalid_input", "privateDisplayName");
       const body: InsertCreationRpcBody = {
         p_event_id: v.eventId,
         p_zone_id: v.zoneId,
@@ -257,7 +340,7 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
 
     async insertCreationGuarded(input: GuardedNewCreation): Promise<GuardedInsertResult> {
       const v = validateGuardedNewCreation(input); // throws before any request
-      const body: InsertCreationGuardedRpcBody = {
+      const body: InsertCreationGuardedV2RpcBody = {
         p_event_id: v.eventId,
         p_zone_id: v.zoneId,
         p_appearance: v.appearance,
@@ -269,8 +352,10 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
         p_private_wish_key_id: v.privateWish === null ? null : v.privateWish.keyId,
         p_created_at: v.createdAt.toISOString(),
         p_expected_occupant_ids: [...v.expectedOccupantIds],
+        p_display_name: v.displayName ?? null,
+        p_private_display_name: v.privateDisplayName?.ciphertext ?? null,
       };
-      const data = await send(new URL(INSERT_CREATION_GUARDED_RPC_PATH, restBase), "POST", JSON.stringify(body));
+      const data = await send(new URL(INSERT_CREATION_GUARDED_V2_RPC_PATH, restBase), "POST", JSON.stringify(body));
       if (!Array.isArray(data)) throw new CreationRepositoryError("invalid_backend_response", "insert");
       if (data.length === 0) return { status: "zone_changed" };
       if (data.length !== 1) throw new CreationRepositoryError("invalid_backend_response", "insert");
@@ -301,6 +386,43 @@ export function createSupabaseCreationRepository(options: SupabaseCreationReposi
       const record = ownershipRowToRecord(data[0]);
       if (record === null) throw new CreationRepositoryError("invalid_backend_response", "ownership"); // fail closed → 503
       return record;
+    },
+
+    async readWishSwitchState(creationId: string): Promise<WishSwitchRecord | null> {
+      if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+        throw new CreationRepositoryError("invalid_input", "creationId"); // before any request
+      }
+      const body: CreationWishStateRpcBody = { p_creation_id: creationId };
+      const data = await send(new URL(CREATION_WISH_STATE_RPC_PATH, restBase), "POST", JSON.stringify(body));
+      if (!Array.isArray(data) || data.length > 1) throw new CreationRepositoryError("invalid_backend_response", "wish_state");
+      if (data.length === 0) return null;
+      const record = wishStateRowToRecord(data[0]);
+      if (record === null) throw new CreationRepositoryError("invalid_backend_response", "wish_state"); // fail closed → 503
+      return record;
+    },
+
+    async openWish(input: OpenWishInput): Promise<WishSwitchOutcome> {
+      const v = validateOpenWishInput(input); // throws before any request
+      const body: OpenCreationWishRpcBody = {
+        p_creation_id: v.creationId,
+        p_expected_private_wish_text: v.expectedPrivateWish,
+        p_public_wish_text: v.publicWishText,
+        p_display_name: v.displayName,
+      };
+      return toSwitchOutcome(await send(new URL(OPEN_CREATION_WISH_RPC_PATH, restBase), "POST", JSON.stringify(body)));
+    },
+
+    async closeWish(input: CloseWishInput): Promise<WishSwitchOutcome> {
+      const v = validateCloseWishInput(input); // throws before any request
+      const body: CloseCreationWishRpcBody = {
+        p_creation_id: v.creationId,
+        p_expected_public_wish_text: v.expectedPublicWishText,
+        p_expected_display_name: v.expectedDisplayName,
+        p_private_wish_text: v.privateWish.ciphertext,
+        p_private_wish_key_id: v.privateWish.keyId,
+        p_private_display_name: v.privateDisplayName === null ? null : v.privateDisplayName.ciphertext,
+      };
+      return toSwitchOutcome(await send(new URL(CLOSE_CREATION_WISH_RPC_PATH, restBase), "POST", JSON.stringify(body)));
     },
   };
 }

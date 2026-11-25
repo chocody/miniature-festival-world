@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CREATE_CREATION_MAX_ATTEMPTS, CREATE_CREATION_REQUEST_MAX_BYTES } from "@/config/creationWrite.config";
 import { PRIVATE_WISH_CIPHERTEXT_PATTERN } from "@/config/privateWish.config";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_MIN_CENTER_SPACING } from "@/config/riverFlow.config";
-import { WISH_TEXT_MAX_LENGTH } from "@/config/wish.config";
+import { DISPLAY_NAME_MAX_LENGTH, WISH_TEXT_MAX_LENGTH } from "@/config/wish.config";
 import { riverSpotDistance, riverSpotOf } from "@/core/world/riverCollision";
 import { getLoyKrathongRiverLanes } from "@/core/world/riverLanes";
 import type { OwnerTokenHash } from "@/services/auth";
@@ -397,5 +397,89 @@ describe("AC6: no overlap", () => {
     expect(res.status).toBe(201);
     const c = await created(res);
     expect(Date.parse(c.createdAt)).toBe(inserts[0]!.createdAt.getTime());
+  });
+});
+
+describe("display name (MFW-62)", () => {
+  const HASH = sha256Hex(OWNER_TOKEN_FIXTURE) as OwnerTokenHash;
+
+  it("C1 a public wish shows the trimmed name", async () => {
+    const { post, inserts } = await setup();
+    const res = await post(makeCreateBody({ displayName: "  สมชาย  " }));
+    expect(res.status).toBe(201);
+    const c = await created(res);
+    expect(c.displayName).toBe("สมชาย");
+    expect(Object.keys(c)).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(inserts[0]).toMatchObject({ displayName: "สมชาย", privateDisplayName: null });
+  });
+
+  it("C2 a private wish encrypts the name with the wish key and never returns it", async () => {
+    const { post, inserts, lookup } = await setup();
+    const res = await post(makeCreateBody({ wishVisibility: "private", displayName: "สมชาย" }));
+    expect(res.status).toBe(201);
+    const text = await res.text();
+    expect((JSON.parse(text) as { creation: PublicCreation }).creation.displayName).toBeNull();
+    expect(text).not.toContain("สมชาย");
+    const row = inserts[0]!;
+    expect(row.displayName).toBeNull();
+    expect(row.privateDisplayName?.keyId).toBe(row.privateWish?.keyId);
+    expect(row.privateDisplayName!.ciphertext).not.toContain("สมชาย");
+    expect(await decryptPrivateWish(row.privateDisplayName!, HASH, lookup, "displayName")).toBe("สมชาย");
+    expect(await decryptPrivateWish(row.privateDisplayName!, HASH, lookup)).toBeNull(); // not a wish ciphertext
+    expect(text).not.toContain(row.privateDisplayName!.ciphertext);
+  });
+
+  it("C3 no name, null, empty or blank → null in the response and the insert", async () => {
+    const { post, inserts } = await setup();
+    const bodies = [makeCreateBody(), makeCreateBody({ displayName: null }), makeCreateBody({ displayName: "" }), makeCreateBody({ displayName: "   " })];
+    for (const body of [...bodies, ...bodies.map((b) => ({ ...b, wishVisibility: "private" }))]) {
+      const res = await post(body);
+      expect(res.status).toBe(201);
+      expect((await created(res)).displayName).toBeNull();
+      const row = inserts[inserts.length - 1]!;
+      expect(row.displayName ?? null).toBeNull();
+      expect(row.privateDisplayName ?? null).toBeNull();
+    }
+  });
+
+  it("C4 length limit from config and input hygiene → 400 displayName", async () => {
+    const { post, inserts } = await setup();
+    expect((await post(makeCreateBody({ displayName: "ก".repeat(DISPLAY_NAME_MAX_LENGTH) }))).status).toBe(201);
+    const before = inserts.length;
+    for (const displayName of ["ก".repeat(DISPLAY_NAME_MAX_LENGTH + 1), "a\nb", 123]) {
+      const res = await post(makeCreateBody({ displayName }));
+      expect(res.status).toBe(400);
+      expect(res.headers.get("cache-control")).toContain("no-store");
+      expect(await res.json()).toEqual({ error: "invalid_body", field: "displayName" });
+    }
+    expect(inserts).toHaveLength(before);
+  });
+
+  it("C5 the name passes the public moderation guard (Thai and English), whatever the visibility", async () => {
+    const { post, inserts } = await setup();
+    const cases: [Record<string, unknown>, string[], string][] = [
+      [{ displayName: "0812345678" }, ["phone"], "0812345678"],
+      [{ displayName: "me@example.com" }, ["email"], "me@example.com"],
+      [{ displayName: "เหี้ย" }, ["profanity"], "เหี้ย"],
+      [{ displayName: "fuck" }, ["profanity"], "fuck"],
+      [{ wishVisibility: "private", displayName: "@somchai_j" }, ["social_handle"], "@somchai_j"],
+      [{ wishText: "โทร 0812345678", displayName: "me@example.com" }, ["phone", "email"], "me@example.com"],
+    ];
+    for (const [over, reasons, name] of cases) {
+      const res = await post(makeCreateBody(over));
+      expect(res.status).toBe(422);
+      expect(res.headers.get("cache-control")).toContain("no-store");
+      const text = await res.text();
+      expect(JSON.parse(text)).toEqual({ error: "moderation_blocked", reasons });
+      expect(text).not.toContain(name);
+    }
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("C6 without a name the response still has exactly the public keys", async () => {
+    const { post } = await setup();
+    const c = await created(await post(makeCreateBody()));
+    expect(Object.keys(c)).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(c.displayName).toBeNull();
   });
 });

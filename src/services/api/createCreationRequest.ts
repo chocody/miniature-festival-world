@@ -3,7 +3,11 @@ import type { WishVisibility } from "@/config/wish.config";
 import type { PersistableCoord } from "@/core/coordinates/types";
 import { parsePersistableCoord } from "@/core/coordinates/validateCoord";
 import { isDeviceOwnerToken, type DeviceOwnerToken } from "@/services/auth";
-import { CREATE_CREATION_BODY_KEYS, type CreateCreationField } from "./createCreationTypes";
+import {
+  CREATE_CREATION_BODY_KEYS,
+  CREATE_CREATION_OPTIONAL_BODY_KEYS,
+  type CreateCreationField,
+} from "./createCreationTypes";
 import { isFestivalEventId } from "./creationValidation";
 import { isPlainObject } from "./json";
 import { isWishVisibility } from "./wishPayload";
@@ -15,6 +19,7 @@ export interface ParsedCreateCreationRequest {
   readonly wishText: string; // as sent (type-checked only); evaluateWishDraft trims and checks it in the handler
   readonly wishVisibility: WishVisibility;
   readonly ownerToken: DeviceOwnerToken;
+  readonly displayName: string | null; // MFW-62: as sent (type-checked only); evaluateDisplayName trims and checks it in the handler
 }
 
 export type CreateCreationParseResult =
@@ -26,7 +31,7 @@ const fail = (field: CreateCreationField): CreateCreationParseResult => ({ ok: f
 /** Shape check of a POST /api/creations body. Never echoes a key name or a value. */
 export function parseCreateCreationRequest(value: unknown): CreateCreationParseResult {
   if (!isPlainObject(value)) return fail("body");
-  const allowed: readonly string[] = CREATE_CREATION_BODY_KEYS;
+  const allowed: readonly string[] = [...CREATE_CREATION_BODY_KEYS, ...CREATE_CREATION_OPTIONAL_BODY_KEYS];
   if (Object.keys(value).some((key) => !allowed.includes(key))) return fail("body");
   const eventId = value.eventId;
   if (!isFestivalEventId(eventId)) return fail("eventId");
@@ -39,8 +44,11 @@ export function parseCreateCreationRequest(value: unknown): CreateCreationParseR
   if (!isWishVisibility(wishVisibility)) return fail("wishVisibility");
   const ownerToken = value.ownerToken;
   if (!isDeviceOwnerToken(ownerToken)) return fail("ownerToken");
+  const rawName = value.displayName; // optional (open question 36): absent / null → no name
+  if (rawName !== undefined && rawName !== null && typeof rawName !== "string") return fail("displayName");
+  const displayName = typeof rawName === "string" ? rawName : null;
   return {
     ok: true,
-    request: { eventId, appearance: value.appearance, coord: coord.coord, wishText, wishVisibility, ownerToken },
+    request: { eventId, appearance: value.appearance, coord: coord.coord, wishText, wishVisibility, ownerToken, displayName },
   };
 }

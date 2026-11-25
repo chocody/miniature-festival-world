@@ -2,7 +2,7 @@ import { expect, test, type APIResponse } from "@playwright/test";
 import { E2E_DRIFT_SPEED_FACTOR, e2eCreateBody, e2eOwnerToken } from "./fixtures/createCreationFixtures";
 
 const PRIVATE_NAMES = ["owner_token", "ownerToken", "private_wish_text", "privateWishText", "privateWish"];
-const PUBLIC_KEYS = ["appearance", "coord", "createdAt", "eventId", "expiresAt", "id", "publicWishText", "zoneId"];
+const PUBLIC_KEYS = ["appearance", "coord", "createdAt", "displayName", "eventId", "expiresAt", "id", "publicWishText", "zoneId"];
 
 /** Writes close with the feature flag or at expiry; then the route answers 409 and unit tests cover the success path. */
 async function closedNote(res: APIResponse): Promise<boolean> {

@@ -77,13 +77,15 @@ async function getJson(url: string, options: ZoneFetchOptions): Promise<JsonResu
 /** Allowlist copy of one received item, or null (invariant C defence in depth). Coord/appearance are deep-validated in the 3D chunk. */
 export function toClientPublicCreation(raw: unknown, eventId: FestivalEventId, zoneId: number): PublicCreation | null {
   if (!isPlainRecord(raw)) return null;
-  const { id, eventId: itemEvent, zoneId: itemZone, appearance, coord, publicWishText, createdAt, expiresAt } = raw;
+  const { id, eventId: itemEvent, zoneId: itemZone, appearance, coord, publicWishText, createdAt, expiresAt, displayName } = raw;
   if (typeof id !== "string" || id === "") return null;
   if (itemEvent !== eventId || itemZone !== zoneId) return null;
   if (!isPlainRecord(appearance) || !isPlainRecord(coord)) return null;
   if (publicWishText !== null && typeof publicWishText !== "string") return null;
   if (!isIsoLike(createdAt) || !isIsoLike(expiresAt)) return null;
   if (containsPrivateKey(appearance) || containsPrivateKey(coord)) return null;
+  // MFW-62: absent (older server / mock) or null → null; any non-string → drop the item; never a name without an open wish.
+  if (displayName !== undefined && displayName !== null && typeof displayName !== "string") return null;
   return {
     id,
     eventId,
@@ -93,6 +95,7 @@ export function toClientPublicCreation(raw: unknown, eventId: FestivalEventId, z
     publicWishText,
     createdAt,
     expiresAt,
+    displayName: publicWishText === null ? null : (displayName ?? null),
   };
 }
 

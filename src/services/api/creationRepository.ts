@@ -1,10 +1,14 @@
 import type { FestivalEventId } from "@/config/events/types";
 import type {
+  CloseWishInput,
   CreationOwnershipRecord,
   GuardedInsertResult,
   GuardedNewCreation,
   NewCreation,
+  OpenWishInput,
   PublicCreation,
+  WishSwitchOutcome,
+  WishSwitchRecord,
   ZoneItemCount,
   ZoneOccupant,
   ZoneQuery,
@@ -16,7 +20,7 @@ export type CreationRepositoryErrorCode =
   | "invalid_input" // a NewCreation / ZoneQuery field failed validation (detail = field name, incl. "createdAt" | "expectedOccupantIds")
   | "backend_misconfigured" // env / options wrong (detail = env var name or option name, never its value)
   | "backend_request_failed" // network error or non-2xx (detail = "network" | "status <n>")
-  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone" | "occupant" | "ownership")
+  | "invalid_backend_response"; // 2xx but unusable body (detail = "json" | "list" | "insert" | "id" | "report" | "zone" | "occupant" | "ownership" | "wish_state" | "wish_switch")
 
 /** counted = report_count was incremented; ignored = unknown, private-only, expired or already hidden/flagged creation. */
 export type ReportOutcome = "counted" | "ignored";
@@ -75,4 +79,21 @@ export interface CreationRepository {
    * Ignores moderation status (not a public read). Never takes or sends a token or a hash. Rejects invalid_input "creationId" for a non-uuid before any I/O.
    */
   readOwnership(creationId: string): Promise<CreationOwnershipRecord | null>;
+  /**
+   * Server-only (MFW-62): switch state of a NON-EXPIRED creation, or null (unknown / expired). Ignores moderation for reading.
+   * Never takes or sends a token or a hash. invalid_input "creationId" for a non-uuid before any I/O.
+   */
+  readWishSwitchState(creationId: string): Promise<WishSwitchRecord | null>;
+  /**
+   * Atomic compare-and-set (MFW-62): only if the creation is non-expired, approved, report_count < AUTO_HIDE_REPORT_THRESHOLD,
+   * closed (public text null) and its private ciphertext equals expectedPrivateWish: clear the private wish, name and key id,
+   * and write publicWishText + displayName. Validates with validateOpenWishInput first.
+   */
+  openWish(input: OpenWishInput): Promise<WishSwitchOutcome>;
+  /**
+   * Atomic compare-and-set (MFW-62): only if non-expired, open, private wish null, and the public text/name equal the expected
+   * values (any moderation state): clear public text + name, write the private ciphertexts and key id. Validates with
+   * validateCloseWishInput first.
+   */
+  closeWish(input: CloseWishInput): Promise<WishSwitchOutcome>;
 }

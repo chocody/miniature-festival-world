@@ -45,7 +45,7 @@ describe("supabase repository: list", () => {
     const url = new URL(String(input));
     expect(url.pathname).toBe("/rest/v1/creations_public_visible");
     expect(url.searchParams.get("select")).toBe(
-      "id,event_id,zone_id,appearance,coord,public_wish_text,created_at,expires_at",
+      "id,event_id,zone_id,appearance,coord,public_wish_text,created_at,expires_at,display_name",
     );
     expect(url.searchParams.get("select")).not.toContain("*");
     expect(url.searchParams.get("event_id")).toBe("eq.loy_krathong");
@@ -387,7 +387,7 @@ describe("supabase repository: MFW-45 zone RPCs and guarded insert", () => {
     const result = await repo.insertCreationGuarded(guarded());
     expect(result.status).toBe("inserted");
     const [input, init] = lastCall(fetchMock);
-    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_insert_creation_guarded");
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_insert_creation_guarded_v2");
     const text = String(init.body);
     const body = JSON.parse(text) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(
@@ -395,10 +395,12 @@ describe("supabase repository: MFW-45 zone RPCs and guarded insert", () => {
         "p_appearance",
         "p_coord",
         "p_created_at",
+        "p_display_name",
         "p_event_id",
         "p_expected_occupant_ids",
         "p_expires_at",
         "p_owner_token_hash",
+        "p_private_display_name",
         "p_private_wish_key_id",
         "p_private_wish_text",
         "p_public_wish_text",
@@ -408,6 +410,8 @@ describe("supabase repository: MFW-45 zone RPCs and guarded insert", () => {
     expect(body.p_created_at).toBe("2026-11-24T12:00:00.000Z");
     expect(body.p_expected_occupant_ids).toEqual([uuid(1), uuid(2)]);
     expect(body.p_owner_token_hash).toBe(OWNER_HASH_FIXTURE);
+    expect(body.p_display_name).toBeNull();
+    expect(body.p_private_display_name).toBeNull();
     expect(text).not.toContain("SeCrEt");
   });
 
@@ -500,6 +504,202 @@ describe("supabase repository: readOwnership (MFW-31)", () => {
     expect(jsonSpy).not.toHaveBeenCalled();
     const other = make([]);
     await expect(other.repo.readOwnership("nope")).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+    expect(other.fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("supabase repository: wish switch and display name (MFW-62)", () => {
+  const ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const NAME_CIPHERTEXT = "v1.BBBBBBBBBBBBBBBB.NAMExPRIVATExCIPHERTEXTxxx" as typeof PRIVATE_CIPHERTEXT_FIXTURE;
+  const firstCall = (m: ReturnType<typeof make>["fetchMock"]) => m.mock.calls[0] as [RequestInfo | URL, RequestInit];
+  const guarded = (over: Partial<GuardedNewCreation> = {}): GuardedNewCreation => ({
+    ...makeNewCreation(),
+    createdAt: new Date("2026-11-24T12:00:00.000Z"),
+    expectedOccupantIds: [],
+    ...over,
+  });
+  const CLOSED_ROW = {
+    owner_token_hash: OWNER_HASH_FIXTURE,
+    public_wish_text: null,
+    display_name: null,
+    private_wish_text: PRIVATE_CIPHERTEXT_FIXTURE,
+    private_wish_key_id: KEY_ID_FIXTURE,
+    private_display_name: NAME_CIPHERTEXT,
+    hidden: false,
+  };
+  const OPEN_ROW = {
+    owner_token_hash: OWNER_HASH_FIXTURE,
+    public_wish_text: "ขอให้ทุกคนมีความสุข",
+    display_name: "สมชาย",
+    private_wish_text: null,
+    private_wish_key_id: null,
+    private_display_name: null,
+    hidden: true,
+  };
+
+  it("a guarded insert with a public name sends p_display_name", async () => {
+    const { fetchMock, repo } = make([makePublicRow({ display_name: "สมชาย" })]);
+    const result = await repo.insertCreationGuarded(guarded({ displayName: "สมชาย" }));
+    expect(result).toMatchObject({ status: "inserted", creation: { displayName: "สมชาย" } });
+    const body = JSON.parse(String(firstCall(fetchMock)[1].body)) as Record<string, unknown>;
+    expect(body.p_display_name).toBe("สมชาย");
+    expect(body.p_private_display_name).toBeNull();
+  });
+
+  it("a guarded insert with a private name sends the ciphertext and the shared key id", async () => {
+    const { fetchMock, repo } = make([makePublicRow({ public_wish_text: null })]);
+    await repo.insertCreationGuarded(
+      guarded({
+        publicWishText: null,
+        privateWish: makePrivateWish(),
+        privateDisplayName: { ciphertext: NAME_CIPHERTEXT, keyId: KEY_ID_FIXTURE },
+      }),
+    );
+    const body = JSON.parse(String(firstCall(fetchMock)[1].body)) as Record<string, unknown>;
+    expect(body.p_private_display_name).toBe(NAME_CIPHERTEXT);
+    expect(body.p_private_wish_key_id).toBe(KEY_ID_FIXTURE);
+    expect(body.p_display_name).toBeNull();
+  });
+
+  it("the unguarded v1 insert refuses a name before any request", async () => {
+    const { fetchMock, repo } = make([makePublicRow()]);
+    await expect(repo.insertCreation(makeNewCreation({ displayName: "สมชาย" }))).rejects.toMatchObject({
+      code: "invalid_input",
+      detail: "displayName",
+    });
+    await expect(
+      repo.insertCreation(
+        makeNewCreation({
+          publicWishText: null,
+          privateWish: makePrivateWish(),
+          privateDisplayName: { ciphertext: NAME_CIPHERTEXT, keyId: KEY_ID_FIXTURE },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input", detail: "privateDisplayName" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("list rows map display_name", async () => {
+    const items = await make([
+      makePublicRow({ id: uuid(1), display_name: "สมชาย" }),
+      makePublicRow({ id: uuid(2), display_name: 5 }),
+      makePublicRow({ id: uuid(3), public_wish_text: null, display_name: "x" }),
+    ]).repo.listPublicZone(Z1);
+    expect(items.map((i) => [i.id, i.displayName])).toEqual([
+      [uuid(1), "สมชาย"],
+      [uuid(3), null],
+    ]);
+    expect(Object.keys(items[0] ?? {}).sort()).toEqual(sortedKeys);
+  });
+
+  it("readWishSwitchState sends only the creation id and maps rows", async () => {
+    const empty = make([]);
+    expect(await empty.repo.readWishSwitchState(ID)).toBeNull();
+    const [input, init] = firstCall(empty.fetchMock);
+    const url = new URL(String(input));
+    expect(url.pathname).toBe("/rest/v1/rpc/mfw_creation_wish_state");
+    expect(url.search).toBe("");
+    expect(init.method).toBe("POST");
+    expect(String(init.body)).toBe(JSON.stringify({ p_creation_id: ID }));
+    expect(String(init.body)).not.toContain(OWNER_HASH_FIXTURE);
+    expect(await make([CLOSED_ROW]).repo.readWishSwitchState(ID)).toEqual({
+      ownerTokenHash: OWNER_HASH_FIXTURE,
+      hidden: false,
+      publicWishText: null,
+      displayName: null,
+      privateWish: { ciphertext: PRIVATE_CIPHERTEXT_FIXTURE, keyId: KEY_ID_FIXTURE },
+      privateDisplayName: { ciphertext: NAME_CIPHERTEXT, keyId: KEY_ID_FIXTURE },
+    });
+    expect(await make([OPEN_ROW]).repo.readWishSwitchState(ID)).toEqual({
+      ownerTokenHash: OWNER_HASH_FIXTURE,
+      hidden: true,
+      publicWishText: "ขอให้ทุกคนมีความสุข",
+      displayName: "สมชาย",
+      privateWish: null,
+      privateDisplayName: null,
+    });
+  });
+
+  it("readWishSwitchState fails closed on malformed rows", async () => {
+    const bad: unknown[] = [
+      [{ ...CLOSED_ROW, owner_token_hash: "nope" }],
+      [{ ...CLOSED_ROW, hidden: "no" }],
+      [{ ...OPEN_ROW, public_wish_text: null }], // display_name without public text
+      [{ ...OPEN_ROW, private_display_name: NAME_CIPHERTEXT }], // private name without private wish
+      [{ ...CLOSED_ROW, public_wish_text: "ขอให้ทุกคนมีความสุข" }], // both texts set
+      [{ ...CLOSED_ROW, private_wish_key_id: null }],
+      [{ ...CLOSED_ROW, private_display_name: "not-a-ciphertext" }],
+      [{ ...CLOSED_ROW, display_name: 5 }],
+      [CLOSED_ROW, CLOSED_ROW],
+      {},
+      [{}],
+    ];
+    for (const body of bad) {
+      await expect(make(body).repo.readWishSwitchState(ID)).rejects.toMatchObject({
+        code: "invalid_backend_response",
+        detail: "wish_state",
+      });
+    }
+    const other = make([]);
+    await expect(other.repo.readWishSwitchState("NOPE")).rejects.toMatchObject({ code: "invalid_input", detail: "creationId" });
+    expect(other.fetchMock).not.toHaveBeenCalled();
+  });
+
+  const openInput = {
+    creationId: ID,
+    expectedPrivateWish: PRIVATE_CIPHERTEXT_FIXTURE,
+    publicWishText: "ขอให้ทุกคนมีความสุข",
+    displayName: "สมชาย",
+  };
+  const closeInput = {
+    creationId: ID,
+    expectedPublicWishText: "ขอให้ทุกคนมีความสุข",
+    expectedDisplayName: "สมชาย",
+    privateWish: makePrivateWish(),
+    privateDisplayName: { ciphertext: NAME_CIPHERTEXT, keyId: KEY_ID_FIXTURE },
+  };
+
+  it("openWish posts the compare-and-set body and maps the answer", async () => {
+    const { fetchMock, repo } = make(true);
+    expect(await repo.openWish(openInput)).toBe("switched");
+    const [input, init] = firstCall(fetchMock);
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_open_creation_wish");
+    expect(JSON.parse(String(init.body))).toEqual({
+      p_creation_id: ID,
+      p_expected_private_wish_text: PRIVATE_CIPHERTEXT_FIXTURE,
+      p_public_wish_text: "ขอให้ทุกคนมีความสุข",
+      p_display_name: "สมชาย",
+    });
+    expect(String(init.body)).not.toContain(OWNER_HASH_FIXTURE);
+    expect(await make(false).repo.openWish(openInput)).toBe("conflict");
+    await expect(make("yes").repo.openWish(openInput)).rejects.toMatchObject({ detail: "wish_switch" });
+    const other = make(true);
+    await expect(other.repo.openWish({ ...openInput, publicWishText: "โทร 0812345678" })).rejects.toMatchObject({
+      code: "invalid_input",
+      detail: "publicWishText",
+    });
+    expect(other.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("closeWish posts the compare-and-set body and maps the answer", async () => {
+    const { fetchMock, repo } = make(true);
+    expect(await repo.closeWish(closeInput)).toBe("switched");
+    const [input, init] = firstCall(fetchMock);
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/rpc/mfw_close_creation_wish");
+    expect(JSON.parse(String(init.body))).toEqual({
+      p_creation_id: ID,
+      p_expected_public_wish_text: "ขอให้ทุกคนมีความสุข",
+      p_expected_display_name: "สมชาย",
+      p_private_wish_text: PRIVATE_CIPHERTEXT_FIXTURE,
+      p_private_wish_key_id: KEY_ID_FIXTURE,
+      p_private_display_name: NAME_CIPHERTEXT,
+    });
+    expect(await make(false).repo.closeWish(closeInput)).toBe("conflict");
+    await expect(make("yes").repo.closeWish(closeInput)).rejects.toMatchObject({ detail: "wish_switch" });
+    const other = make(true);
+    await expect(
+      other.repo.closeWish({ ...closeInput, privateDisplayName: { ciphertext: NAME_CIPHERTEXT, keyId: "other-key" } }),
+    ).rejects.toMatchObject({ code: "invalid_input", detail: "privateDisplayName" });
     expect(other.fetchMock).not.toHaveBeenCalled();
   });
 });
