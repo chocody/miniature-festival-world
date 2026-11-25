@@ -4,23 +4,26 @@ import { OrthographicCamera, Vector3 } from "three";
 import { createPartGeometry, countTriangles } from "@/components/canvas3d/geometry";
 import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import {
-  LOY_KRATHONG_PROMINENCE_REFERENCE_COLORS,
   LOY_KRATHONG_RIVER_LANES,
   PIER_DECK_MATERIAL,
+  PIER_PILE_MATERIAL,
   RIVER_BANK_MATERIAL,
   RIVER_ENVIRONMENT_PARTS,
   LOY_KRATHONG_PIER,
 } from "@/config/events/loyKrathong.river.config";
 import { PINCH_ZOOM_MIN } from "@/config/interaction.config";
+import { KRATHONG_FLAME_MODEL } from "@/config/krathongModel.config";
+import { LIGHT_PRESET_IDS, LIGHT_PRESETS, LOOK_MIN_ALBEDO_LUMINANCE, LOOK_MIN_LIT_LUMINANCE } from "@/config/look.config";
 import {
   ENVIRONMENT_PART_MAX_TRIANGLES,
   TOY_MATTE_MATERIALS,
+  type MatteMaterialSpec,
   type PartGeometrySpec,
   type ScenePartSpec,
 } from "@/config/scene.config";
 import { createRiverLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
-import type { InstanceTransform } from "@/core/world";
+import { estimateLitLuminance, type InstanceTransform, type Vec3Tuple } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "./riverLayout";
 
 const parts = RIVER_ENVIRONMENT_PARTS;
@@ -31,6 +34,7 @@ const SAMPLES = 64;
 function footprintRadius(g: PartGeometrySpec): number {
   switch (g.kind) {
     case "box": return Math.hypot(g.width, g.depth) / 2;
+    case "roundedBox": return Math.hypot(g.width, g.depth) / 2;
     case "cone": return g.radius;
     case "cylinder": return Math.max(g.radiusTop, g.radiusBottom);
     case "icosahedron": return g.radius;
@@ -166,18 +170,72 @@ describe("river layout", () => {
     }
   });
 
-  it("environment palette is darker than the krathong", () => {
-    const reference = Math.min(...LOY_KRATHONG_PROMINENCE_REFERENCE_COLORS.map(relativeLuminance));
-    const materials = [...Object.values(parts).map((p) => p.material), RIVER_BANK_MATERIAL, PIER_DECK_MATERIAL];
-    for (const m of materials) {
-      expect(relativeLuminance(m.color)).toBeLessThan(reference);
-      if (m.emissive) expect(relativeLuminance(m.emissive) * (m.emissiveIntensity ?? 1)).toBeLessThan(reference);
+  const environmentMaterials = (): Pick<MatteMaterialSpec, "color" | "emissive" | "emissiveIntensity">[] => [
+    ...Object.values(parts).map((p) => p.material),
+    RIVER_BANK_MATERIAL,
+    PIER_DECK_MATERIAL,
+    PIER_PILE_MATERIAL,
+    TOY_MATTE_MATERIALS.water,
+  ];
+  const UP: Vec3Tuple = [0, 1, 0];
+  const sideLength = Math.hypot(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]);
+  const SIDE: Vec3Tuple = [CAMERA_FLIGHT_OFFSET[0] / sideLength, 0, CAMERA_FLIGHT_OFFSET[2] / sideLength];
+
+  it("environment is readable in both presets (AC3)", () => {
+    for (const id of LIGHT_PRESET_IDS) {
+      for (const m of environmentMaterials()) {
+        for (const normal of [UP, SIDE]) {
+          expect(estimateLitLuminance(m.color, LIGHT_PRESETS[id], normal), `${id} ${m.color} ${normal}`).toBeGreaterThanOrEqual(
+            LOOK_MIN_LIT_LUMINANCE,
+          );
+        }
+      }
     }
-    expect(relativeLuminance(TOY_MATTE_MATERIALS.water.color)).toBeLessThan(reference);
+    // Positive control: the MFW-27 night house under the MFW-27 rig fails the guard.
+    const oldRig = {
+      hemisphere: { skyColor: "#000000", groundColor: "#000000", intensity: 0 },
+      ambient: { color: "#8499c5", intensity: 0.75 },
+      key: { ...LIGHT_PRESETS.NIGHT.key, color: "#bdceff", intensity: 1.15, position: [-4, 7, 3] as [number, number, number] },
+    };
+    for (const normal of [UP, SIDE]) {
+      expect(estimateLitLuminance("#4a3628", oldRig, normal)).toBeLessThan(LOOK_MIN_LIT_LUMINANCE);
+    }
+  });
+
+  it("krathong flame is the brightest surface in both presets", () => {
+    for (const id of LIGHT_PRESET_IDS) {
+      const flame = relativeLuminance(KRATHONG_FLAME_MODEL.emissive) * LIGHT_PRESETS[id].flame.emissiveIntensity;
+      const brightest = Math.max(
+        ...environmentMaterials().map(
+          (m) =>
+            estimateLitLuminance(m.color, LIGHT_PRESETS[id], UP) +
+            (m.emissive ? relativeLuminance(m.emissive) * (m.emissiveIntensity ?? 1) : 0),
+        ),
+      );
+      expect(flame, id).toBeGreaterThan(brightest);
+    }
+  });
+
+  it("pastel albedo: no near-black environment colour", () => {
+    for (const m of environmentMaterials()) {
+      expect(relativeLuminance(m.color), m.color).toBeGreaterThanOrEqual(LOOK_MIN_ALBEDO_LUMINANCE);
+    }
+  });
+
+  it("rounded clay rule: bevelled house bodies, smooth-shaded curved parts", () => {
+    const body = parts.houseBody.geometry;
+    expect(body.kind).toBe("roundedBox");
+    if (body.kind === "roundedBox") expect(body.radius).toBeGreaterThan(0);
+    const all: ScenePartSpec[] = Object.values(parts);
+    for (const part of all) {
+      const g = part.geometry;
+      const curved = g.kind === "cylinder" || g.kind === "roundedBox" || (g.kind === "icosahedron" && (g.detail ?? 0) >= 1);
+      if (curved) expect(part.material.flatShading, JSON.stringify(g)).toBe(false);
+    }
   });
 
   it("materials are matte", () => {
-    const materials = [...Object.values(parts).map((p) => p.material), RIVER_BANK_MATERIAL, PIER_DECK_MATERIAL];
+    const materials = [...Object.values(parts).map((p) => p.material), RIVER_BANK_MATERIAL, PIER_DECK_MATERIAL, PIER_PILE_MATERIAL];
     for (const m of materials) {
       expect(m.roughness).toBe(1);
       expect(m.metalness).toBe(0);

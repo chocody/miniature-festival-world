@@ -4,6 +4,7 @@ import { RIVER_COLLISION_RADIUS } from "@/config/riverFlow.config";
 import { SPLINE_LATERAL_OFFSET_LIMIT } from "@/config/ritual.config";
 import { CANDLE_COLOR_PALETTE, LEAF_COLOR_PALETTE } from "@/config/events/loyKrathong.config";
 import { KRATHONG_BASE_MODELS, KRATHONG_FLOWER_MODELS } from "@/config/krathongModel.config";
+import { LOOK_PALETTE } from "@/config/look.config";
 import { type MatteMaterialSpec, type ScenePartSpec } from "@/config/scene.config";
 
 /** Water surface height (existing: the MFW-15 disc sat at y = -0.24). */
@@ -58,9 +59,15 @@ const matte = (color: string, extra: Partial<MatteMaterialSpec> = {}): MatteMate
   ...extra,
 });
 
-/** Environment palette: dark, desaturated night tones (must stay darker than the krathong, see test). PLACEHOLDER (spec silent). */
-export const RIVER_BANK_MATERIAL = matte("#2c3a2f");
-export const PIER_DECK_MATERIAL = matte("#56402e");
+/**
+ * Environment palette: the shared look v2 (LOOK_PALETTE in look.config.ts, sampled from the reference image, MFW-47).
+ * Matte pastel clay; readable in both light presets (riverLayout.test.ts). DRAFT.
+ */
+// Banks are flat ribbons with up normals and the deck a box: flatShading false looks identical and shares the water /
+// krathong shader program (one compile fewer, MFW-47 perf).
+export const RIVER_BANK_MATERIAL = matte(LOOK_PALETTE.grass, { flatShading: false });
+export const PIER_DECK_MATERIAL = matte(LOOK_PALETTE.woodLight, { flatShading: false });
+export const PIER_PILE_MATERIAL = matte(LOOK_PALETTE.woodDark, { flatShading: false });
 
 /** Pier (ท่าน้ำ) on the near bank. PLACEHOLDER (spec silent). */
 export const LOY_KRATHONG_PIER = {
@@ -96,8 +103,9 @@ export const LOY_KRATHONG_PIER_RELEASE_SPOT = Object.freeze({
 /** Repeated parts, one InstancedMesh each. PLACEHOLDER (spec silent) sizes/colours. */
 export const RIVER_ENVIRONMENT_PARTS = {
   houseBody: {
-    geometry: { kind: "box", width: 0.8, height: 0.5, depth: 0.6 },
-    material: matte("#4a3628"),
+    // 1 bevel segment (108 triangles): segments 2 (300) cost too much in the SwiftShader e2e (MFW-47 dev, see report).
+    geometry: { kind: "roundedBox", width: 0.8, height: 0.5, depth: 0.6, radius: 0.06, segments: 1 },
+    material: matte(LOOK_PALETTE.wallCream, { flatShading: false }),
     yOffset: 0.25,
     yawOffsetRad: 0,
     castShadow: true,
@@ -105,39 +113,43 @@ export const RIVER_ENVIRONMENT_PARTS = {
   },
   houseRoof: {
     geometry: { kind: "cone", radius: 0.6, height: 0.35, radialSegments: 4 },
-    material: matte("#3a2a22"),
+    material: matte(LOOK_PALETTE.roofTeal),
     yOffset: 0.675,
     yawOffsetRad: Math.PI / 4,
     castShadow: true,
     receiveShadow: false,
   },
   treeTrunk: {
-    geometry: { kind: "cylinder", radiusTop: 0.05, radiusBottom: 0.07, height: 0.3, radialSegments: 5 },
-    material: matte("#3b2e25"),
+    geometry: { kind: "cylinder", radiusTop: 0.05, radiusBottom: 0.07, height: 0.3, radialSegments: 8 },
+    material: matte(LOOK_PALETTE.trunk, { flatShading: false }),
     yOffset: 0.15,
     yawOffsetRad: 0,
     castShadow: true,
     receiveShadow: false,
   },
   treeCanopy: {
-    geometry: { kind: "cone", radius: 0.32, height: 0.8, radialSegments: 6 },
-    material: matte("#24402f"),
-    yOffset: 0.7,
+    geometry: { kind: "icosahedron", radius: 0.36, detail: 1 },
+    material: matte(LOOK_PALETTE.canopy, { flatShading: false }),
+    yOffset: 0.57,
     yawOffsetRad: 0,
     castShadow: true,
     receiveShadow: false,
   },
   lampPost: {
-    geometry: { kind: "cylinder", radiusTop: 0.025, radiusBottom: 0.025, height: 0.45, radialSegments: 5 },
-    material: matte("#2f2a26"),
+    geometry: { kind: "cylinder", radiusTop: 0.025, radiusBottom: 0.025, height: 0.45, radialSegments: 8 },
+    material: matte(LOOK_PALETTE.woodDark, { flatShading: false }),
     yOffset: 0.225,
     yawOffsetRad: 0,
     castShadow: false,
     receiveShadow: false,
   },
   lampHead: {
-    geometry: { kind: "icosahedron", radius: 0.07 },
-    material: matte("#5a4b32", { emissive: "#5c4c27", emissiveIntensity: 0.2 }), // emissive values: existing look-dev lamp
+    geometry: { kind: "icosahedron", radius: 0.07, detail: 0 }, // ~7 px on screen: smooth-shaded detail 0 reads round
+    material: matte(LOOK_PALETTE.flowerYellow, {
+      flatShading: false,
+      emissive: LOOK_PALETTE.lanternGlow,
+      emissiveIntensity: 0.35,
+    }),
     yOffset: 0.5,
     yawOffsetRad: 0,
     castShadow: false,
@@ -149,9 +161,9 @@ export const RIVER_ENVIRONMENT_PARTS = {
       radiusTop: 0.035,
       radiusBottom: 0.035,
       height: LOY_KRATHONG_PIER.deckTopY - LOY_KRATHONG_PIER.deckThickness - LOY_KRATHONG_PIER.pileBottomY,
-      radialSegments: 5,
+      radialSegments: 8,
     },
-    material: PIER_DECK_MATERIAL,
+    material: PIER_PILE_MATERIAL,
     yOffset: 0,
     yawOffsetRad: 0,
     castShadow: false,
@@ -160,6 +172,16 @@ export const RIVER_ENVIRONMENT_PARTS = {
 } as const satisfies Record<string, ScenePartSpec>;
 
 export type RiverEnvironmentPartId = keyof typeof RIVER_ENVIRONMENT_PARTS;
+
+/**
+ * Soft blob shadow ellipses under the static props (MFW-47). DRAFT. Radii are local units, multiplied by the instance
+ * scale; X runs along the part's local x after the instance yaw.
+ */
+export const RIVER_ENVIRONMENT_BLOB_SHADOWS = Object.freeze({
+  houses: Object.freeze({ radiusX: 0.56, radiusZ: 0.44 }),
+  trees: Object.freeze({ radiusX: 0.42, radiusZ: 0.42 }),
+  lamps: Object.freeze({ radiusX: 0.1, radiusZ: 0.1 }),
+});
 
 /** Full environment definition. Placements are PLACEHOLDER (spec silent). setback = world units from the water edge. */
 export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {

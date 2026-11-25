@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { InstancedMesh } from "three";
 import type { ScenePartSpec } from "@/config/scene.config";
 import type { InstanceTransform } from "@/core/world";
-import { createMatteMaterial, createPartGeometry } from "./geometry";
+import { createInstancedPartGeometry, createInstancedPartMaterial } from "./geometry";
 import { applyInstanceTransforms, partShadowProps } from "./instancing";
 
 export interface InstancedPartProps {
@@ -18,8 +18,10 @@ export interface InstancedPartProps {
 
 /** One draw call for every instance of a part; owns (and disposes) one geometry and one material. */
 export function InstancedPart({ name, part, transforms, shadows, onClick }: InstancedPartProps) {
-  const geometry = useMemo(() => createPartGeometry(part.geometry), [part.geometry]);
-  const material = useMemo(() => createMatteMaterial(part.material), [part.material]);
+  // Flatness is baked into the normals so every instanced part shares one shader program (MFW-47 perf).
+  const flat = part.material.flatShading;
+  const geometry = useMemo(() => createInstancedPartGeometry(part.geometry, flat), [part.geometry, flat]);
+  const material = useMemo(() => createInstancedPartMaterial(part.material), [part.material]);
   const meshRef = useRef<InstancedMesh | null>(null);
   const invalidate = useThree((state) => state.invalidate);
 

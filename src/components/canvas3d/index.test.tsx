@@ -4,6 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { OrthographicCamera, Vector3 } from "three";
 import { TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
+import { LIGHT_PRESETS } from "@/config/look.config";
+import { CANVAS_GL_OPTIONS } from "./sceneLook";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
 import { PART_CHANGE_BOUNCE } from "@/config/customizer.config";
@@ -115,6 +117,7 @@ vi.mock("./RiverFlow", async (importOriginal) => {
 
 const r3f = vi.hoisted(() => ({
   cameraProps: [] as unknown[],
+  glProps: [] as unknown[],
   camera: null as OrthographicCamera | null,
   flightStarts: [] as { immediate: boolean; to?: object }[],
   bounceStarts: [] as { immediate: boolean; from?: { scale: number }; to: { scale: number } }[],
@@ -148,6 +151,7 @@ vi.mock("@react-three/fiber", async () => {
   }) {
     const [camera] = React.useState(() => new THREE.OrthographicCamera());
     r3f.cameraProps.push(props.camera);
+    r3f.glProps.push(props.gl);
     const { onCreated } = props;
     React.useLayoutEffect(() => {
       camera.zoom = props.camera.zoom;
@@ -255,6 +259,7 @@ beforeEach(() => {
   assets.created = 0;
   assets.disposed = 0;
   r3f.cameraProps.length = 0;
+  r3f.glProps.length = 0;
   r3f.camera = null;
   r3f.flightStarts.length = 0;
   r3f.bounceStarts.length = 0;
@@ -265,7 +270,7 @@ describe("toy-like night scene", () => {
     expect(TOY_SCENE_CAMERA.orthographic).toBe(true);
     expect(getPinchZoomFactor(1, 1.5)).toBe(1.5);
     expect(getPinchZoomFactor(1, 10)).toBe(1.6);
-    expect(TOY_SCENE_LIGHTING.ambient.color).toBe("#8499c5");
+    expect(LIGHT_PRESETS.NIGHT.ambient.color).toBe("#8FA2D6");
     expect(TOY_SCENE_LIGHTING.candle.color).toBe("#ffb35c");
   });
 
@@ -303,7 +308,9 @@ describe("toy-like night scene", () => {
     const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
     expect(container.querySelector('[name="scene-world-view"] ambientLight')).toBeNull();
     expect(container.querySelector('[name="scene-world-view"] directionalLight')).toBeNull();
+    expect(container.querySelector('[name="scene-world-view"] hemisphereLight')).toBeNull();
     expect(container.querySelector("ambientLight")).not.toBeNull();
+    expect(container.querySelector("hemisphereLight")).not.toBeNull();
     expect(container.querySelector("directionalLight")).not.toBeNull();
     expect(container.querySelector('[name="scene-krathong"] pointLight')).not.toBeNull();
   });
@@ -316,9 +323,74 @@ describe("toy-like night scene", () => {
 
   it("section background comes from config", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
-    render(<SceneViewport mode="CUSTOMIZE" />);
-    expect(viewport().style.backgroundColor).toBe("rgb(16, 26, 50)");
+    useDeviceStore.getState().setLightPresetChoice("NIGHT");
+    const { rerender } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(viewport().style.backgroundColor).toBe("rgb(46, 62, 99)");
+    expect(viewport()).toHaveAttribute("data-light-preset", "NIGHT");
     expect(viewport().className).not.toContain("bg-[");
+    act(() => useDeviceStore.getState().setLightPresetChoice("DAY"));
+    rerender(<SceneViewport mode="CUSTOMIZE" />);
+    expect(viewport().style.backgroundColor).toBe("rgb(216, 228, 207)");
+    expect(viewport()).toHaveAttribute("data-light-preset", "DAY");
+  });
+
+  it.each(["HIGH", "MEDIUM", "LOW"] as const)("%s: soft blob shadows under the props and the own krathong (AC2)", (tier) => {
+    useDeviceStore.getState().setQualityTier(tier);
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.environmentBlobShadows}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.krathongBlobShadow}"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toHaveLength(1);
+  });
+
+  it("AUTO follows the device's local time (AC3)", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      useDeviceStore.getState().setQualityTier("HIGH");
+      vi.setSystemTime(new Date(2026, 10, 25, 10, 0, 0));
+      render(<SceneViewport mode="CUSTOMIZE" />);
+      expect(viewport()).toHaveAttribute("data-light-preset", "DAY");
+      cleanup();
+      vi.setSystemTime(new Date(2026, 10, 25, 20, 0, 0));
+      render(<SceneViewport mode="CUSTOMIZE" />);
+      expect(viewport()).toHaveAttribute("data-light-preset", "NIGHT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the Canvas gl options are the stable tone-mapped objects", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(r3f.glProps.at(-1)).toBe(CANVAS_GL_OPTIONS.on);
+    cleanup();
+    useDeviceStore.getState().setQualityTier("LOW");
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(r3f.glProps.at(-1)).toBe(CANVAS_GL_OPTIONS.off);
+  });
+
+  it("reduced motion renders the same lights and blobs", () => {
+    const snapshot = (reduced: boolean) => {
+      useDeviceStore.getState().setQualityTier("HIGH");
+      useDeviceStore.getState().setReducedMotion(reduced);
+      useDeviceStore.getState().setLightPresetChoice("NIGHT");
+      const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+      const selector = [
+        "color",
+        "hemisphereLight",
+        "ambientLight",
+        "directionalLight",
+        "pointLight",
+        `[name="${SCENE_OBJECT_NAMES.environmentBlobShadows}"]`,
+        `[name="${SCENE_OBJECT_NAMES.krathongBlobShadow}"]`,
+        `[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`,
+      ].join(", ");
+      const out = [...container.querySelectorAll(selector)].map((el) => el.outerHTML);
+      cleanup();
+      return out;
+    };
+    const motion = snapshot(false);
+    expect(motion.length).toBeGreaterThanOrEqual(8);
+    expect(snapshot(true)).toEqual(motion);
   });
 
   it("does not create a WebGL canvas before profiling or on the 2D tier", () => {

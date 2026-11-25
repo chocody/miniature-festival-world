@@ -6,6 +6,7 @@ real device. Newest first. Remove an item when its fix is merged.
 
 | Card | Severity | Item | Kind |
 |---|---|---|---|
+| MFW-47 | — | Owner review from the PR screenshots: palette/light values (DRAFT), day/night hours (PLACEHOLDER 06–18), switch form and copy (DRAFT); readability guard is a Lambert estimate, re-check the night village and blob shadows on a real phone. | owner · re-test on device |
 | MFW-63 | Medium | Owner switch race: a slow "open" re-read (`syncWorldAfterSwitch` in `src/services/api/ownedWishState.ts`) can overwrite a later "close" on the owner's device until the next zone refresh (server state is correct; no leak). Fix: per-creation sync sequence; test open → close before the fetch resolves. | fix later |
 | MFW-63 | Medium | No 3D popup test for the name / owner switch; `RiverFlowItem` has no `displayName` field (the name reaches the popup by structural typing). Add the field and a canvas3d popup test (open item shows name + Report; closed owned item shows the switch). | fix later |
 | MFW-63 | Low | Failed re-read after a successful "open" leaves the popup without text until refresh; busy switch is `disabled` (keyboard focus lost — use `aria-disabled`); a server name rejection also marks the wish textarea invalid; stale "anonymous" comments in `wish.config.ts` / `moderation.config.ts`; the owner's just-released 2D krathong is not a tap target until the zone is re-read (likely pre-existing). | fix later |

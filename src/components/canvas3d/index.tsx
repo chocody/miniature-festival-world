@@ -39,7 +39,8 @@ import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
-import { MOON_SHADOW_MAP_SIZE_PX, TOY_SCENE_LIGHTING } from "@/config/scene.config";
+import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
+import { LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
 import { createCameraController, updateHighlightPosition } from "@/core/camera";
 import type { CameraTargetKind } from "@/core/camera";
 import {
@@ -78,6 +79,10 @@ import { PerfProbePanel } from "./PerfProbePanel";
 import { readPerfProbeFlag, readPerfProbeFlagOnServer, subscribeToNothing, type RendererInfoSource } from "./perfProbe";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
+import { CANVAS_GL_OPTIONS } from "./sceneLook";
+import { SceneLighting } from "./SceneLighting";
+import { EnvironmentBlobShadows } from "./BlobShadows";
+import { useResolvedLightPreset } from "./useLightPreset";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
@@ -101,10 +106,6 @@ export const TOY_SCENE_CANVAS_CAMERA = {
   near: TOY_SCENE_CAMERA.near,
   far: TOY_SCENE_CAMERA.far,
 };
-
-/** Stable `gl` objects: the renderer reads antialias only at creation, and the Canvas key re-creates it when the value flips. */
-const CANVAS_GL_ANTIALIAS_ON = { antialias: true };
-const CANVAS_GL_ANTIALIAS_OFF = { antialias: false };
 
 export interface SceneRenderSettings {
   dpr: [number, number];
@@ -131,6 +132,7 @@ export const NO_RIVER_ITEMS: readonly RiverFlowItem[] = Object.freeze([]);
 type TargetRef = RefObject<Object3D | null>;
 
 interface ToyNightSceneProps {
+  lightPreset: LightPresetId;
   shadows: boolean;
   shadowMapSizePx: number;
   appearance: KrathongAppearance;
@@ -164,6 +166,7 @@ interface ToyNightSceneProps {
 }
 
 const ToyNightScene = memo(function ToyNightScene({
+  lightPreset,
   shadows,
   shadowMapSizePx,
   appearance,
@@ -198,16 +201,8 @@ const ToyNightScene = memo(function ToyNightScene({
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   return (
     <>
-      <color attach="background" args={[TOY_SCENE_LIGHTING.background]} />
-      {/* World-fixed lights: NOT inside the view-transform group, so pan/rotate never changes the moon direction. */}
-      <ambientLight color={TOY_SCENE_LIGHTING.ambient.color} intensity={TOY_SCENE_LIGHTING.ambient.intensity} />
-      <directionalLight
-        color={TOY_SCENE_LIGHTING.moon.color}
-        intensity={TOY_SCENE_LIGHTING.moon.intensity}
-        position={TOY_SCENE_LIGHTING.moon.position}
-        castShadow={shadows}
-        shadow-mapSize={[shadowMapSizePx, shadowMapSizePx]}
-      />
+      {/* World-fixed lights: NOT inside the view-transform group, so pan/rotate never changes the key-light direction. */}
+      <SceneLighting preset={lightPreset} shadows={shadows} shadowMapSizePx={shadowMapSizePx} />
       {/* View transform seam: today's legacy pan/rotate. The pan fix (owner decision pending) replaces it with camera movement. */}
       <group
         name={SCENE_OBJECT_NAMES.worldView}
@@ -223,6 +218,7 @@ const ToyNightScene = memo(function ToyNightScene({
           selectedLampIndex={selectedLampIndex}
           onLampSelected={onLampSelected}
         />
+        <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
         <OwnKrathong
           targetRef={krathongTargetRef}
@@ -240,6 +236,7 @@ const ToyNightScene = memo(function ToyNightScene({
           now={riverNow}
           onTouchedDown={onTouchedDown}
           onSettled={onSettled}
+          candleIntensityScale={LIGHT_PRESETS[lightPreset].candle.intensityScale}
         />
         <RiverFlow
           items={riverItems}
@@ -249,6 +246,7 @@ const ToyNightScene = memo(function ToyNightScene({
           now={riverNow}
           pinnedIds={pinnedRiverIds}
           onItemTapped={onRiverItemTapped}
+          shadowSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
         />
         {findMyItem && (
           <FindMyAnchor item={findMyItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} anchorRef={findMyAnchorRef} />
@@ -359,6 +357,7 @@ export function SceneViewport({
   const profiled = useDeviceStore((state) => state.profiled);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
   const reducedMotion = useDeviceStore((state) => state.reducedMotion);
+  const lightPreset = useResolvedLightPreset();
   const builderAppearance = useBuilderStore((state) => state.appearance);
   const appearance = builderAppearance ?? DEFAULT_KRATHONG_APPEARANCE;
   const worldEventId = useWorldStore((s) => s.eventId);
@@ -667,7 +666,8 @@ export function SceneViewport({
     <section
       aria-label="Toy-like night river preview"
       className="relative mb-8 h-64 w-full touch-none select-none overflow-hidden rounded-3xl border border-indigo-950/30 shadow-lg"
-      style={{ backgroundColor: TOY_SCENE_LIGHTING.background }}
+      style={{ backgroundColor: LIGHT_PRESETS[lightPreset].background }}
+      data-light-preset={lightPreset}
       data-quality-tier={qualityTier}
       data-selected-target={selectedTarget ?? undefined}
       data-find-my={selectedTarget === "riverKrathong" ? "following" : undefined}
@@ -692,7 +692,7 @@ export function SceneViewport({
         orthographic={TOY_SCENE_CAMERA.orthographic}
         camera={TOY_SCENE_CANVAS_CAMERA}
         dpr={settings.dpr}
-        gl={settings.antialias ? CANVAS_GL_ANTIALIAS_ON : CANVAS_GL_ANTIALIAS_OFF}
+        gl={settings.antialias ? CANVAS_GL_OPTIONS.on : CANVAS_GL_OPTIONS.off}
         shadows={settings.shadows}
         frameloop="demand"
         onCreated={({ camera, invalidate, gl }) => {
@@ -707,6 +707,7 @@ export function SceneViewport({
       >
         <KrathongAssetsProvider>
           <ToyNightScene
+            lightPreset={lightPreset}
             shadows={settings.shadows}
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}

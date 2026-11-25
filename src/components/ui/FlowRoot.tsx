@@ -11,6 +11,7 @@ import { getZonePagination } from "@/services/api/zonePagination";
 import { installMyCreationsRecorder } from "@/services/auth/myCreationsVault";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
+import { DayNightSwitch } from "./DayNightSwitch";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { OwnerWishControls } from "./OwnerWishControls";
@@ -100,6 +101,7 @@ export function FlowRoot({ eventId }: FlowRootProps) {
           />
         </Suspense>
       )}
+      {interactionMode !== null && <DayNightSwitch />}
       {show2D && interactionMode !== null && (
         <Suspense fallback={null}>
           <FlatViewport mode={interactionMode} />
