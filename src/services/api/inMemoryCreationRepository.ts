@@ -13,17 +13,28 @@ import type { OwnerTokenHash } from "@/services/auth";
 import { CreationRepositoryError, type CreationRepository, type ReportOutcome } from "./creationRepository";
 import type {
   AppearanceJson,
+  CloseWishInput,
   CreationOwnershipRecord,
   EncryptedPrivateWish,
   GuardedInsertResult,
   GuardedNewCreation,
   NewCreation,
+  OpenWishInput,
   PublicCreation,
+  WishSwitchOutcome,
+  WishSwitchRecord,
   ZoneItemCount,
   ZoneOccupant,
   ZoneQuery,
 } from "./creationTypes";
-import { isFestivalEventId, isZoneId, validateGuardedNewCreation, validateNewCreation } from "./creationValidation";
+import {
+  isFestivalEventId,
+  isZoneId,
+  validateCloseWishInput,
+  validateGuardedNewCreation,
+  validateNewCreation,
+  validateOpenWishInput,
+} from "./creationValidation";
 
 export interface InMemoryCreationRepositoryOptions {
   /** Epoch ms clock; default Date.now. */
@@ -59,12 +70,14 @@ interface StoredPublicRow {
   publicWishText: string | null;
   createdAtMs: number;
   expiresAtMs: number;
+  displayName: string | null;
 }
 
 interface StoredPrivateRow {
   creationId: string;
   ownerTokenHash: OwnerTokenHash;
   privateWish: EncryptedPrivateWish | null;
+  privateDisplayName: EncryptedPrivateWish | null;
   reportCount: number;
   moderationStatus: ModerationStatus;
 }
@@ -79,7 +92,18 @@ function toPublic(row: StoredPublicRow): PublicCreation {
     publicWishText: row.publicWishText,
     createdAt: new Date(row.createdAtMs).toISOString(),
     expiresAt: new Date(row.expiresAtMs).toISOString(),
+    displayName: row.publicWishText === null ? null : row.displayName,
   };
+}
+
+function copyEncrypted(value: EncryptedPrivateWish | null): EncryptedPrivateWish | null {
+  return value === null ? null : { ciphertext: value.ciphertext, keyId: value.keyId };
+}
+
+function assertCreationId(creationId: string): void {
+  if (typeof creationId !== "string" || !UUID_PATTERN.test(creationId)) {
+    throw new CreationRepositoryError("invalid_input", "creationId");
+  }
 }
 
 export function createInMemoryCreationRepository(
@@ -127,12 +151,14 @@ export function createInMemoryCreationRepository(
         publicWishText: v.publicWishText,
         createdAtMs: nowMs,
         expiresAtMs: v.expiresAt.getTime(),
+        displayName: v.displayName ?? null,
       };
       publicRows.set(id, publicRow);
       privateRows.set(id, {
         creationId: id,
         ownerTokenHash: v.ownerTokenHash,
         privateWish: v.privateWish,
+        privateDisplayName: v.privateDisplayName ?? null,
         reportCount: 0,
         moderationStatus: DEFAULT_MODERATION_STATUS,
       });
@@ -182,6 +208,7 @@ export function createInMemoryCreationRepository(
         publicWishText: v.publicWishText,
         createdAtMs: v.createdAt.getTime(),
         expiresAtMs: v.expiresAt.getTime(),
+        displayName: v.displayName ?? null,
       };
       // No await between the comparison above and these two writes: atomic within one JS process.
       publicRows.set(id, publicRow);
@@ -189,6 +216,7 @@ export function createInMemoryCreationRepository(
         creationId: id,
         ownerTokenHash: v.ownerTokenHash,
         privateWish: v.privateWish,
+        privateDisplayName: v.privateDisplayName ?? null,
         reportCount: 0,
         moderationStatus: DEFAULT_MODERATION_STATUS,
       });
@@ -266,6 +294,52 @@ export function createInMemoryCreationRepository(
         ownerTokenHash: priv.ownerTokenHash,
         privateWish: priv.privateWish === null ? null : { ciphertext: priv.privateWish.ciphertext, keyId: priv.privateWish.keyId },
       };
+    },
+
+    async readWishSwitchState(creationId: string): Promise<WishSwitchRecord | null> {
+      assertCreationId(creationId);
+      const pub = publicRows.get(creationId);
+      const priv = privateRows.get(creationId);
+      if (pub === undefined || priv === undefined || pub.expiresAtMs <= now()) return null;
+      return {
+        ownerTokenHash: priv.ownerTokenHash,
+        hidden: priv.moderationStatus !== DEFAULT_MODERATION_STATUS || priv.reportCount >= AUTO_HIDE_REPORT_THRESHOLD,
+        publicWishText: pub.publicWishText,
+        displayName: pub.displayName,
+        privateWish: copyEncrypted(priv.privateWish),
+        privateDisplayName: copyEncrypted(priv.privateDisplayName),
+      };
+    },
+
+    async openWish(input: OpenWishInput): Promise<WishSwitchOutcome> {
+      const v = validateOpenWishInput(input); // throws before anything is read or changed
+      const pub = publicRows.get(v.creationId);
+      const priv = privateRows.get(v.creationId);
+      if (pub === undefined || priv === undefined || pub.expiresAtMs <= now()) return "conflict";
+      // Owner decision 36: a wish hidden by reports or moderation is never opened again.
+      if (priv.moderationStatus !== DEFAULT_MODERATION_STATUS || priv.reportCount >= AUTO_HIDE_REPORT_THRESHOLD) return "conflict";
+      if (pub.publicWishText !== null || priv.privateWish?.ciphertext !== v.expectedPrivateWish) return "conflict";
+      // No await between the checks above and these writes: atomic within one JS process. One store at a time.
+      priv.privateWish = null;
+      priv.privateDisplayName = null;
+      pub.publicWishText = v.publicWishText;
+      pub.displayName = v.displayName;
+      return "switched";
+    },
+
+    async closeWish(input: CloseWishInput): Promise<WishSwitchOutcome> {
+      const v = validateCloseWishInput(input); // throws before anything is read or changed
+      const pub = publicRows.get(v.creationId);
+      const priv = privateRows.get(v.creationId);
+      if (pub === undefined || priv === undefined || pub.expiresAtMs <= now()) return "conflict";
+      if (priv.privateWish !== null) return "conflict";
+      if (pub.publicWishText !== v.expectedPublicWishText || pub.displayName !== v.expectedDisplayName) return "conflict";
+      // Moderation state is never changed by open or close.
+      pub.publicWishText = null;
+      pub.displayName = null;
+      priv.privateWish = copyEncrypted(v.privateWish);
+      priv.privateDisplayName = copyEncrypted(v.privateDisplayName);
+      return "switched";
     },
 
     getModerationState(id: string): CreationModerationState | null {

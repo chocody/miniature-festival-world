@@ -24,7 +24,7 @@ const filesUnder = (dir: string): string[] => walk(path.join(root, dir));
 const nonTest = (dirs: string[]): string[] => dirs.flatMap(filesUnder).filter((f) => !isTest(f));
 
 const STAR_SELECT = /select\s*\(\s*["']\*["']\s*\)|select=\*|["']\*["']/;
-const PRIVATE_SNAKE = /owner_token_hash|private_wish_text|private_wish_key_id|\bowner_token\b/;
+const PRIVATE_SNAKE = /owner_token_hash|private_wish_text|private_wish_key_id|private_display_name|\bowner_token\b/;
 const PRIVATE_CAMEL = /ownerTokenHash|privateWish|ownerToken/;
 // The env var name itself; identifiers such as SUPABASE_SERVICE_ROLE_KEY_ENV (the constant) are not the literal.
 const SERVICE_ROLE_ENV = /SUPABASE_SERVICE_ROLE_KEY(?!_ENV)/;
@@ -86,6 +86,7 @@ describe("public/private boundary (invariants C and D)", () => {
     expect(STAR_SELECT.test("select('*')")).toBe(true);
     expect(STAR_SELECT.test("select=*")).toBe(true);
     expect(PRIVATE_SNAKE.test("owner_token_hash")).toBe(true);
+    expect(PRIVATE_SNAKE.test("private_display_name")).toBe(true); // MFW-62
     expect(PRIVATE_CAMEL.test("const ownerTokenHash")).toBe(true);
   });
 });

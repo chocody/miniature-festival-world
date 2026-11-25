@@ -54,7 +54,8 @@ describe("MFW-45 migration (static checks)", () => {
     expect(st).toContain(`cardinality(v_current) >= ${ZONE_ITEM_CAP}`);
     expect(st).toContain("insert into public.creations_public (event_id, zone_id, appearance, coord, public_wish_text, created_at, expires_at)");
     expect(st).toContain("insert into public.creations_private_ownership");
-    expect(st).toContain(`returning ${PUBLIC_CREATION_COLUMNS.join(", ")}`);
+    // MFW-62 appends display_name in its own migration
+    expect(st).toContain(`returning ${PUBLIC_CREATION_COLUMNS.filter((c) => c !== "display_name").join(", ")}`);
   });
 
   it("occupancy ignores moderation state", () => {

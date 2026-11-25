@@ -58,3 +58,23 @@ describe("pickPublicCreation", () => {
     expect(Object.keys(picked).sort()).toEqual(sortedKeys);
   });
 });
+
+describe("display_name mapping (MFW-62)", () => {
+  it("maps display_name of an open wish; absent or null → null; a non-string rejects the row", () => {
+    expect(publicRowToCreation(makePublicRow({ display_name: "สมชาย" }))?.displayName).toBe("สมชาย");
+    const legacy = publicRowToCreation(makePublicRow());
+    expect(legacy?.displayName).toBeNull();
+    expect(Object.keys(legacy as PublicCreation).sort()).toEqual(sortedKeys);
+    expect(publicRowToCreation(makePublicRow({ display_name: null }))?.displayName).toBeNull();
+    expect(publicRowToCreation(makePublicRow({ display_name: 5 }))).toBeNull();
+    expect(publicRowToCreation(makePublicRow({ public_wish_text: null, display_name: "สมชาย" }))?.displayName).toBeNull();
+  });
+
+  it("pickPublicCreation copies displayName and nothing private", () => {
+    const c = publicRowToCreation(makePublicRow({ display_name: "สมชาย" })) as PublicCreation;
+    const picked = pickPublicCreation({ ...c, ownerTokenHash: OWNER_HASH_FIXTURE } as unknown as PublicCreation);
+    expect(Object.keys(picked)).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(picked.displayName).toBe("สมชาย");
+    expect(JSON.stringify(picked)).not.toContain(OWNER_HASH_FIXTURE);
+  });
+});

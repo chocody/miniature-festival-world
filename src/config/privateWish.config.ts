@@ -40,3 +40,12 @@ export const PRIVATE_WISH_RETIRED_KEYS_SEPARATOR = ",";
 export const PRIVATE_WISH_RETIRED_KEY_ID_SEPARATOR = ":";
 /** Technical bound on the retired list (each entry is one key import per process). Lead decision MFW-31. */
 export const PRIVATE_WISH_RETIRED_KEYS_MAX = 8;
+/** AAD label of an encrypted private display name (MFW-62). It differs from PRIVATE_WISH_AAD_LABEL, so a wish ciphertext cannot be swapped into the name column. */
+export const PRIVATE_DISPLAY_NAME_AAD_LABEL = "mfw:private-display-name";
+/** Which private column a ciphertext belongs to. Both use the row's single key id column (MFW-62 D3). */
+export const PRIVATE_CIPHER_FIELDS = Object.freeze(["wish", "displayName"] as const);
+export type PrivateCipherField = (typeof PRIVATE_CIPHER_FIELDS)[number];
+export const PRIVATE_CIPHER_AAD_LABELS: Readonly<Record<PrivateCipherField, string>> = Object.freeze({
+  wish: PRIVATE_WISH_AAD_LABEL,
+  displayName: PRIVATE_DISPLAY_NAME_AAD_LABEL,
+});

@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { makeCreateBody, riverCoord } from "./__fixtures__/createCreation";
-import { CREATE_CREATION_BODY_KEYS } from "./createCreationTypes";
+import { CREATE_CREATION_BODY_KEYS, CREATE_CREATION_OPTIONAL_BODY_KEYS } from "./createCreationTypes";
 import { parseCreateCreationRequest } from "./createCreationRequest";
 
 const fieldOf = (value: unknown): string | null => {
@@ -16,7 +16,7 @@ describe("parseCreateCreationRequest", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.request.wishText).toBe("  ขอให้ทุกคนมีความสุข  ");
-    expect(Object.keys(r.request).sort()).toEqual([...CREATE_CREATION_BODY_KEYS].sort());
+    expect(Object.keys(r.request).sort()).toEqual([...CREATE_CREATION_BODY_KEYS, ...CREATE_CREATION_OPTIONAL_BODY_KEYS].sort());
     expect(parseCreateCreationRequest(makeCreateBody({ wishText: "" })).ok).toBe(true);
     expect(parseCreateCreationRequest(makeCreateBody({ wishText: "   " })).ok).toBe(true);
     const priv = parseCreateCreationRequest(makeCreateBody({ wishVisibility: "private" }));
@@ -43,5 +43,22 @@ describe("parseCreateCreationRequest", () => {
 
   it("checks unknown keys before field values", () => {
     expect(fieldOf(makeCreateBody({ extra: 1, eventId: "nope" }))).toBe("body");
+  });
+});
+
+describe("parseCreateCreationRequest displayName (MFW-62)", () => {
+  it("is optional and kept as sent", () => {
+    const absent = parseCreateCreationRequest(makeCreateBody());
+    expect(absent.ok && absent.request.displayName).toBeNull();
+    const nul = parseCreateCreationRequest(makeCreateBody({ displayName: null }));
+    expect(nul.ok && nul.request.displayName).toBeNull();
+    const sent = parseCreateCreationRequest(makeCreateBody({ displayName: "  สมชาย " }));
+    expect(sent.ok && sent.request.displayName).toBe("  สมชาย ");
+  });
+  it("rejects a non-string name with the field", () => {
+    for (const bad of [123, {}, true, []]) expect(fieldOf(makeCreateBody({ displayName: bad }))).toBe("displayName");
+  });
+  it("checks the name after the token (field order unchanged)", () => {
+    expect(fieldOf(makeCreateBody({ displayName: 1, ownerToken: "short" }))).toBe("ownerToken");
   });
 });

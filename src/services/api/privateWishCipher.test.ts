@@ -263,3 +263,48 @@ describe("private wish reader (MFW-31)", () => {
     await expect(second.getPrivateWishReader("supabase")).resolves.toHaveProperty("decrypt");
   });
 });
+
+describe("display name field (MFW-62)", () => {
+  it("round trips under the displayName field only", async () => {
+    const { cipher, lookup } = await makeTestCipher();
+    const name = await cipher.encrypt("น้องมะลิ", HASH, "displayName");
+    expect(PRIVATE_WISH_CIPHERTEXT_PATTERN.test(name.ciphertext)).toBe(true);
+    expect(await cipher.decrypt(name, HASH, "displayName")).toBe("น้องมะลิ");
+    expect(await decryptPrivateWish(name, HASH, lookup, "displayName")).toBe("น้องมะลิ");
+    expect(await cipher.decrypt(name, HASH)).toBeNull(); // default field = wish
+    const wish = await cipher.encrypt("ขอให้สอบติด", HASH);
+    expect(await cipher.decrypt(wish, HASH, "displayName")).toBeNull();
+    expect(await cipher.decrypt(wish, HASH, "wish")).toBe("ขอให้สอบติด");
+  });
+
+  it("the default AAD is byte-identical to the wish AAD, so pre-MFW-62 rows still decrypt", () => {
+    expect(Buffer.from(privateWishAdditionalData(TEST_KEY_ID, HASH)).equals(Buffer.from(privateWishAdditionalData(TEST_KEY_ID, HASH, "wish")))).toBe(
+      true,
+    );
+    expect(new TextDecoder().decode(privateWishAdditionalData(TEST_KEY_ID, HASH))).toBe(`mfw:private-wish|v1|${TEST_KEY_ID}|${HASH}`);
+    expect(new TextDecoder().decode(privateWishAdditionalData(TEST_KEY_ID, HASH, "displayName"))).toBe(
+      `mfw:private-display-name|v1|${TEST_KEY_ID}|${HASH}`,
+    );
+  });
+
+  it("an unknown field rejects on encrypt and is null on decrypt", async () => {
+    const { cipher, lookup } = await makeTestCipher();
+    await expect(cipher.encrypt("x", HASH, "bogus" as never)).rejects.toBeInstanceOf(TypeError);
+    const wish = await cipher.encrypt("x", HASH);
+    expect(await cipher.decrypt(wish, HASH, "bogus" as never)).toBeNull();
+    expect(await decryptPrivateWish(wish, HASH, lookup, "bogus" as never)).toBeNull();
+  });
+
+  it("the env reader and the memory reader honour the field", async () => {
+    const cipher = createPrivateWishCipher({ keyId: "k2026b", key: await importPrivateWishKey(rawKey(2)) });
+    const name = await cipher.encrypt("Mali", HASH, "displayName");
+    const reader = await createPrivateWishReaderFromEnv({ PRIVATE_WISH_KEY: keyB64(2), PRIVATE_WISH_KEY_ID: "k2026b" }, "supabase", unusedCipher());
+    expect(await reader.decrypt(name, HASH, "displayName")).toBe("Mali");
+    expect(await reader.decrypt(name, HASH)).toBeNull();
+    const write = await createPrivateWishCipherFromEnv({}, "memory");
+    const memReader = await createPrivateWishReaderFromEnv({}, "memory", async () => write);
+    const memName = await write.encrypt("Mali", HASH, "displayName");
+    expect(await memReader.decrypt(memName, HASH, "displayName")).toBe("Mali");
+    expect(await memReader.decrypt(memName, HASH, "wish")).toBeNull();
+  });
+});

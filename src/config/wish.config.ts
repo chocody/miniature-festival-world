@@ -51,3 +51,12 @@ export const WISH_COPY = Object.freeze({
   /** Same label as the other flow steps; e2e and FlowRoot tests click it by this name. */
   submit: "ถัดไป",
 });
+
+/**
+ * Max display-name length in UTF-16 code units (String.length), measured after trimming (open question 36:
+ * "Length limit: config placeholder"). PLACEHOLDER — owner to confirm (MFW-62 Open question 1).
+ * Lowering it later makes an already stored longer private name fail to open (503, fail closed).
+ */
+export const DISPLAY_NAME_MAX_LENGTH = 40;
+/** A display name may not contain control characters (line breaks, tabs, NUL …). Lead decision MFW-62 (technical input hygiene). */
+export const DISPLAY_NAME_FORBIDDEN_PATTERN = /\p{Cc}/u;

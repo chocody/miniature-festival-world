@@ -21,6 +21,7 @@ export const PUBLIC_CREATION_COLUMNS = Object.freeze([
   "public_wish_text",
   "created_at",
   "expires_at",
+  "display_name",
 ] as const);
 /** Fail fast so callers get 503 instead of hanging. Lead decision, MFW-12. */
 export const SUPABASE_REQUEST_TIMEOUT_MS = 5_000;
@@ -41,6 +42,7 @@ export const ZONE_DIRECTORY_LIMIT = 1;
 /** MFW-45 RPCs (relative to SUPABASE_REST_PATH). Names equal the SQL functions of 20261124020000_mfw45_guarded_creation_insert.sql. */
 export const ZONE_ITEM_COUNTS_RPC_PATH = "rpc/mfw_zone_item_counts";
 export const ZONE_OCCUPANTS_RPC_PATH = "rpc/mfw_zone_occupants";
+/** v1 (MFW-45). Superseded by INSERT_CREATION_GUARDED_V2_RPC_PATH; kept while the v1 SQL function exists. */
 export const INSERT_CREATION_GUARDED_RPC_PATH = "rpc/mfw_insert_creation_guarded";
 /** Vercel sets VERCEL_ENV to "production" | "preview" | "development". Writes never use the in-memory backend in production. */
 export const DEPLOYMENT_ENV = "VERCEL_ENV";
@@ -48,3 +50,9 @@ export const PRODUCTION_DEPLOYMENT = "production";
 
 /** MFW-31 owner read (relative to SUPABASE_REST_PATH). Name equals the SQL function of 20261125000000_mfw31_creation_ownership_read.sql. */
 export const CREATION_OWNERSHIP_RPC_PATH = "rpc/mfw_creation_ownership";
+
+/** MFW-62 RPCs (relative to SUPABASE_REST_PATH). Names equal the SQL functions of 20261126000000_mfw62_wish_visibility_switch.sql. */
+export const INSERT_CREATION_GUARDED_V2_RPC_PATH = "rpc/mfw_insert_creation_guarded_v2";
+export const CREATION_WISH_STATE_RPC_PATH = "rpc/mfw_creation_wish_state";
+export const OPEN_CREATION_WISH_RPC_PATH = "rpc/mfw_open_creation_wish";
+export const CLOSE_CREATION_WISH_RPC_PATH = "rpc/mfw_close_creation_wish";

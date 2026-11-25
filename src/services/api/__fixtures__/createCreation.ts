@@ -83,6 +83,9 @@ export function recordingRepository(inner: CreationRepository): { repo: Creation
     insertCreation: (i) => inner.insertCreation(i),
     reportCreation: (id) => inner.reportCreation(id),
     readOwnership: (id) => inner.readOwnership(id),
+    readWishSwitchState: (id) => inner.readWishSwitchState(id),
+    openWish: (i) => inner.openWish(i),
+    closeWish: (i) => inner.closeWish(i),
     zoneItemCounts: (e) => inner.zoneItemCounts(e),
     listZoneOccupants: (q) => inner.listZoneOccupants(q),
     insertCreationGuarded: (input) => {
@@ -107,6 +110,9 @@ export function barrierOnZoneCounts(inner: CreationRepository, parties: number):
     insertCreation: (i) => inner.insertCreation(i),
     reportCreation: (id) => inner.reportCreation(id),
     readOwnership: (id) => inner.readOwnership(id),
+    readWishSwitchState: (id) => inner.readWishSwitchState(id),
+    openWish: (i) => inner.openWish(i),
+    closeWish: (i) => inner.closeWish(i),
     listZoneOccupants: (q) => inner.listZoneOccupants(q),
     insertCreationGuarded: (input) => inner.insertCreationGuarded(input),
     zoneItemCounts: async (e) => {

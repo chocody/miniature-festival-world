@@ -16,3 +16,5 @@ export const OWNER_WISH_COPY = Object.freeze({
   failed: "เปิดอ่านไม่สำเร็จ",
   retry: "ลองอีกครั้ง",
 });
+/** Max bytes of a POST /api/wish-visibility body (a valid body is about 110 bytes). Technical DoS bound, lead decision MFW-62. */
+export const WISH_VISIBILITY_REQUEST_MAX_BYTES = 512;

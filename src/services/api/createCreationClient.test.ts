@@ -118,3 +118,18 @@ describe("toCreatedPublicCreation", () => {
     expect(toCreatedPublicCreation(creation({ createdAt: "x" }), "loy_krathong")).toBeNull();
   });
 });
+
+describe("toCreatedPublicCreation displayName (MFW-62)", () => {
+  it("keeps a name with a public wish, defaults it to null, rejects a non-string", async () => {
+    expect(toCreatedPublicCreation(creation({ publicWishText: "w", displayName: "สมชาย" }), "loy_krathong")?.displayName).toBe("สมชาย");
+    const legacy = toCreatedPublicCreation(creation(), "loy_krathong");
+    expect(legacy?.displayName).toBeNull();
+    expect(Object.keys(legacy ?? {})).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(toCreatedPublicCreation(creation({ publicWishText: "w", displayName: 5 }), "loy_krathong")).toBeNull();
+    expect(toCreatedPublicCreation(creation({ publicWishText: null, displayName: "x" }), "loy_krathong")?.displayName).toBeNull();
+    const r = await submitCreation(BODY, {
+      fetch: fake(json(201, { creation: creation({ displayName: 5 }) })) as unknown as typeof fetch,
+    });
+    expect(r).toMatchObject({ ok: false, reason: "invalid_response" });
+  });
+});

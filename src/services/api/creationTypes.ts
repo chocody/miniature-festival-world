@@ -16,6 +16,7 @@ export interface PublicCreation {
   readonly publicWishText: string | null;
   readonly createdAt: string; // ISO-8601 UTC ("2026-11-24T12:00:00.000Z")
   readonly expiresAt: string; // ISO-8601 UTC
+  readonly displayName: string | null; // only when the wish is open (owner decision 29); null when closed or unnamed
 }
 
 /** Exact key set of PublicCreation, in this order. Tests compare response items against it. */
@@ -28,6 +29,7 @@ export const PUBLIC_CREATION_KEYS = Object.freeze([
   "publicWishText",
   "createdAt",
   "expiresAt",
+  "displayName",
 ] as const);
 
 /** AES-256-GCM envelope matching PRIVATE_WISH_CIPHERTEXT_PATTERN (produced by MFW-45). */
@@ -48,6 +50,10 @@ export interface NewCreation {
   readonly expiresAt: Date; // from computeCreationExpiresAt
   readonly ownerTokenHash: OwnerTokenHash; // SHA-256 of the raw token; the raw token never reaches the repository
   readonly privateWish: EncryptedPrivateWish | null; // at most one of publicWishText / privateWish is non-null
+  /** Public display name; only with a public wish; must satisfy isStorableDisplayName. MFW-62. */
+  readonly displayName?: string | null;
+  /** Encrypted display name (AAD field "displayName"); only with privateWish, same keyId. MFW-62. */
+  readonly privateDisplayName?: EncryptedPrivateWish | null;
 }
 
 export interface ZoneQuery {
@@ -107,3 +113,34 @@ export interface CreationOwnershipRecord {
   readonly ownerTokenHash: OwnerTokenHash;
   readonly privateWish: EncryptedPrivateWish | null; // null when the creation's wish is public
 }
+
+/** Switch state of one non-expired creation (MFW-62). Server-only: never sent in any response, never logged. */
+export interface WishSwitchRecord {
+  readonly ownerTokenHash: OwnerTokenHash;
+  /** moderation_status !== "approved" || report_count >= AUTO_HIDE_REPORT_THRESHOLD. */
+  readonly hidden: boolean;
+  readonly publicWishText: string | null; // non-null ⇔ the wish is open
+  readonly displayName: string | null; // non-null only when open
+  readonly privateWish: EncryptedPrivateWish | null; // non-null ⇔ closed with a wish
+  readonly privateDisplayName: EncryptedPrivateWish | null; // non-null only with privateWish; same keyId
+}
+
+/** Open input (MFW-62). Server-only: never sent in any response, never logged. */
+export interface OpenWishInput {
+  readonly creationId: string; // lowercase uuid
+  readonly expectedPrivateWish: PrivateWishCiphertext; // compare-and-set: the ciphertext that was decrypted
+  readonly publicWishText: string; // trimmed, non-blank, passed checkPublicWish
+  readonly displayName: string | null; // null or isStorableDisplayName
+}
+
+/** Close input (MFW-62). Server-only: never sent in any response, never logged. */
+export interface CloseWishInput {
+  readonly creationId: string;
+  readonly expectedPublicWishText: string; // compare-and-set
+  readonly expectedDisplayName: string | null; // compare-and-set
+  readonly privateWish: EncryptedPrivateWish; // freshly encrypted wish
+  readonly privateDisplayName: EncryptedPrivateWish | null; // freshly encrypted name; keyId === privateWish.keyId
+}
+
+/** switched = written; conflict = the row changed, vanished, expired or (open only) is hidden. Nothing written. */
+export type WishSwitchOutcome = "switched" | "conflict";

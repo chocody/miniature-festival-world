@@ -523,6 +523,7 @@ const storeItemFor = (i: number): PublicCreation => ({
   publicWishText: null,
   createdAt: "2026-11-24T12:00:00.000Z",
   expiresAt: "2099-01-01T00:00:00.000Z",
+  displayName: null,
 });
 
 const savedRelease = (patch: Partial<SavedRelease> = {}): SavedRelease => ({
@@ -771,6 +772,7 @@ describe("river flow in the scene", () => {
     publicWishText: null,
     createdAt: "2026-11-24T12:00:00.000Z",
     expiresAt: "2099-01-01T00:00:00.000Z",
+    displayName: null,
   });
   const setWorld = (zoneId: number, items: PublicCreation[]) =>
     act(() => {
@@ -991,6 +993,7 @@ describe("Find My (MFW-30)", () => {
     publicWishText: null,
     createdAt: "2026-11-24T12:00:00.000Z",
     expiresAt: "2099-01-01T00:00:00.000Z",
+    displayName: null,
   });
   const setWorld = (zoneId: number, items: PublicCreation[]) =>
     act(() => {

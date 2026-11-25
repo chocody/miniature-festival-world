@@ -128,3 +128,22 @@ describe("zoneClient", () => {
     expect(await run({ eventId: "christmas", zoneCount: 3 })).toEqual({ ok: false, reason: "invalid_body" });
   });
 });
+
+describe("toClientPublicCreation displayName (MFW-62)", () => {
+  it("keeps a name with a public wish, defaults it to null, drops a non-string", () => {
+    expect(toClientPublicCreation(rawItem(1, 2, { publicWishText: "w", displayName: "สมชาย" }), EVENT, 2)?.displayName).toBe("สมชาย");
+    const legacy = toClientPublicCreation(rawItem(2), EVENT, 2);
+    expect(legacy?.displayName).toBeNull();
+    expect(Object.keys(legacy ?? {})).toEqual([...PUBLIC_CREATION_KEYS]);
+    expect(toClientPublicCreation(rawItem(3, 2, { publicWishText: "w", displayName: 5 }), EVENT, 2)).toBeNull();
+    expect(toClientPublicCreation(rawItem(4, 2, { publicWishText: null, displayName: "x" }), EVENT, 2)?.displayName).toBeNull();
+  });
+
+  it("fetchZoneItems drops an item with a non-string name", async () => {
+    const r = await fetchZoneItems(EVENT, 2, {
+      fetch: okFetch(body([rawItem(1, 2, { publicWishText: "w", displayName: "สมชาย" }), rawItem(2, 2, { displayName: 5 })])) as unknown as typeof fetch,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.items.map((i) => [i.id, i.displayName])).toEqual([[uuid(1), "สมชาย"]]);
+  });
+});

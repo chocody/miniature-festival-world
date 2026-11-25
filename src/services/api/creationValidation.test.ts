@@ -4,7 +4,14 @@ import type { OwnerTokenHash } from "@/services/auth";
 import { makeNewCreation, makePrivateWish } from "./__fixtures__/creations";
 import { CreationRepositoryError } from "./creationRepository";
 import type { NewCreation } from "./creationTypes";
-import { isZoneId, toIsoTimestamp, validateGuardedNewCreation, validateNewCreation } from "./creationValidation";
+import {
+  isZoneId,
+  toIsoTimestamp,
+  validateCloseWishInput,
+  validateGuardedNewCreation,
+  validateNewCreation,
+  validateOpenWishInput,
+} from "./creationValidation";
 import type { GuardedNewCreation } from "./creationTypes";
 
 const NOW = Date.parse("2026-11-24T12:00:00.000Z");
@@ -151,5 +158,110 @@ describe("validateGuardedNewCreation", () => {
     const eighty = Array.from({ length: 80 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
     expect(field(guarded({ expectedOccupantIds: eighty }))).toBe("expectedOccupantIds");
     expect(field(guarded({ expectedOccupantIds: eighty.slice(0, 79) }))).toBeUndefined();
+  });
+});
+
+describe("display name and wish switch inputs (MFW-62)", () => {
+  const NAME_WISH = { ciphertext: "v1.BBBBBBBBBBBBBBBB.NAMExPRIVATExCIPHERTEXTxxx", keyId: makePrivateWish().keyId } as ReturnType<
+    typeof makePrivateWish
+  >;
+  const UUID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
+  const fieldOf = (fn: () => unknown): string | undefined => {
+    try {
+      fn();
+    } catch (err) {
+      if (err instanceof CreationRepositoryError) {
+        expect(err.code).toBe("invalid_input");
+        for (const secret of ["สมชาย", "me@example.com", "0812345678", "NAMExPRIVATE"]) expect(err.message).not.toContain(secret);
+        return err.detail;
+      }
+      throw err;
+    }
+    return undefined;
+  };
+
+  it("keeps a public name with a public wish and rejects it elsewhere", () => {
+    expect(validateNewCreation(makeNewCreation({ displayName: "สมชาย" }), NOW).displayName).toBe("สมชาย");
+    expect(fieldOf(() => validateNewCreation(makeNewCreation({ publicWishText: null, privateWish: makePrivateWish(), displayName: "สมชาย" }), NOW))).toBe(
+      "displayName",
+    );
+    for (const bad of [" สมชาย", "", "me@example.com", 5 as never]) {
+      expect(fieldOf(() => validateNewCreation(makeNewCreation({ displayName: bad }), NOW))).toBe("displayName");
+    }
+  });
+
+  it("keeps a private name with the same key id as a fresh copy", () => {
+    const input = makeNewCreation({ publicWishText: null, privateWish: makePrivateWish(), privateDisplayName: NAME_WISH });
+    const out = validateNewCreation(input, NOW);
+    expect(out.privateDisplayName).toEqual(NAME_WISH);
+    expect(out.privateDisplayName).not.toBe(NAME_WISH);
+    expect(out.displayName).toBeNull();
+    const guarded = validateGuardedNewCreation({ ...input, createdAt: new Date(NOW), expectedOccupantIds: [] });
+    expect(guarded.privateDisplayName).toEqual(NAME_WISH);
+    expect(guarded.displayName).toBeNull();
+  });
+
+  it("rejects a private name without a private wish, with another key id or a bad ciphertext", () => {
+    expect(fieldOf(() => validateNewCreation(makeNewCreation({ privateDisplayName: NAME_WISH }), NOW))).toBe("privateDisplayName");
+    const priv = { publicWishText: null, privateWish: makePrivateWish() };
+    expect(
+      fieldOf(() => validateNewCreation(makeNewCreation({ ...priv, privateDisplayName: { ...NAME_WISH, keyId: "other-key" } }), NOW)),
+    ).toBe("privateDisplayName");
+    expect(
+      fieldOf(() =>
+        validateNewCreation(makeNewCreation({ ...priv, privateDisplayName: { ...NAME_WISH, ciphertext: "plain name" as never } }), NOW),
+      ),
+    ).toBe("privateDisplayName");
+  });
+
+  it("an input without the two keys yields explicit nulls", () => {
+    const { displayName, privateDisplayName, ...legacy } = makeNewCreation();
+    void displayName;
+    void privateDisplayName;
+    const out = validateNewCreation(legacy, NOW);
+    expect(out.displayName).toBeNull();
+    expect(out.privateDisplayName).toBeNull();
+    expect(Object.keys(out)).toContain("displayName");
+    expect(Object.keys(out)).toContain("privateDisplayName");
+  });
+
+  const open = {
+    creationId: UUID,
+    expectedPrivateWish: makePrivateWish().ciphertext,
+    publicWishText: "ขอให้ทุกคนมีความสุข",
+    displayName: "สมชาย",
+  };
+  it("validateOpenWishInput", () => {
+    const out = validateOpenWishInput(open);
+    expect(out).toEqual(open);
+    expect(out).not.toBe(open);
+    expect(validateOpenWishInput({ ...open, displayName: null }).displayName).toBeNull();
+    expect(fieldOf(() => validateOpenWishInput({ ...open, creationId: UUID.toUpperCase() }))).toBe("creationId");
+    expect(fieldOf(() => validateOpenWishInput({ ...open, expectedPrivateWish: "nope" as never }))).toBe("expectedPrivateWish");
+    for (const text of [" x", "", "โทร 0812345678"]) {
+      expect(fieldOf(() => validateOpenWishInput({ ...open, publicWishText: text }))).toBe("publicWishText");
+    }
+    expect(fieldOf(() => validateOpenWishInput({ ...open, displayName: "me@example.com" }))).toBe("displayName");
+  });
+
+  const close = {
+    creationId: UUID,
+    expectedPublicWishText: "ขอให้ทุกคนมีความสุข",
+    expectedDisplayName: "สมชาย",
+    privateWish: makePrivateWish(),
+    privateDisplayName: NAME_WISH,
+  };
+  it("validateCloseWishInput", () => {
+    const out = validateCloseWishInput(close);
+    expect(out).toEqual(close);
+    expect(out.privateWish).not.toBe(close.privateWish);
+    expect(validateCloseWishInput({ ...close, expectedDisplayName: null, privateDisplayName: null }).privateDisplayName).toBeNull();
+    expect(fieldOf(() => validateCloseWishInput({ ...close, creationId: "x" }))).toBe("creationId");
+    expect(fieldOf(() => validateCloseWishInput({ ...close, expectedPublicWishText: "  " }))).toBe("expectedPublicWishText");
+    expect(fieldOf(() => validateCloseWishInput({ ...close, expectedDisplayName: "" }))).toBe("expectedDisplayName");
+    expect(fieldOf(() => validateCloseWishInput({ ...close, privateWish: { ...close.privateWish, keyId: "BAD" } }))).toBe("privateWish");
+    expect(fieldOf(() => validateCloseWishInput({ ...close, privateDisplayName: { ...NAME_WISH, keyId: "other-key" } }))).toBe(
+      "privateDisplayName",
+    );
   });
 });

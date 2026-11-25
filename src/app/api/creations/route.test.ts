@@ -121,6 +121,9 @@ describe("GET /api/creations", () => {
       listZoneOccupants: async () => [],
       insertCreationGuarded: async () => ({ status: "zone_changed" as const }),
       readOwnership: () => Promise.reject(new Error("unused")),
+      readWishSwitchState: () => Promise.reject(new Error("unused")),
+      openWish: () => Promise.reject(new Error("unused")),
+      closeWish: () => Promise.reject(new Error("unused")),
     };
     const res = await call("event=loy_krathong&zone=1", () => failing);
     expect(res.status).toBe(503);

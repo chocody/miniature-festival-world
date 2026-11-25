@@ -3,7 +3,8 @@ import {
   AES_GCM_IV_BYTES,
   AES_GCM_TAG_BYTES,
   AES_GCM_TAG_LENGTH_BITS,
-  PRIVATE_WISH_AAD_LABEL,
+  PRIVATE_CIPHER_AAD_LABELS,
+  PRIVATE_CIPHER_FIELDS,
   PRIVATE_WISH_AAD_SEPARATOR,
   PRIVATE_WISH_CIPHERTEXT_PATTERN,
   PRIVATE_WISH_ENVELOPE_VERSION,
@@ -16,6 +17,7 @@ import {
   PRIVATE_WISH_RETIRED_KEYS_ENV,
   PRIVATE_WISH_RETIRED_KEYS_MAX,
   PRIVATE_WISH_RETIRED_KEYS_SEPARATOR,
+  type PrivateCipherField,
 } from "@/config/privateWish.config";
 import { isOwnerTokenHash, type OwnerTokenHash } from "@/services/auth";
 import { base64ToBytes, base64UrlToBytes, bytesToBase64Url } from "./base64url";
@@ -27,10 +29,13 @@ export type FillRandomBytes = (bytes: Uint8Array<ArrayBuffer>) => void;
 
 export interface PrivateWishCipher {
   readonly keyId: string;
-  /** AES-256-GCM with a fresh random 12-byte IV; additional data binds key id and owner hash. Rejects TypeError on bad input. */
-  encrypt(plaintext: string, ownerTokenHash: OwnerTokenHash): Promise<EncryptedPrivateWish>;
-  /** Decrypts with THIS cipher's key only (wish.keyId must equal keyId); null on any failure, never throws. */
-  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash): Promise<string | null>;
+  /**
+   * AES-256-GCM with a fresh random 12-byte IV; additional data binds field label, key id and owner hash.
+   * `field` defaults to "wish" (MFW-62 adds "displayName"). Rejects TypeError on bad input, including an unknown field.
+   */
+  encrypt(plaintext: string, ownerTokenHash: OwnerTokenHash, field?: PrivateCipherField): Promise<EncryptedPrivateWish>;
+  /** Decrypts with THIS cipher's key only (wish.keyId must equal keyId); null on any failure (incl. an unknown field), never throws. */
+  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash, field?: PrivateCipherField): Promise<string | null>;
 }
 
 export type PrivateWishKeyLookup = (keyId: string) => CryptoKey | undefined;
@@ -52,9 +57,18 @@ const defaultFillRandom: FillRandomBytes = (bytes) => {
   globalThis.crypto.getRandomValues(bytes);
 };
 
-export function privateWishAdditionalData(keyId: string, ownerTokenHash: OwnerTokenHash): Uint8Array<ArrayBuffer> {
+function isPrivateCipherField(value: unknown): value is PrivateCipherField {
+  return typeof value === "string" && (PRIVATE_CIPHER_FIELDS as readonly string[]).includes(value);
+}
+
+/** "<label>|<version>|<keyId>|<owner hash>"; the label depends on the field ("wish" keeps the pre-MFW-62 bytes). */
+export function privateWishAdditionalData(
+  keyId: string,
+  ownerTokenHash: OwnerTokenHash,
+  field: PrivateCipherField = "wish",
+): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(
-    [PRIVATE_WISH_AAD_LABEL, PRIVATE_WISH_ENVELOPE_VERSION, keyId, ownerTokenHash].join(PRIVATE_WISH_AAD_SEPARATOR),
+    [PRIVATE_CIPHER_AAD_LABELS[field], PRIVATE_WISH_ENVELOPE_VERSION, keyId, ownerTokenHash].join(PRIVATE_WISH_AAD_SEPARATOR),
   ) as Uint8Array<ArrayBuffer>;
 }
 
@@ -73,9 +87,14 @@ export function createPrivateWishCipher(options: {
   if (!PRIVATE_WISH_KEY_ID_PATTERN.test(keyId)) throw new RangeError("invalid key id");
   return {
     keyId,
-    async encrypt(plaintext: string, ownerTokenHash: OwnerTokenHash): Promise<EncryptedPrivateWish> {
+    async encrypt(
+      plaintext: string,
+      ownerTokenHash: OwnerTokenHash,
+      field: PrivateCipherField = "wish",
+    ): Promise<EncryptedPrivateWish> {
       if (typeof plaintext !== "string") throw new TypeError("plaintext must be a string");
       if (!isOwnerTokenHash(ownerTokenHash)) throw new TypeError("invalid owner hash");
+      if (!isPrivateCipherField(field)) throw new TypeError("unknown cipher field");
       const iv = new Uint8Array(AES_GCM_IV_BYTES);
       fillRandom(iv);
       const sealed = new Uint8Array(
@@ -83,7 +102,7 @@ export function createPrivateWishCipher(options: {
           {
             name: "AES-GCM",
             iv,
-            additionalData: privateWishAdditionalData(keyId, ownerTokenHash),
+            additionalData: privateWishAdditionalData(keyId, ownerTokenHash, field),
             tagLength: AES_GCM_TAG_LENGTH_BITS,
           },
           key,
@@ -94,18 +113,20 @@ export function createPrivateWishCipher(options: {
       if (!PRIVATE_WISH_CIPHERTEXT_PATTERN.test(envelope)) throw new Error("envelope format"); // defensive
       return { ciphertext: envelope as PrivateWishCiphertext, keyId };
     },
-    decrypt: (wish, ownerTokenHash) =>
-      decryptPrivateWish(wish, ownerTokenHash, (id) => (id === keyId ? key : undefined)),
+    decrypt: (wish, ownerTokenHash, field = "wish") =>
+      decryptPrivateWish(wish, ownerTokenHash, (id) => (id === keyId ? key : undefined), field),
   };
 }
 
-/** Returns null on ANY failure (bad envelope, unknown key id, wrong owner hash, tampering); never throws. */
+/** Returns null on ANY failure (bad envelope, unknown key id, wrong owner hash, wrong or unknown field, tampering); never throws. */
 export async function decryptPrivateWish(
   wish: EncryptedPrivateWish,
   ownerTokenHash: OwnerTokenHash,
   lookup: PrivateWishKeyLookup,
+  field: PrivateCipherField = "wish",
 ): Promise<string | null> {
   try {
+    if (!isPrivateCipherField(field)) return null;
     if (!PRIVATE_WISH_CIPHERTEXT_PATTERN.test(wish.ciphertext)) return null;
     const parts = wish.ciphertext.split(".");
     if (parts.length !== 3) return null;
@@ -119,7 +140,7 @@ export async function decryptPrivateWish(
       {
         name: "AES-GCM",
         iv,
-        additionalData: privateWishAdditionalData(wish.keyId, ownerTokenHash),
+        additionalData: privateWishAdditionalData(wish.keyId, ownerTokenHash, field),
         tagLength: AES_GCM_TAG_LENGTH_BITS,
       },
       key,
@@ -208,7 +229,7 @@ export function readRetiredPrivateWishKeysEnv(env: BackendEnv): RetiredPrivateWi
 
 export interface PrivateWishReader {
   /** null on ANY failure (unknown key id, wrong owner hash, tampering, the ephemeral id outside the memory backend); never throws. */
-  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash): Promise<string | null>;
+  decrypt(wish: EncryptedPrivateWish, ownerTokenHash: OwnerTokenHash, field?: PrivateCipherField): Promise<string | null>;
 }
 
 /**
@@ -233,15 +254,15 @@ export async function createPrivateWishReaderFromEnv(
       keys.set(r.keyId, await importPrivateWishKey(r.rawKey));
     }
     const lookup: PrivateWishKeyLookup = (keyId) => (keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID ? undefined : keys.get(keyId));
-    return { decrypt: (wish, ownerTokenHash) => decryptPrivateWish(wish, ownerTokenHash, lookup) };
+    return { decrypt: (wish, ownerTokenHash, field) => decryptPrivateWish(wish, ownerTokenHash, lookup, field) };
   }
   if (current.reason === "invalid" || retired.keys.length > 0) throw new PrivateWishKeyError("invalid");
   if (backend !== "memory") throw new PrivateWishKeyError("missing");
   const cipher = await getWriteCipher("memory");
   if (cipher.keyId !== PRIVATE_WISH_EPHEMERAL_KEY_ID) throw new PrivateWishKeyError("invalid"); // defensive
   return {
-    decrypt: (wish, ownerTokenHash) =>
-      wish.keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID ? cipher.decrypt(wish, ownerTokenHash) : Promise.resolve(null),
+    decrypt: (wish, ownerTokenHash, field) =>
+      wish.keyId === PRIVATE_WISH_EPHEMERAL_KEY_ID ? cipher.decrypt(wish, ownerTokenHash, field) : Promise.resolve(null),
   };
 }
 

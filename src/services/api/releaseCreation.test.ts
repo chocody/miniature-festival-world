@@ -26,6 +26,7 @@ function creationFor(body: CreateCreationRequestBody, patch: Partial<PublicCreat
     publicWishText: null,
     createdAt: "2026-11-24T12:00:00.000Z",
     expiresAt: "2026-12-24T12:00:00.000Z",
+    displayName: null,
     ...patch,
   };
 }
