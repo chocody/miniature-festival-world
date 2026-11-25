@@ -12,6 +12,7 @@ import type { OwnerWishRevealer } from "@/services/api/ownerWishClient";
 import { getWishVisibilitySwitcher, type WishVisibilitySwitcher } from "@/services/api/wishVisibilityClient";
 import { describeModerationReasons, type ModerationReason } from "@/services/moderation";
 import { PrivateWishReveal } from "./PrivateWishReveal";
+import { UI_CLASSES } from "./uiClasses";
 import { WishVisibilitySwitch } from "./WishVisibilitySwitch";
 
 export interface OwnerWishControlsProps {
@@ -36,7 +37,6 @@ interface ControlsState {
 }
 
 const NO_REASONS: readonly ModerationReason[] = Object.freeze([]);
-const BUTTON_CLASS = "min-h-11 min-w-11 rounded-full border border-current px-3";
 const defaultOnSwitched = (creationId: string, open: boolean): void => {
   void syncWorldAfterSwitch(creationId, open);
 };
@@ -167,12 +167,12 @@ export function OwnerWishControls({
 
   return (
     <div
-      className="mt-2 flex flex-col gap-2"
+      className={`mt-3 flex flex-col gap-2 ${UI_CLASSES.inset}`}
       data-testid="owner-wish-controls"
       data-wish-open={state.view === "ready" ? String(state.open) : "unknown"}
       data-switch-pending={state.pending ? "true" : "false"}
     >
-      <h3 className="font-semibold">{copy.heading}</h3>
+      <h3 className={UI_CLASSES.subheading}>{copy.heading}</h3>
       {state.view === "ready" && (
         <WishVisibilitySwitch
           checked={state.open}
@@ -184,15 +184,12 @@ export function OwnerWishControls({
         />
       )}
       {state.view === "unknown" && zone && (
-        <button type="button" className={BUTTON_CLASS} onClick={retry}>
+        <button type="button" className={UI_CLASSES.secondaryButton} onClick={retry}>
           {copy.retryLoad}
         </button>
       )}
       {warning && (
-        <div
-          role="alert"
-          className="rounded-2xl border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-100"
-        >
+        <div role="alert" className={UI_CLASSES.alert}>
           <p className="font-semibold">{warning.title}</p>
           <ul className="list-disc pl-5">
             {warning.messages.map((m) => (
@@ -202,7 +199,7 @@ export function OwnerWishControls({
           <p>{copy.stayedPrivate}</p>
         </div>
       )}
-      <p id={statusId} aria-live="polite">
+      <p id={statusId} aria-live="polite" className={UI_CLASSES.caption}>
         {statusText}
       </p>
       {state.view === "ready" && !state.open && <PrivateWishReveal creationId={creationId} revealer={revealer} />}

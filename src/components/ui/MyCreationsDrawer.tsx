@@ -9,6 +9,7 @@ import {
 import { getFindMyCreation, type FindMyCreation } from "@/services/api/findMyCreation";
 import { getMyCreationsVault, type MyCreationEntry, type MyCreationsVault } from "@/services/auth/myCreationsVault";
 import { useWorldStore } from "@/store/useWorldStore";
+import { UI_CLASSES } from "./uiClasses";
 
 export interface MyCreationsDrawerProps {
   readonly vault?: Pick<MyCreationsVault, "list" | "subscribe">; // default getMyCreationsVault() (resolved in effects/handlers only)
@@ -105,13 +106,13 @@ export function MyCreationsDrawer({
       data-testid="my-creations"
       data-open={String(open)}
       data-entry-count={entries.length}
-      className="mb-4 flex w-full flex-col gap-2 text-sm"
+      className="flex w-full flex-col gap-2"
     >
       <button
         type="button"
         aria-expanded={open}
         aria-controls={listId}
-        className="w-full rounded-full border border-amber-300 px-4 py-2 text-left"
+        className={`${UI_CLASSES.secondaryButton} w-full`}
         onClick={() => {
           if (!open) refresh();
           setOpen(!open);
@@ -121,17 +122,17 @@ export function MyCreationsDrawer({
       </button>
       {open && (
         <section id={listId} aria-label={COPY.title} data-testid="my-creations-list" className="flex flex-col gap-2">
-          <h2 className="font-semibold">{COPY.title}</h2>
-          <p>{COPY.deviceOnly}</p>
+          <h2 className={UI_CLASSES.subheading}>{COPY.title}</h2>
+          <p className={UI_CLASSES.caption}>{COPY.deviceOnly}</p>
           {entries.length === 0 ? (
-            <p>{COPY.empty}</p>
+            <p className="text-body text-ink-muted">{COPY.empty}</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {entries.map((entry, index) => (
                 <li key={entry.id}>
                   <button
                     type="button"
-                    className="w-full rounded-lg border border-amber-200 px-3 py-2 text-left break-words"
+                    className={UI_CLASSES.listRow}
                     onClick={() => void select(entry)}
                   >
                     {COPY.itemLabel(entries.length - index, entry.zoneId, formatReleaseTime(entry.createdAt))}
@@ -141,12 +142,18 @@ export function MyCreationsDrawer({
               ))}
             </ul>
           )}
-          <button type="button" className="w-full rounded-full px-4 py-2 text-left underline" onClick={() => setOpen(false)}>
+          <button type="button" className={`${UI_CLASSES.ghostButton} self-start`} onClick={() => setOpen(false)}>
             {COPY.close}
           </button>
         </section>
       )}
-      <p role="status" aria-live="polite" data-testid="find-my-status" data-find-my-status={status.kind}>
+      <p
+        role="status"
+        aria-live="polite"
+        data-testid="find-my-status"
+        data-find-my-status={status.kind}
+        className={UI_CLASSES.caption}
+      >
         {statusText(status)}
       </p>
     </div>

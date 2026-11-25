@@ -13,6 +13,7 @@ import { buildReleaseCoord } from "@/core/ritual";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY, MY_CREATIONS_STORAGE_KEY } from "@/config/ownership.config";
 import { MY_CREATION_ENTRY_KEYS, MY_CREATIONS_COPY } from "@/config/myCreations.config";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
+import { FLOW_STEP_COPY } from "@/config/ui.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 
@@ -456,7 +457,7 @@ describe("FlowRoot", () => {
       await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
       expect(inSlot(await screen.findByTestId("zone-navigator"), "top")).toBe(true);
       expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
-      expect(inSlot(screen.getByRole("heading", { name: "SHARED_WORLD_EXPLORE" }), "panel")).toBe(true);
+      expect(inSlot(screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title }), "panel")).toBe(true);
       expect(stageLayer()).toContainElement(screen.getByTestId("scene-viewport"));
     });
 
@@ -515,7 +516,49 @@ describe("FlowRoot", () => {
       expect(stageLayer()).toContainElement(screen.getByTestId("flat-viewport"));
       expect(inSlot(screen.getByTestId("zone-navigator"), "top")).toBe(true);
       expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
-      expect(inSlot(screen.getByRole("heading", { name: "SHARED_WORLD_EXPLORE" }), "panel")).toBe(true);
+      expect(inSlot(screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title }), "panel")).toBe(true);
     });
+  });
+});
+
+describe("minimal UI (MFW-55)", () => {
+  const primaryCount = () => document.querySelectorAll('[data-ui-emphasis="primary"]').length;
+  const RAW_STATE_ID = /CUSTOMIZE_OBJECT|WRITE_WISH|RITUAL_RELEASE|SHARED_WORLD_EXPLORE/;
+
+  /** Walks CUSTOMIZE → WISH → RITUAL → WORLD on FALLBACK_2D and calls `check` in each step. */
+  async function walkAllSteps(check: (step: string) => void) {
+    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+    check("CUSTOMIZE_OBJECT");
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(stateOf(container)).toBe("WRITE_WISH");
+    check("WRITE_WISH");
+    completeWish();
+    expect(stateOf(container)).toBe("RITUAL_RELEASE");
+    check("RITUAL_RELEASE");
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    check("SHARED_WORLD_EXPLORE");
+  }
+
+  it("at most one primary action per step (MFW-55 AC3)", async () => {
+    const counts: Record<string, number> = {};
+    await walkAllSteps((step) => {
+      counts[step] = primaryCount();
+    });
+    expect(counts).toEqual({ CUSTOMIZE_OBJECT: 1, WRITE_WISH: 1, RITUAL_RELEASE: 1, SHARED_WORLD_EXPLORE: 0 });
+  });
+
+  it("no raw flow-state id is shown in any step", async () => {
+    const seen: string[] = [];
+    await walkAllSteps((step) => {
+      seen.push(step);
+      expect(document.body.textContent).not.toMatch(RAW_STATE_ID);
+    });
+    expect(seen).toHaveLength(4);
   });
 });

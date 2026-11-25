@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { getOwnerWishRevealer, type OwnerWishRevealer } from "@/services/api/ownerWishClient";
+import { UI_CLASSES } from "./uiClasses";
 
 export interface PrivateWishRevealProps {
   readonly creationId: string;
@@ -16,8 +17,6 @@ type RevealUiState =
   | { readonly kind: "revealed"; readonly wishText: string }
   | { readonly kind: "none" }
   | { readonly kind: "failed" };
-
-const BUTTON_CLASS = "min-h-11 min-w-11 rounded-full border border-current px-3";
 
 /** The owner's own private wish, fetched only on tap and kept only in this component's state (never a store, never storage). */
 export function PrivateWishReveal({ creationId, revealer }: PrivateWishRevealProps) {
@@ -50,19 +49,21 @@ export function PrivateWishReveal({ creationId, revealer }: PrivateWishRevealPro
   const status = state.kind === "none" ? copy.none : state.kind === "failed" ? copy.failed : "";
 
   return (
-    <div className="mt-2" data-owner-wish-state={state.kind}>
-      <h3 className="font-semibold">{copy.heading}</h3>
-      <p className="text-xs opacity-75">{copy.deviceOnlyNote}</p>
+    <div className="mt-2 flex flex-col items-start gap-2" data-owner-wish-state={state.kind}>
+      <h3 className={UI_CLASSES.subheading}>{copy.heading}</h3>
+      <p className={UI_CLASSES.caption}>{copy.deviceOnlyNote}</p>
       {state.kind === "revealed" && (
         <>
-          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{state.wishText}</p>
-          <button type="button" className={BUTTON_CLASS} onClick={hide}>{copy.hide}</button>
+          <p className="max-h-40 w-full overflow-y-auto whitespace-pre-wrap break-words text-body">{state.wishText}</p>
+          <button type="button" className={UI_CLASSES.secondaryButton} onClick={hide}>{copy.hide}</button>
         </>
       )}
-      {state.kind === "idle" && <button type="button" className={BUTTON_CLASS} onClick={reveal}>{copy.reveal}</button>}
-      {state.kind === "loading" && <button type="button" className={BUTTON_CLASS} disabled>{copy.revealing}</button>}
-      {state.kind === "failed" && <button type="button" className={BUTTON_CLASS} onClick={reveal}>{copy.retry}</button>}
-      <p aria-live="polite">{status}</p>
+      {state.kind === "idle" && <button type="button" className={UI_CLASSES.secondaryButton} onClick={reveal}>{copy.reveal}</button>}
+      {state.kind === "loading" && <button type="button" className={UI_CLASSES.secondaryButton} disabled>{copy.revealing}</button>}
+      {state.kind === "failed" && <button type="button" className={UI_CLASSES.secondaryButton} onClick={reveal}>{copy.retry}</button>}
+      <p aria-live="polite" className={UI_CLASSES.caption}>
+        {status}
+      </p>
     </div>
   );
 }

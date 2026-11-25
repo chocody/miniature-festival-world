@@ -7,7 +7,7 @@ export function SceneTapHint({ text, reducedMotion }: { readonly text: string; r
       role="status"
       aria-live="polite"
       className={
-        "pointer-events-none whitespace-nowrap rounded-full bg-indigo-950/75 px-4 py-1.5 text-sm text-amber-50 shadow-lg" +
+        "pointer-events-none whitespace-nowrap rounded-full bg-ink-veil px-4 py-2 text-caption font-medium text-paper shadow-float" +
         (reducedMotion ? "" : " animate-pulse")
       }
     >

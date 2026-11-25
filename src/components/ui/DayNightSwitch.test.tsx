@@ -57,4 +57,76 @@ describe("DayNightSwitch", () => {
     expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
     expect(screen.getByRole("radio", { name: COPY.DAY })).toHaveAttribute("aria-checked", "true");
   });
+
+  describe("roving keyboard (MFW-55)", () => {
+    const radio = (choice: "AUTO" | "DAY" | "NIGHT") => screen.getByRole("radio", { name: COPY[choice] });
+    const renderHigh = () => {
+      useDeviceStore.getState().setQualityTier("HIGH");
+      render(<DayNightSwitch />);
+    };
+
+    it("only the checked radio is a tab stop", () => {
+      renderHigh();
+      expect(radio("AUTO").tabIndex).toBe(0);
+      expect(radio("DAY").tabIndex).toBe(-1);
+      expect(radio("NIGHT").tabIndex).toBe(-1);
+    });
+
+    it("ArrowRight moves to the next choice, focuses it and stores it", () => {
+      renderHigh();
+      fireEvent.keyDown(radio("AUTO"), { key: "ArrowRight" });
+      expect(radio("DAY")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("DAY"));
+      expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
+      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("DAY");
+      expect(radio("DAY").tabIndex).toBe(0);
+      expect(radio("AUTO").tabIndex).toBe(-1);
+    });
+
+    it("ArrowLeft wraps from the first to the last", () => {
+      renderHigh();
+      fireEvent.keyDown(radio("AUTO"), { key: "ArrowLeft" });
+      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("NIGHT"));
+      expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
+    });
+
+    it("ArrowDown / ArrowUp act like Right / Left", () => {
+      renderHigh();
+      fireEvent.keyDown(radio("AUTO"), { key: "ArrowDown" });
+      expect(radio("DAY")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("DAY"));
+      fireEvent.keyDown(radio("DAY"), { key: "ArrowUp" });
+      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("AUTO"));
+      fireEvent.keyDown(radio("AUTO"), { key: "ArrowUp" });
+      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
+      fireEvent.keyDown(radio("NIGHT"), { key: "ArrowDown" });
+      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("Home and End jump to the first and last", () => {
+      renderHigh();
+      fireEvent.click(radio("DAY"));
+      fireEvent.keyDown(radio("DAY"), { key: "End" });
+      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("NIGHT"));
+      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");
+      fireEvent.keyDown(radio("NIGHT"), { key: "Home" });
+      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
+      expect(document.activeElement).toBe(radio("AUTO"));
+      expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
+      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBeNull();
+    });
+
+    it("other keys do nothing", () => {
+      renderHigh();
+      const notPrevented = fireEvent.keyDown(radio("AUTO"), { key: "a" });
+      fireEvent.keyDown(radio("AUTO"), { key: "constructor" });
+      expect(notPrevented).toBe(true);
+      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
+      expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
+      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBeNull();
+    });
+  });
 });

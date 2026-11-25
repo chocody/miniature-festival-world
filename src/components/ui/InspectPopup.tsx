@@ -6,6 +6,7 @@ import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
 import { getReportSession, type ReportSession } from "@/services/api/reportClient";
 import type { InspectedCreation } from "./inspectedCreation";
 import { describeKrathongAppearance } from "./krathongAppearanceSummary";
+import { UI_CLASSES, UI_GLYPHS } from "./uiClasses";
 
 export interface InspectPopupProps {
   readonly creation: InspectedCreation;
@@ -17,8 +18,6 @@ export interface InspectPopupProps {
 }
 
 type ReportUiState = "idle" | "confirming" | "sending" | "received" | "failed";
-
-const BUTTON_CLASS = "min-h-11 min-w-11 rounded-full border border-current px-3";
 
 /**
  * Card for a tapped river krathong. An open wish shows name (or "ไม่ระบุชื่อ") + wish + Report; a closed wish shows only the
@@ -54,26 +53,26 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
-      className="mb-8 w-full rounded-2xl border border-indigo-950/20 bg-white px-4 py-3 text-sm text-zinc-900 shadow-lg dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
+      className={`mb-3 w-full ${UI_CLASSES.card} p-card text-body md:mb-0`}
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 id={titleId} className="text-base font-semibold">
+        <h2 id={titleId} className={UI_CLASSES.title}>
           {copy.dialogTitle}
         </h2>
-        <button type="button" onClick={onClose} className="min-h-11 min-w-11 rounded-full px-3">
-          {copy.close}
+        <button type="button" onClick={onClose} aria-label={copy.close} className={UI_CLASSES.iconButton}>
+          <span aria-hidden="true">{UI_GLYPHS.close}</span>
         </button>
       </div>
-      <h3 className="mt-2 font-semibold">{copy.appearanceHeading}</h3>
-      <dl>
+      <h3 className={`mt-3 ${UI_CLASSES.subheading}`}>{copy.appearanceHeading}</h3>
+      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         {rows.map((row) => (
-          <div key={row.key} className="flex gap-2">
-            <dt className="opacity-75">{row.label}</dt>
+          <div key={row.key} className="contents">
+            <dt className="text-ink-muted">{row.label}</dt>
             <dd>
               {row.swatch && (
                 <span
                   aria-hidden="true"
-                  className="inline-block h-3 w-3 rounded-full border border-black/20 align-middle"
+                  className={`inline-block h-3 w-3 align-middle ${UI_CLASSES.swatch}`}
                   style={{ backgroundColor: row.swatch }}
                 />
               )}{" "}
@@ -84,43 +83,45 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
       </dl>
       {isOpen && (
         <>
-          <p className="mt-2" data-testid="inspect-display-name">
-            <span className="opacity-75">{copy.fromLabel}</span> {creation.displayName ?? DISPLAY_NAME_FALLBACK}
+          <p className="mt-3" data-testid="inspect-display-name">
+            <span className="text-ink-muted">{copy.fromLabel}</span> {creation.displayName ?? DISPLAY_NAME_FALLBACK}
           </p>
-          <h3 className="mt-2 font-semibold">{copy.wishHeading}</h3>
+          <h3 className={`mt-3 ${UI_CLASSES.subheading}`}>{copy.wishHeading}</h3>
           <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words">{creation.publicWishText}</p>
         </>
       )}
       {ownerSection}
       {isOpen && (
-        <div className="mt-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {state === "idle" && (
-            <button type="button" className={BUTTON_CLASS} onClick={() => setState("confirming")}>
+            <button type="button" className={UI_CLASSES.ghostButton} onClick={() => setState("confirming")}>
               {copy.report}
             </button>
           )}
           {state === "confirming" && (
             <>
-              <p>{copy.reportPrompt}</p>
-              <button type="button" className={BUTTON_CLASS} onClick={send}>
+              <p className="w-full">{copy.reportPrompt}</p>
+              <button type="button" className={UI_CLASSES.secondaryButton} onClick={send}>
                 {copy.reportConfirm}
-              </button>{" "}
-              <button type="button" className={BUTTON_CLASS} onClick={() => setState("idle")}>
+              </button>
+              <button type="button" className={UI_CLASSES.ghostButton} onClick={() => setState("idle")}>
                 {copy.reportCancel}
               </button>
             </>
           )}
           {state === "sending" && (
-            <button type="button" className={BUTTON_CLASS} disabled>
+            <button type="button" className={UI_CLASSES.ghostButton} disabled>
               {copy.reportSending}
             </button>
           )}
           {state === "failed" && (
-            <button type="button" className={BUTTON_CLASS} onClick={send}>
+            <button type="button" className={UI_CLASSES.ghostButton} onClick={send}>
               {copy.reportRetry}
             </button>
           )}
-          <p aria-live="polite">{statusText}</p>
+          <p aria-live="polite" className={`w-full ${UI_CLASSES.caption}`}>
+            {statusText}
+          </p>
         </div>
       )}
     </section>

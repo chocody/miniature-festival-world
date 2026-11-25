@@ -1,6 +1,8 @@
 "use client";
 
+import { FLOW_STEP_COPY } from "@/config/ui.config";
 import type { FlowState } from "@/core/flow";
+import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 
 export interface FlowStepPlaceholderProps {
   step: FlowState;
@@ -8,23 +10,15 @@ export interface FlowStepPlaceholderProps {
   onNext?: () => void;
 }
 
-/** Stand-in for flow steps whose real UI arrives in later tickets. */
+/** Stand-in for flow steps whose real UI arrives in later tickets. Shows the step's Thai title and hint (MFW-55). */
 export function FlowStepPlaceholder({ step, nextLabel = "ถัดไป", onNext }: FlowStepPlaceholderProps) {
+  const copy = FLOW_STEP_COPY[step];
   return (
-    <section className="flex w-full flex-col items-start gap-4">
-      <h2 className="text-xl font-semibold">{step}</h2>
-      {step === "RITUAL_RELEASE" && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">ลากกระทงลงน้ำ หรือกดปุ่มปล่อยกระทง</p>
-      )}
-      {step === "SHARED_WORLD_EXPLORE" && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">ลากเพื่อเลื่อนหรือหมุนแม่น้ำ แตะสั้นที่น้ำ โคมไฟ หรือกระทงเพื่อเลือก</p>
-      )}
+    <section className="flex w-full flex-col items-start gap-1">
+      <h2 className={UI_CLASSES.title}>{copy.title}</h2>
+      {copy.hint && <p className={UI_CLASSES.caption}>{copy.hint}</p>}
       {onNext && (
-        <button
-          type="button"
-          onClick={onNext}
-          className="min-h-12 rounded-full bg-zinc-900 px-5 text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
+        <button {...PRIMARY_ACTION_PROPS} type="button" onClick={onNext} className={`${UI_CLASSES.primaryButton} mt-2`}>
           {nextLabel}
         </button>
       )}

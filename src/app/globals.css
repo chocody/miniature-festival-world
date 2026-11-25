@@ -1,26 +1,103 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Design tokens (MFW-55, backlog 10.3). Defined once here and documented in docs/design/ui.md; tests/unit/ui-doc.test.ts
+ * keeps the two in sync. Every value is DRAFT until the owner signs off on the PR screenshots. `static` emits every token
+ * as a CSS variable even when no utility uses it (arbitrary values reference --spacing-gutter / --spacing-card).
+ */
+@theme static {
+  /* Colour */
+  --color-stage: #D8E4CF;
+  --color-paper: #FBF8F1;
+  --color-veil: rgb(251 248 241 / 0.9);
+  --color-ink: #26332B;
+  --color-ink-muted: #525C4B;
+  --color-ink-veil: rgb(38 51 43 / 0.8);
+  --color-line: #E3DCCD;
+  --color-track: #7E7868;
+  --color-clay: #9A4A2A;
+  --color-clay-strong: #7F3B20;
+  --color-clay-soft: #F4E1D3;
+  --color-clay-ink: #FFF8EE;
+  --color-danger: #8F2A1E;
+  --color-danger-soft: #FBE8E3;
+  --color-notice: #6B4810;
+  --color-notice-soft: #FAF0DA;
+  --color-focus: #1E2A22;
+
+  /* Type scale */
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.25rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.5rem;
+  --text-input: 1rem;
+  --text-input--line-height: 1.5rem;
+  --text-title: 1.125rem;
+  --text-title--line-height: 1.625rem;
+  --text-display: 1.5rem;
+  --text-display--line-height: 2rem;
+
+  /* Radius */
+  --radius-field: 1rem;
+  --radius-card: 1.5rem;
+  --radius-sheet: 1.75rem;
+
+  /* Spacing */
+  --spacing-gutter: 0.75rem;
+  --spacing-card: 1rem;
+
+  /* Shadow */
+  --shadow-raised: 0 1px 3px rgb(38 51 43 / 0.16);
+  --shadow-float: 0 6px 20px -4px rgb(38 51 43 / 0.18), 0 1px 3px rgb(38 51 43 / 0.08);
+  --shadow-sheet: 0 -8px 24px -6px rgb(38 51 43 / 0.16);
+
+  /* Motion */
+  --default-transition-duration: 160ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Focus */
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
 }
 
+/* The one Thai-capable web font: next/font sets --font-anuphan on <html> (src/app/layout.tsx). */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-anuphan), ui-sans-serif, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  color-scheme: light;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-stage);
+    color: var(--color-ink);
+  }
+
+  /* Visible focus for keyboard users on every control (WCAG 2.4.7). Utilities may move the offset (2D scroller). */
+  :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Invariant F: UI transitions and CSS animations are off under reduced motion (OS setting or the device store's flag). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+[data-reduced-motion="true"],
+[data-reduced-motion="true"] *,
+[data-reduced-motion="true"] *::before,
+[data-reduced-motion="true"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
 }
