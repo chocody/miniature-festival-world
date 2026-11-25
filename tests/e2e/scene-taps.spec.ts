@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneItem } from "./fixtures/zoneFixtures";
+import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import {
   E2E_INSPECT_DIALOG_TITLE,
@@ -44,7 +45,7 @@ async function routeZone(page: Page) {
           limit: 80,
           items: SPAWN_PROGRESS.map((progress, i) => {
             const item = makeZoneItem(1, i + 1) as { coord: Record<string, unknown> };
-            return { ...item, coord: { ...item.coord, spawnProgress: progress }, createdAt: new Date().toISOString() };
+            return { ...item, displayName: null, coord: { ...item.coord, spawnProgress: progress }, createdAt: new Date().toISOString() };
           }),
         },
       }),
@@ -64,7 +65,7 @@ async function setTier(page: Page, memory: number, cores: number) {
 
 async function walkToWorld(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: /Loy Krathong/ }).click();
+  await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
