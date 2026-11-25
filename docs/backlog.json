@@ -487,7 +487,7 @@
           "summary": "Living world — villagers walking along the river and ambient life",
           "goal": "The riverside feels alive: people stroll along the river and small things move.",
           "ac": [
-            "Small toy-like villagers walk along riverside paths and some stop to watch the river; their positions are derived deterministically from a path parameter and the clock (no physics, no stored state)",
+            "Small villagers — simple silhouettes are enough (owner, 2026-11-25) — walk along riverside paths and some stop to watch the river; their positions are derived deterministically from a path parameter and the clock (no physics, no stored state)",
             "Villager count per tier comes from config (fewer on MEDIUM, fewest or none on LOW); they are instanced or share geometry and material; no per-frame allocation",
             "Ambient life, at least two of: fireflies / floating light motes, chimney smoke, swaying trees, ducks or birds, flickering lanterns (the lead picks; values in config)",
             "Reduced motion: villagers stand still and ambient motion is off; nothing flashes faster than WCAG 2.3.1 allows",
@@ -683,7 +683,7 @@
           "goal": "Small delights everywhere: most things in the scene answer a tap.",
           "ac": [
             "New tap reactions (open question 35): house → windows light up with a puff of chimney smoke; tree → leaves shake and a few fall; villager → waves or hops; lantern → a sky lantern (โคมลอย) rises and fades; sky → a firework is launched",
-            "Every interactive object uses the same feedback language (small bounce + glow) so people learn what can be tapped",
+            "Anything in the scene can be interacted with (owner, 2026-11-25): every visible object type answers a tap; feedback is natural (a small bounce or light change, no rings or halos — see 13.3) so people learn what can be tapped",
             "Every effect comes from ObjectPoolManager with a fixed cap from config: no new objects per tap and no per-frame allocation (r3f-perf-reviewer PASS)",
             "Reduced motion: reactions are instant state changes without bounce or particles; nothing flashes faster than WCAG 2.3.1 allows",
             "Unit tests cover each reaction's timing and pool cap; e2e taps at least one new gimmick"
@@ -758,6 +758,111 @@
           "blockedBy": [
             "12.1",
             "4.3"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L13",
+      "summary": "Loop 13 — Generated 3D Models, Natural Look & Bigger Scene",
+      "description": "Owner request 2026-11-25 (second review): the procedural models still look flat. Use generated 3D models (Higgsfield image/text-to-3D → GLB) made from docs/spec/assets/loy-krathong-look-ref.png for the krathong, houses, lamps and fireworks; people can be simple silhouettes. No yellow rings around objects — the scene should look natural; anything in the scene can be interacted with; the scene should fill the screen (it looks small).",
+      "labels": [
+        "loop-13",
+        "loy-krathong",
+        "3d",
+        "art",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "13.1",
+          "summary": "Generated-model pipeline (GLB) and krathong model from the reference",
+          "goal": "A repeatable way to bring generated 3D models into the scene within the mobile budget, proven on the krathong.",
+          "ac": [
+            "Krathong part models are generated with Higgsfield (image/text-to-3D) from docs/spec/assets/loy-krathong-look-ref.png, exported as GLB, and optimised offline (decimated, compressed, textures ≤ the tier's max texture size); source prompts / job ids and the optimise steps are documented in docs/design/models.md so a model can be regenerated",
+            "A loader module loads GLB assets lazily after the tier is decided (never in the first-screen bundle, never on FALLBACK_2D), shares geometry / material / texture across instances and disposes them on unmount and zone switch",
+            "Every customizer option still maps to a model (appearance keys and stored data unchanged); river krathongs stay instanced; a full 80-item zone stays inside the tier budgets (draw calls, triangles and programs recorded like docs/perf/MFW-34.md)",
+            "LOW uses a lighter variant (fewer triangles / smaller textures) or keeps the procedural model; the choice is in performance.config.ts",
+            "Asset files are committed under public/ with a size budget enforced by a test; licences / generation terms are noted in docs/design/models.md"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.2"
+          ]
+        },
+        {
+          "id": "13.2",
+          "summary": "Generated models for houses, lamps and fireworks; silhouette villagers",
+          "goal": "The riverside props look as rich as the reference instead of flat boxes.",
+          "ac": [
+            "Houses and riverside lamps use generated GLB models (13.1 pipeline) placed by the existing layout; repeated props are instanced; windows / lamp heads still light up in the night preset",
+            "Fireworks: a pooled burst effect (ObjectPoolManager, fixed cap) with a generated or stylised model / sprite, launched by the sky tap of 11.4; flashes stay within WCAG 2.3.1 and are static under reduced motion",
+            "Villagers are simple dark silhouettes (owner: \"คนอาจจะแค่เป็นเงาๆก็พอ\") walking the riverside paths of 9.4; no faces or detail",
+            "Tier budgets hold on HIGH / MEDIUM / LOW with before / after numbers; everything is disposed on zone switch; r3f-perf-reviewer PASS",
+            "Before / after screenshots at phone and desktop size, day and night, are attached to the PR"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "13.1",
+            "9.3",
+            "9.4"
+          ]
+        },
+        {
+          "id": "13.3",
+          "summary": "Natural look — remove the yellow rings and halos around objects",
+          "goal": "Nothing in the scene is circled or haloed; light looks natural.",
+          "ac": [
+            "The yellow discs / rings drawn around krathongs, lamps and selected objects (flame glow pool, lamp light pools on the ground, highlight ring) are removed or replaced by natural lighting: a small soft flame glow on the candle itself and warm light that falls off smoothly without a visible ring edge",
+            "Selection / Find My feedback no longer uses a ring: the object gets a gentle natural cue (a brief bounce, a slightly brighter flame or a soft rim) that still follows a moving krathong and is still perceivable under reduced motion and for colour-blind users",
+            "Day and night presets both look natural in screenshots (no hard-edged yellow circle anywhere); krathongs are still easy to spot at night",
+            "Existing behaviour is kept: Find My still brings the krathong into view and marks it; e2e and unit tests updated only where they asserted the ring",
+            "No new shader program and no per-frame allocation; r3f-perf-reviewer PASS"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "9.1",
+            "11.1"
+          ]
+        },
+        {
+          "id": "13.4",
+          "summary": "Bigger scene — the world fills the screen",
+          "goal": "The scene no longer looks small inside the screen; land and river reach every edge.",
+          "ac": [
+            "The default framing is closer: the krathong, pier and village read clearly larger on phone and desktop (framed world size and zoom cap in config; owner approves from screenshots)",
+            "No empty background shows at any viewport size or after any pan / rotate / zoom within the bounds: ground, river and scenery extend past every screen edge",
+            "The pier and both banks are still reachable by panning; the release ritual drop mapping and tap targets (≥ MIN_TOUCH_TARGET_PX at 360 px wide) still work",
+            "e2e covers 360×640, 390×844 and 1440×900: no background pixel at the four corners and the centre; existing framing tests updated to the new numbers",
+            "Tier budgets hold (the closer view must not raise fill-rate past the pixel caps)"
+          ],
+          "labels": [
+            "3d",
+            "camera",
+            "ui",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "10.2",
+            "11.1",
+            "9.3"
           ]
         }
       ]
