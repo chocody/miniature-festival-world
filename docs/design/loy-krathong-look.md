@@ -185,7 +185,7 @@ Captured on the production build with SwiftShader WebGL (HIGH tier, before the f
 
 ## 10. Krathong v2 (MFW-48)
 
-Superseded in part by §11 (krathong v3 detail, MFW-69): leaves, flowers, base lip, candle and flame shapes and the per-tier LOD.
+Superseded in part by §12 (krathong v3 detail, MFW-69): leaves, flowers, base lip, candle and flame shapes and the per-tier LOD.
 
 Backlog 9.2. Every value mirrors `src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it
 from the screenshots below. Appearance keys and stored appearance data are unchanged, so saved krathongs render with v2.
@@ -398,6 +398,7 @@ Before = the MFW-47 screenshots (256-px stage).
 |---|---|---|---|
 | World, 1440×900 | ![day](screenshots/mfw-47/after-desktop-world-day.png) ![night](screenshots/mfw-47/after-desktop-world-night.png) | ![day](screenshots/mfw-49/after-desktop-1440x900-world-day.png) | ![night](screenshots/mfw-49/after-desktop-1440x900-world-night.png) |
 | World, 390×844 | — | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) |
+
 ## 12. Krathong v3 detail (MFW-69)
 
 Backlog 13.5. Owner (2026-11-25): the leaves and flowers were "only squares and triangles". Every value mirrors
@@ -446,7 +447,7 @@ render with v3. The customizer, pier and river use the same models (the river at
 - Every `LeafShellSpec` / `PetalRingSpec` / lathe value, `OUTER_LEAF_OFFSET`, `PETAL_JITTER`, `CANDLE_DRIP` and the drip
   placement, the flame size.
 - The iterated shapes differ from the lead's draft (leaves wider, flatter fold and cup, more rows; outer leaves more upright;
-  marigold petals blunter; the lotus base's inner petals moved to the bowl rim); see the MFW-69 dev report.
+  marigold petals blunter; the lotus base's inner petals moved to the bowl rim); the per-part numbers are in `docs/perf/MFW-69.md` §3.
 - `KRATHONG_RIVER_LOD_BY_TIER.HIGH` = "medium" is PLACEHOLDER (owner decides after the phone check).
 - Lead guards (not product numbers): `KRATHONG_MAX_TRIANGLES_BY_LOD`, `KRATHONG_FLOWER_CENTRE_MIN_RAISE`.
 

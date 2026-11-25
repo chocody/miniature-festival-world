@@ -158,7 +158,7 @@ interface ToyNightSceneProps {
   riverItems: readonly RiverFlowItem[];
   pinnedRiverIds: readonly string[];
   objectRotation: number;
-  onTargetSelected: (target: CameraTargetKind) => void;
+  onTargetSelected: (target: Exclude<CameraTargetKind, "water">) => void;
   selectedLampIndex: number;
   onLampSelected: (lampIndex: number) => void;
   waterTargetRef: RefObject<Mesh | null>;
@@ -426,6 +426,11 @@ export function SceneViewport({
   const lampTargetRef = useRef<Group | null>(null);
   const [selectedLampIndex, setSelectedLampIndex] = useState(0);
   const [selectedTarget, setSelectedTarget] = useState<CameraTargetKind | null>(null);
+  /**
+   * The camera's fly-to target. It changes only with a fly request (or a reset), never on a water tap, so the CameraRig flight
+   * effect (keyed on the target ref identity and flyRequestId) cannot re-fire from a selection alone (MFW-69 lead decision).
+   */
+  const [flightTarget, setFlightTarget] = useState<Exclude<CameraTargetKind, "water"> | null>(null);
   const [flyRequestId, setFlyRequestId] = useState(0);
   const [selectionMode, setSelectionMode] = useState(mode);
   const effectsRef = useRef<SceneEffectsHandle | null>(null);
@@ -435,38 +440,43 @@ export function SceneViewport({
   if (selectionMode !== mode) {
     setSelectionMode(mode);
     setSelectedTarget(null);
+    setFlightTarget(null);
     setInspectedId(null);
   }
   if (seenFocusRequestId !== focusRequestId) {
     setSeenFocusRequestId(focusRequestId);
     if (findMyItem !== null) {
       setSelectedTarget("riverKrathong");
+      setFlightTarget("riverKrathong");
       setFlyRequestId((requestId) => requestId + 1);
     }
   }
   if (selectedTarget === "riverKrathong" && findMyItem === null) setSelectedTarget(null); // zone switch / leave cleared the focus
-  const onTargetSelected = useCallback((target: CameraTargetKind) => {
+  if (flightTarget === "riverKrathong" && findMyItem === null) setFlightTarget(null);
+  const onTargetSelected = useCallback((target: Exclude<CameraTargetKind, "water">) => {
     // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
     if (mode !== "WORLD_EXPLORE") return;
     setSelectedTarget(target);
+    setFlightTarget(target);
     setFlyRequestId((requestId) => requestId + 1);
   }, [mode]);
 
   const onWaterSelected = useCallback((tap: WorldXZ | null) => {
     if (mode !== "WORLD_EXPLORE") return;
-    // MFW-57 deviation: the water fly/highlight target stays the water mesh (as before). Flying to the tapped point walked the
-    // camera along with every tap and broke the scene-taps / scene-gimmicks e2e specs; the product choice is open (follow-ups).
-    onTargetSelected("water");
+    // Decided (lead default, MFW-69; owner may revisit): a water tap selects and highlights the water and makes its ripple, but
+    // never moves the camera. A flight on every water tap moved the scene under repeated taps at one screen point.
+    setSelectedTarget("water");
     if (tap && effectsRef.current) {
       effectsRef.current.spawnRipple(tap);
       recordGimmick("ripple");
     }
-  }, [mode, onTargetSelected, recordGimmick]);
+  }, [mode, recordGimmick]);
 
   const onLampSelected = useCallback((index: number) => {
     if (mode !== "WORLD_EXPLORE") return;
     setSelectedLampIndex(index);
     setSelectedTarget("lamp");
+    setFlightTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
     if (effectsRef.current) {
       effectsRef.current.lightLamp(index);
@@ -509,8 +519,15 @@ export function SceneViewport({
         : selectedTarget === "riverKrathong"
           ? findMyAnchorRef
           : null;
+  const flightTargetRef: TargetRef | null = flightTarget === "krathong"
+    ? krathongTargetRef
+    : flightTarget === "lamp"
+      ? lampTargetRef
+      : flightTarget === "riverKrathong"
+        ? findMyAnchorRef
+        : null;
   const cameraTargetRef: TargetRef | null =
-    activeTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
+    flightTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
 
   const applyCameraZoom = useCallback(() => {
     const camera = cameraRef.current;

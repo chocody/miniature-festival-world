@@ -36,7 +36,11 @@ const TIERS = [
   { tier: "MEDIUM", memory: 4, cores: 6, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },
   { tier: "LOW", memory: 2, cores: 2, viewport: { width: 390, height: 844 } },
 ] as const;
-const SPAWN_PROGRESS = [0.35, 0.5, 0.65];
+/**
+ * Upstream of the pier view: after the lamp flight (which now starts from the pier view, since a water tap no longer moves the
+ * camera, MFW-69) these krathongs stay inside the 360-px frame while they drift downstream (0.35 / 0.5 / 0.65 drifted out).
+ */
+const SPAWN_PROGRESS = [0.15, 0.2, 0.25];
 const TOUCH_VIEWPORT = { width: 390, height: 844 };
 
 async function routeZone(page: Page) {
