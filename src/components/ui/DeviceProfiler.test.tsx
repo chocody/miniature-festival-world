@@ -2,6 +2,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeCanvas, fakeMql, type FakeMql } from "@/core/performance/testFakes";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { LIGHT_PRESET_STORAGE_KEY } from "@/config/look.config";
 import { DeviceProfiler } from "./DeviceProfiler";
 
 let mql: FakeMql;
@@ -34,6 +35,7 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "deviceMemory");
   Reflect.deleteProperty(navigator, "hardwareConcurrency");
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  localStorage.removeItem(LIGHT_PRESET_STORAGE_KEY);
 });
 
 describe("DeviceProfiler", () => {
@@ -56,6 +58,11 @@ describe("DeviceProfiler", () => {
     render(<DeviceProfiler />);
     act(() => mql.emit(false));
     expect(useDeviceStore.getState().reducedMotion).toBe(false);
+  });
+  it("hydrates the per-device light preset choice once (MFW-47)", () => {
+    localStorage.setItem(LIGHT_PRESET_STORAGE_KEY, "DAY");
+    render(<DeviceProfiler />);
+    expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
   });
   it("?pinTier=1 keeps the initial tier (no FPS meter)", () => {
     window.history.replaceState(null, "", "/?pinTier=1");

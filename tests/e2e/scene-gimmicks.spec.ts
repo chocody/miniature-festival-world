@@ -4,6 +4,7 @@ import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT, E2E_WATER_TAP_OFFSET_PX } from "./fixtures/stageFixtures";
 import { sceneZoomScale } from "./helpers/stage";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -19,7 +20,7 @@ const nextFrames = (page: Page) =>
  * no-occlusion test keeps props off the lanes.
  */
 
-async function openWorld(page: Page, memory: number, cores: number) {
+async function openWorld(page: Page, memory: number, cores: number, startUrl = "/") {
   await mockCreateCreation(page);
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
@@ -34,7 +35,7 @@ async function openWorld(page: Page, memory: number, cores: number) {
     },
     { m: memory, c: cores },
   );
-  await page.goto("/");
+  await page.goto(startUrl);
   await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
@@ -58,7 +59,7 @@ async function tapWater(page: Page, times: number) {
 }
 
 test("HIGH tier: water taps record ripples without errors", async ({ page }) => {
-  const errors = await openWorld(page, 8, 8);
+  const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL); // pinned: HIGH must not fall back to 2D mid-test
   const base = await gimmickBaseline(page);
   await tapWater(page, 1);
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");
@@ -84,7 +85,7 @@ test("LOW tier: water taps record ripples without errors", async ({ page }) => {
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
   test("HIGH tier: a water tap still records a ripple", async ({ page }) => {
-    const errors = await openWorld(page, 8, 8);
+    const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL); // pinned: see the HIGH test
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     await tapWater(page, 1);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");

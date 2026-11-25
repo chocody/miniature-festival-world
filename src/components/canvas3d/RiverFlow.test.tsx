@@ -13,6 +13,8 @@ import { TIER_BUDGETS } from "@/config/performance.config";
 import { prepareRiverItems, selectVisibleRiverItems } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
+import { BLOB_SHADOW_LOOK } from "@/config/look.config";
+import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 
 const pick = vi.hoisted(() => ({ override: null as string | null }));
 // The DOM stub's click cannot carry R3F's `intersections` / `ray`: this makes the wiring testable (the real picker has its own tests).
@@ -49,6 +51,21 @@ vi.mock("@/components/models/loyKrathong", async (importOriginal) => {
         "data-items": String(p.plan.items.length),
         "data-shadows": String(p.shadows),
       });
+    },
+  };
+});
+
+const blobMeshes = vi.hoisted(() => ({ list: [] as import("three").InstancedMesh[] }));
+
+/** Records the river blob mesh so the test can read its instances (the DOM stub cannot). */
+vi.mock("./blobShadowMeshes", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./blobShadowMeshes")>();
+  return {
+    ...actual,
+    createBlobShadowInstances: (...args: Parameters<typeof actual.createBlobShadowInstances>) => {
+      const mesh = actual.createBlobShadowInstances(...args);
+      blobMeshes.list.push(mesh);
+      return mesh;
     },
   };
 });
@@ -492,5 +509,42 @@ describe("R3F props (QA crash regression)", () => {
   it("RiverFlow puts no dashed data-* prop on a three.js element (R3F reads dashes as a pierce path and crashes)", () => {
     const src = readFileSync(join(__dirname, "RiverFlow.tsx"), "utf8");
     expect(src).not.toMatch(/\sdata-[a-z-]+=\{/);
+  });
+});
+
+describe("river blob shadows (MFW-47)", () => {
+  const three = [mk("a"), mk("b", 1, 0.5), mk("c", 1, 0.7)];
+  const withBlobs = (list: readonly RiverFlowItem[]) => (
+    <RiverFlow items={list} lanes={lanes} shadows reducedMotion={false} now={() => NOW} shadowSurfaceY={-0.24} />
+  );
+  beforeEach(() => {
+    blobMeshes.list.length = 0;
+  });
+
+  it("one blob follows each krathong on the water", () => {
+    const view = render(withBlobs(three));
+    expect(view.container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toHaveLength(1);
+    r3f.frame!();
+    const mesh = blobMeshes.list.at(-1)!;
+    expect(mesh.count).toBe(3);
+    const m = new Matrix4();
+    mesh.getMatrixAt(0, m);
+    const p = new Vector3().setFromMatrixPosition(m);
+    const node = el(view.container, "a");
+    expect(p.x).toBeCloseTo(node.position.x, 5);
+    expect(p.z).toBeCloseTo(node.position.z, 5);
+    expect(p.y).toBeCloseTo(-0.24 + BLOB_SHADOW_LOOK.liftY, 6);
+  });
+
+  it("an empty river shows no blobs", () => {
+    render(withBlobs([]));
+    r3f.frame!();
+    expect(blobMeshes.list.at(-1)!.count).toBe(0);
+  });
+
+  it("without shadowSurfaceY there is no blob mesh", () => {
+    const view = render(ui());
+    expect(view.container.querySelector(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toBeNull();
+    expect(blobMeshes.list).toHaveLength(0);
   });
 });

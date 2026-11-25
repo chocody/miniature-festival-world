@@ -1,3 +1,4 @@
+import { LIGHT_PRESET_SWITCH_COPY } from "@/config/look.config";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -457,6 +458,29 @@ describe("FlowRoot", () => {
       expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
       expect(inSlot(screen.getByRole("heading", { name: "SHARED_WORLD_EXPLORE" }), "panel")).toBe(true);
       expect(stageLayer()).toContainElement(screen.getByTestId("scene-viewport"));
+    });
+
+    it("the day/night switch floats over the stage: top-left corner, then in the world's top card (MFW-47)", async () => {
+      act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      const lightSwitch = () => screen.getByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel });
+      expect(inSlot(lightSwitch(), "corner")).toBe(true);
+      expect(within(stageLayer()).queryByRole("radiogroup")).toBeNull();
+      walkToRitual();
+      expect(inSlot(lightSwitch(), "corner")).toBe(true);
+      act(() => {
+        useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+      });
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      expect(screen.getAllByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel })).toHaveLength(1);
+      expect(inSlot(lightSwitch(), "top")).toBe(true);
+    });
+
+    it("FALLBACK_2D shows no day/night switch (2D day/night is MFW-51)", () => {
+      act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+      render(<FlowRoot eventId="loy_krathong" />);
+      expect(screen.queryByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel })).toBeNull();
     });
 
     it("the scene element survives RITUAL → WORLD", async () => {

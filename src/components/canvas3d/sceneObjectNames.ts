@@ -23,4 +23,7 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   riverBatchMeshPrefix: "river-batch-",
   lampTapPrefix: "scene-lamp-tap-",
   riverHitPrefix: "river-hit-",
+  environmentBlobShadows: "scene-blob-shadows-environment",
+  riverBlobShadows: "scene-blob-shadows-river",
+  krathongBlobShadow: "scene-blob-shadow-krathong",
 });

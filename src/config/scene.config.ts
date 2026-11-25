@@ -1,22 +1,32 @@
+import { LOOK_PALETTE } from "./look.config";
+
 /** Generic toy-scene look shared by festival scenes (MFW-15 values moved here in MFW-27; spec §2.1, backlog 3.1). */
 
+/**
+ * Own-krathong candle point light (MFW-15 values). Background, ambient and key (moon/sun) lights moved to the DAY/NIGHT
+ * LIGHT_PRESETS in look.config.ts (MFW-47); candle.intensity is the NIGHT base, scaled by LIGHT_PRESETS[p].candle.
+ */
 export const TOY_SCENE_LIGHTING = {
-  background: "#101a32",
-  ambient: { color: "#8499c5", intensity: 0.75 },
-  moon: { color: "#bdceff", intensity: 1.15, position: [-4, 7, 3] as [number, number, number] },
   candle: { color: "#ffb35c", intensity: 14, distance: 7, position: [0.15, 1.25, 0.1] as [number, number, number] },
 };
 
 /** Matte, non-glossy (backlog 3.1 AC2). */
 export const TOY_MATTE_MATERIALS = {
-  water: { color: "#243d65", roughness: 1, metalness: 0 },
+  water: { color: LOOK_PALETTE.water, roughness: 1, metalness: 0 },
 };
 
-/** Moon shadow map edge (px) before the tier clamp min(…, TIER_BUDGETS[tier].maxTextureSize). PLACEHOLDER (spec silent). */
+/**
+ * Key-light shadow map edge (px) before the tier clamp min(…, TIER_BUDGETS[tier].maxTextureSize). PLACEHOLDER (spec silent).
+ * Since MFW-47 the key light is the sun (DAY) or the moon (NIGHT); the name is kept.
+ */
 export const MOON_SHADOW_MAP_SIZE_PX = 1024;
 
-/** "Low detail" regression guard: max triangles per environment part geometry. Lead decision, MFW-27 (not a product limit). */
-export const ENVIRONMENT_PART_MAX_TRIANGLES = 32;
+/**
+ * "Low detail" regression guard: max triangles per environment part geometry. Lead decision, MFW-27 (not a product limit);
+ * 128 since MFW-47: the largest shipped part is the bevelled house body (roundedBox, 1 segment = 108 triangles), plus
+ * small headroom.
+ */
+export const ENVIRONMENT_PART_MAX_TRIANGLES = 128;
 
 /** three.js primitive used by one scene part (constructor args by name). */
 export type PartGeometrySpec =
@@ -29,7 +39,15 @@ export type PartGeometrySpec =
       readonly height: number;
       readonly radialSegments: number;
     }
-  | { readonly kind: "icosahedron"; readonly radius: number }; // detail 0 (20 faces)
+  | { readonly kind: "icosahedron"; readonly radius: number; readonly detail?: number } // detail default 0 (20 faces)
+  | {
+      readonly kind: "roundedBox";
+      readonly width: number;
+      readonly height: number;
+      readonly depth: number;
+      readonly radius: number;
+      readonly segments: number;
+    };
 
 /** Matte material (the literal types enforce backlog 3.1 "non-glossy"). */
 export interface MatteMaterialSpec {

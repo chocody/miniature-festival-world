@@ -4,6 +4,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Matrix4, Vector3, type Group } from "three";
 import { planKrathongInstances, RiverKrathongBatch, type RiverKrathongBatchHandle } from "@/components/models/loyKrathong";
+import { RIVER_KRATHONG_BLOB_SHADOW_RADIUS } from "@/config/look.config";
 import { TIER_BUDGETS } from "@/config/performance.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
@@ -18,6 +19,7 @@ import {
   selectVisibleRiverItems,
 } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { DynamicBlobShadows, type DynamicBlobShadowsHandle } from "./BlobShadows";
 import { createRiverTapProxy } from "./effects/riverTapProxy";
 import { isTapClick } from "./effects/tapPoint";
 import { pickNearestRiverHitId } from "./effects/riverHitPick";
@@ -44,6 +46,8 @@ export interface RiverFlowProps {
   readonly pinnedIds?: readonly string[];
   /** WORLD_EXPLORE only. When it is absent, items are not tappable: no hit proxies, no handlers. */
   readonly onItemTapped?: (id: string) => void;
+  /** World y of the water: when set, a soft blob shadow follows every krathong (MFW-47, one draw call). Undefined = no blobs. */
+  readonly shadowSurfaceY?: number;
 }
 
 /**
@@ -60,6 +64,7 @@ export const RiverFlow = memo(function RiverFlow({
   now = Date.now,
   pinnedIds = NO_PINNED_RIVER_IDS,
   onItemTapped,
+  shadowSurfaceY,
 }: RiverFlowProps) {
   const invalidate = useThree((state) => state.invalidate);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
@@ -78,6 +83,7 @@ export const RiverFlow = memo(function RiverFlow({
     [visible, plan],
   );
   const batch = useRef<RiverKrathongBatchHandle | null>(null);
+  const blobs = useRef<DynamicBlobShadowsHandle | null>(null);
   const bounceMatrix = useRef(new Matrix4());
   const bounceScale = useRef(new Vector3());
   const groups = useRef(new Map<string, Group>());
@@ -95,7 +101,10 @@ export const RiverFlow = memo(function RiverFlow({
   }, [rendered, invalidate]);
 
   useFrame(() => {
-    if (rendered.length === 0) return;
+    if (rendered.length === 0) {
+      blobs.current?.commit(0);
+      return;
+    }
     const nowMs = now();
     const b = bounce.current;
     if (b.resetId !== null) {
@@ -116,8 +125,12 @@ export const RiverFlow = memo(function RiverFlow({
     for (let i = 0; i < rendered.length; i++) {
       const item = rendered[i];
       const group = groups.current.get(item.id);
-      if (!group) continue;
+      if (!group) {
+        blobs.current?.hideAt(i); // zero-scale: no stray blob at the origin for a slot without an anchor yet
+        continue;
+      }
       applyRiverItemTransform(group, item, nowMs, reducedMotion, scratch.current);
+      blobs.current?.writeAt(i, group.position.x, group.position.z);
       group.updateMatrix(); // position · rotation (YXZ) · RIVER_KRATHONG_SCALE → group.matrix
       if (item.id === bouncingId) {
         // The bounce scales the model about the anchor origin: M · S(f), exactly what the bounce child group did.
@@ -128,6 +141,7 @@ export const RiverFlow = memo(function RiverFlow({
       }
     }
     target?.commit();
+    blobs.current?.commit(rendered.length);
     invalidate(); // keep the demand canvas rendering while krathongs drift (also under reduced motion)
   });
 
@@ -183,6 +197,15 @@ export const RiverFlow = memo(function RiverFlow({
         </group>
       )}
       <RiverKrathongBatch ref={batch} plan={plan} shadows={castShadow} />
+      {shadowSurfaceY !== undefined && (
+        <DynamicBlobShadows
+          ref={blobs}
+          name={SCENE_OBJECT_NAMES.riverBlobShadows}
+          capacity={ZONE_ITEM_CAP}
+          surfaceY={shadowSurfaceY}
+          radius={RIVER_KRATHONG_BLOB_SHADOW_RADIUS}
+        />
+      )}
     </>
   );
 });

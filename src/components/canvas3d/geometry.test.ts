@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, ConeGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial } from "three";
 import { buildRibbonGeometryData, createRiverChannel } from "@/core/world";
-import { countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
+import { createBlobShadowGeometry } from "./blobShadowMeshes";
+import { createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
 
 describe("createPartGeometry", () => {
   it("builds each primitive with its triangle count", () => {
@@ -14,6 +17,44 @@ describe("createPartGeometry", () => {
     expect(cyl).toBeInstanceOf(CylinderGeometry);
     expect(ico).toBeInstanceOf(IcosahedronGeometry);
     expect([box, cone, cyl, ico].map(countTriangles)).toEqual([12, 8, 20, 20]);
+  });
+});
+
+describe("rounded clay parts (MFW-47)", () => {
+  it("roundedBox is a bevelled RoundedBoxGeometry of 300 triangles", () => {
+    const g = createPartGeometry({ kind: "roundedBox", width: 0.8, height: 0.5, depth: 0.6, radius: 0.06, segments: 2 });
+    expect(g).toBeInstanceOf(RoundedBoxGeometry);
+    expect(countTriangles(g)).toBe(300);
+  });
+  it("icosahedron detail 1 has 80 triangles; no detail stays 20", () => {
+    expect(countTriangles(createPartGeometry({ kind: "icosahedron", radius: 1, detail: 1 }))).toBe(80);
+    expect(countTriangles(createPartGeometry({ kind: "icosahedron", radius: 1 }))).toBe(20);
+  });
+  it("the HIGH blob fan has segments × (2·rings − 1) triangles", () => {
+    const g = createBlobShadowGeometry({ ...BLOB_SHADOW_TIER_GEOMETRY.HIGH, falloffExponent: BLOB_SHADOW_LOOK.falloffExponent });
+    const { segments, rings } = BLOB_SHADOW_TIER_GEOMETRY.HIGH;
+    expect(g.index!.count).toBe(3 * segments * (2 * rings - 1));
+  });
+});
+
+describe("instanced part assets share one program (MFW-47)", () => {
+  it("a flat spec bakes per-face normals and uses a smooth material", () => {
+    const spec = { kind: "cone", radius: 0.6, height: 0.35, radialSegments: 4 } as const;
+    const g = createInstancedPartGeometry(spec, true);
+    expect(g.index).toBeNull();
+    expect(countTriangles(g)).toBe(countTriangles(createPartGeometry(spec)));
+    const n = g.getAttribute("normal");
+    for (let t = 0; t < n.count; t += 3) {
+      const a = [n.getX(t), n.getY(t), n.getZ(t)];
+      for (const v of [t + 1, t + 2]) expect([n.getX(v), n.getY(v), n.getZ(v)]).toEqual(a);
+    }
+    const m = createInstancedPartMaterial({ color: "#445566", roughness: 1, metalness: 0, flatShading: true });
+    expect(m.flatShading).toBe(false);
+  });
+  it("smooth specs and faceted boxes are left as they are", () => {
+    const cyl = { kind: "cylinder", radiusTop: 1, radiusBottom: 1, height: 1, radialSegments: 8 } as const;
+    expect(createInstancedPartGeometry(cyl, false).index).not.toBeNull();
+    expect(createInstancedPartGeometry({ kind: "box", width: 1, height: 1, depth: 1 }, true)).toBeInstanceOf(BoxGeometry);
   });
 });
 

@@ -2,7 +2,8 @@ import { CAMERA_FLIGHT_OFFSET, HIGHLIGHT_RING_COLOR, HIGHLIGHT_RING_OPACITY, HIG
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
 import { MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
-import { TOY_MATTE_MATERIALS, TOY_SCENE_LIGHTING } from "./scene.config";
+import { LIGHT_PRESETS } from "./look.config";
+import { TOY_MATTE_MATERIALS } from "./scene.config";
 import { PIER_DECK_MATERIAL, RIVER_BANK_MATERIAL, RIVER_ENVIRONMENT_PARTS } from "./events/loyKrathong.river.config";
 
 /** Flat vector 2D fallback (spec §6.8 Task 8.1, MFW-33). PLACEHOLDER = spec silent (art/feel), owner may tune (plan §11 Q1). */
@@ -55,7 +56,7 @@ export const FLAT_RIVER_PROP_SIZES = Object.freeze({
 });
 /** Unlit flat colours = the 3D materials' base colours (no new colour). */
 export const FLAT_VIEW_COLORS = Object.freeze({
-  background: TOY_SCENE_LIGHTING.background,
+  background: LIGHT_PRESETS.DAY.background, // unlit albedo = the DAY look (MFW-47); 2D day/night is MFW-51
   bank: RIVER_BANK_MATERIAL.color,
   water: TOY_MATTE_MATERIALS.water.color,
   pier: PIER_DECK_MATERIAL.color,

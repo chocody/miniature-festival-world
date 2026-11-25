@@ -4,6 +4,7 @@ import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -37,20 +38,21 @@ async function disableWebGl(page: Page) {
   });
 }
 
-async function toRitual(page: Page) {
-  await page.goto("/");
+async function toRitual(page: Page, startUrl = "/") {
+  await page.goto(startUrl);
   await waitForActiveEvent(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
 }
 
-async function setup(page: Page, options?: MockCreateOptions) {
+/** `pinned`: the 3D-only tests keep the forced HIGH tier (no runtime 2D fallback on slow SwiftShader runners). */
+async function setup(page: Page, options?: MockCreateOptions, pinned = false) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const mock = await mockCreateCreation(page, options);
   await forceHighTier(page);
-  await toRitual(page);
+  await toRitual(page, pinned ? E2E_PINNED_TIER_URL : "/");
   return { errors, requests: mock.requests };
 }
 
@@ -66,7 +68,7 @@ async function dragChip(page: Page, dyPx: number) {
 }
 
 test("3D: releases from the pier", async ({ page }) => {
-  const { errors, requests } = await setup(page);
+  const { errors, requests } = await setup(page, undefined, true);
   await expect(page.locator("canvas")).toHaveCount(1);
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-own-krathong-pose", "PIER");
   await releaseButton(page).click();
@@ -91,7 +93,7 @@ test("3D: releases from the pier", async ({ page }) => {
 });
 
 test("3D: drag onto the water", async ({ page }) => {
-  const { errors, requests } = await setup(page);
+  const { errors, requests } = await setup(page, undefined, true);
   await expect(page.locator("canvas")).toHaveCount(1);
   // The drag lengths were probed at zoom E2E_PROBED_CAMERA_ZOOM; scaled to the framed zoom (MFW-54) they reach the same world points.
   const scale = await sceneZoomScale(page);

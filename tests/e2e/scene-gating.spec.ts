@@ -4,6 +4,7 @@ import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -44,7 +45,7 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
   });
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL); // keep the forced HIGH tier on slow SwiftShader runners (no runtime 2D fallback)
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);

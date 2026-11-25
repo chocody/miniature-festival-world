@@ -11,6 +11,7 @@ import { getZonePagination } from "@/services/api/zonePagination";
 import { installMyCreationsRecorder } from "@/services/auth/myCreationsVault";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
+import { DayNightSwitch } from "./DayNightSwitch";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { OwnerWishControls } from "./OwnerWishControls";
@@ -110,8 +111,15 @@ export function FlowRoot({ eventId }: FlowRootProps) {
         )}
       </div>
       <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
+        {/* Day/night switch (MFW-47): in the world view it heads the top card; in the other canvas modes the top-left corner is free. */}
+        {interactionMode !== null && flowState !== "SHARED_WORLD_EXPLORE" && (
+          <OverlaySlot slot="corner">
+            <DayNightSwitch />
+          </OverlaySlot>
+        )}
         {flowState === "SHARED_WORLD_EXPLORE" && (
           <OverlaySlot slot="top">
+            <DayNightSwitch />
             <ZoneNavigator />
             <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />
           </OverlaySlot>

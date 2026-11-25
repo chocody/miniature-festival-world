@@ -5,6 +5,7 @@ import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -63,10 +64,10 @@ async function walkToWorld(page: Page) {
 }
 
 /** Release into zone 2, move to zone 3, open the drawer. */
-async function releaseThenMoveAway(page: Page, withOwnItem: boolean) {
+async function releaseThenMoveAway(page: Page, withOwnItem: boolean, startUrl = "/") {
   const requested = await routeZones(page, 3, { 1: 2, 2: 2, 3: 3 }, withOwnItem ? { zoneId: 2, id: E2E_CREATION_ID } : undefined);
   await mockCreateCreation(page, { zoneId: 2 }); // after the zone routes: handles POST only
-  await page.goto("/");
+  await page.goto(startUrl);
   await walkToWorld(page);
   const nav = page.locator(NAV);
   await expect(nav).toHaveAttribute("data-zone-id", "2");
@@ -88,7 +89,8 @@ async function openAndSelect(page: Page) {
 test("3D: finds my krathong in another zone", async ({ page }) => {
   await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
   await highTier(page);
-  const requested = await releaseThenMoveAway(page, true);
+  // Pinned: the HIGH tier must not fall back to 2D mid-test on a slow SwiftShader runner (the FPS fallback has its own tests).
+  const requested = await releaseThenMoveAway(page, true, E2E_PINNED_TIER_URL);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await openAndSelect(page);
   const nav = page.locator(NAV);

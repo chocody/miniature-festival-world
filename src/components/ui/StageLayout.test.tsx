@@ -4,7 +4,7 @@ import { OverlaySlot, STAGE_LAYOUT_CLASSES, type OverlaySlotKind } from "./Stage
 
 afterEach(cleanup);
 
-const SLOTS: readonly OverlaySlotKind[] = ["top", "panel", "dialog", "sheet", "hint", "debug"];
+const SLOTS: readonly OverlaySlotKind[] = ["top", "panel", "dialog", "sheet", "corner", "hint", "debug"];
 /** Slots holding controls; the hint slot is display-only. */
 const TOUCH_SLOTS = SLOTS.filter((slot) => slot !== "hint");
 
@@ -58,5 +58,6 @@ describe("StageLayout (MFW-54, backlog 10.2)", () => {
       for (const side of ["bottom", "left", "right"]) expect(STAGE_LAYOUT_CLASSES[slot]).toContain(inset(side));
     }
     for (const side of ["top", "right", "bottom", "left"]) expect(STAGE_LAYOUT_CLASSES.dialog).toContain(inset(side));
+    for (const side of ["top", "left"]) expect(STAGE_LAYOUT_CLASSES.corner).toContain(inset(side));
   });
 });

@@ -32,6 +32,13 @@ describe("useDeviceStore", () => {
     expect(useDeviceStore.getState().qualityTier).toBe(tier);
     expect(useDeviceStore.getState().isFallback2D).toBe(false);
   });
+  it("light preset choice starts AUTO and only its setter changes it (MFW-47)", () => {
+    expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
+    const ui = useUIStore.getState();
+    useDeviceStore.getState().setLightPresetChoice("NIGHT");
+    expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
+    expect(useUIStore.getState()).toBe(ui);
+  });
   it("setFps", () => {
     useDeviceStore.getState().setFps(42);
     expect(useDeviceStore.getState().fps).toBe(42);

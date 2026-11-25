@@ -18,6 +18,7 @@ import {
   type ScalarSpringStart,
 } from "@/core/ritual";
 import { prepareRiverItems } from "@/core/world";
+import { KrathongBlobShadow } from "./BlobShadows";
 import { PartChangeBounce } from "./PartChangeBounce";
 import { createOwnPoseScratch, ritualTouchdownXZ, writeOwnKrathongPose } from "./ownKrathongPose";
 import type { RitualSite } from "./ritualSite";
@@ -39,6 +40,8 @@ export interface OwnKrathongProps {
   readonly now: () => number;
   readonly onTouchedDown: (attempt: number, at: WorldXZ) => void;
   readonly onSettled: (attempt: number) => void;
+  /** LIGHT_PRESETS[preset].candle.intensityScale: scales the candle light without recreating the release motion (MFW-47). */
+  readonly candleIntensityScale: number;
 }
 
 type ScalarRef = SpringRef<{ value: number }>;
@@ -81,6 +84,7 @@ export function OwnKrathong({
   now,
   onTouchedDown,
   onSettled,
+  candleIntensityScale,
 }: OwnKrathongProps) {
   const invalidate = useThree((s) => s.invalidate);
   const [lowerS, lowerApi] = useSpring(() => ({ value: START_VALUE, onChange: invalidate }));
@@ -95,6 +99,10 @@ export function OwnKrathong({
         TOY_SCENE_LIGHTING.candle.intensity,
       ),
     [lowerApi, settleApi, bumpApi, candleApi, reducedMotion],
+  );
+  const candleIntensity = useMemo(
+    () => candleS.value.to((v) => v * candleIntensityScale),
+    [candleS.value, candleIntensityScale],
   );
   const own = useMemo(
     () =>
@@ -187,10 +195,11 @@ export function OwnKrathong({
       >
         <animated.pointLight
           color={TOY_SCENE_LIGHTING.candle.color}
-          intensity={candleS.value}
+          intensity={candleIntensity}
           distance={TOY_SCENE_LIGHTING.candle.distance}
           position={TOY_SCENE_LIGHTING.candle.position}
         />
+        <KrathongBlobShadow />
         <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
           <KrathongModel appearance={appearance} shadows={shadows} />
         </PartChangeBounce>
