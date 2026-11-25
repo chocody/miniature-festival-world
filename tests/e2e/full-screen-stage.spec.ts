@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_STAGE_VIEWPORTS, E2E_WATER_TAP_OFFSET_PX, e2eFramedZoom } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import {
   SCENE_SELECTOR,
   expectFillsViewport,
@@ -81,7 +82,7 @@ async function open3D(page: Page) {
   const errors = collectPageErrors(page);
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL); // keeps forced LOW: CPU WebGL renders LOW below the FALLBACK_2D FPS threshold on a busy runner
   await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);
@@ -311,7 +312,7 @@ test.describe("rotation and resize", () => {
     await expect(scene(page)).toHaveAttribute("data-selected-target", "water");
     await expectPanelPlacement(page.locator(PANEL_SLOT), DESKTOP);
     expect(Number(await scene(page).getAttribute("data-camera-zoom"))).toBeCloseTo(e2eFramedZoom(DESKTOP.width, DESKTOP.height), 6);
-    expect(e2eFramedZoom(DESKTOP.width, DESKTOP.height)).toBe(104);
+    expect(e2eFramedZoom(DESKTOP.width, DESKTOP.height)).toBe(143);
     expect(errors).toEqual([]);
   });
 });
