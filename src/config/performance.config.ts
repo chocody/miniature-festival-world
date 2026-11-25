@@ -89,3 +89,8 @@ export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Ob
   MEDIUM: Object.freeze({ ripple: 6, glow: 4 }),
   LOW: Object.freeze({ ripple: 3, glow: 2 }),
 });
+
+// Technical numbers (lead decision, MFW-33)
+
+/** Pooled 2D effects on FALLBACK_2D (invariant E): the weakest 3D tier's caps, so a weak device never runs more effects in 2D than on LOW. */
+export const FALLBACK_2D_EFFECT_POOL_CAPS: EffectPoolCaps = EFFECT_POOL_CAPS.LOW;
