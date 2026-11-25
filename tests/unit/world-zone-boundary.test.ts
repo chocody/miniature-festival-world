@@ -28,6 +28,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     "@/core/world/growingWorldScaler",
     "@/services/api/zonePagination",
     "@/store/useWorldStore",
+    "./uiClasses", // MFW-55: class-string constants only (no imports)
   ],
 };
 

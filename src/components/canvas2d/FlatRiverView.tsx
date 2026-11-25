@@ -492,7 +492,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
           role="region"
           aria-label={FLAT_VIEW_COPY.riverScrollLabel}
           tabIndex={0}
-          className="h-full w-full touch-manipulation select-none overflow-x-auto overflow-y-hidden"
+          className="h-full w-full touch-manipulation select-none overflow-x-auto overflow-y-hidden focus-visible:-outline-offset-4"
         >
           <svg
             ref={svgRef}

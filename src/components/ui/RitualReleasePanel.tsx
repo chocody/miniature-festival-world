@@ -5,6 +5,7 @@ import { getReleaseCreation, type ReleaseCreation } from "@/services/api/release
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { useEffect } from "react";
+import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 
 export interface RitualReleasePanelProps {
   /** True when a 3D scene animates the ritual (FlowRoot's show3D). False → completes without animation (FALLBACK_2D). */
@@ -42,22 +43,24 @@ export function RitualReleasePanel({ animateInScene, releaser }: RitualReleasePa
           ? RITUAL_COPY.dropOnWater
           : "";
 
+  // `md:w-auto` must not touch a `${...}` in the source: Tailwind's scanner would not extract it.
   return (
     <section
       aria-label={RITUAL_COPY.panelLabel}
       data-testid="ritual-release-panel"
-      className="flex w-full flex-col items-start gap-4"
+      className="flex w-full flex-col items-stretch gap-3 md:items-start"
     >
-      <p className="text-sm text-zinc-600 dark:text-zinc-300">{RITUAL_COPY.hint}</p>
+      <p className={UI_CLASSES.caption}>{RITUAL_COPY.hint}</p>
       <button
+        {...PRIMARY_ACTION_PROPS}
         type="button"
         disabled={ritual.phase !== "IDLE"}
         onClick={() => void (releaser ?? getReleaseCreation()).release({ kind: "pier" })}
-        className={`min-h-12 rounded-full bg-zinc-900 px-5 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 ${reducedMotion ? "" : "transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-300"}`}
+        className={`${UI_CLASSES.primaryButton} w-full ${reducedMotion ? "" : "transition-colors "}md:w-auto`}
       >
         {RITUAL_COPY.releaseButton}
       </button>
-      <p role="status" aria-live="polite" data-testid="ritual-status" className="text-sm">
+      <p role="status" aria-live="polite" data-testid="ritual-status" className="min-h-6 text-body text-ink">
         {status}
       </p>
     </section>

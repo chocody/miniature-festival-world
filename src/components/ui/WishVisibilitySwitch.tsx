@@ -2,6 +2,7 @@
 
 import { useId, type ReactElement } from "react";
 import { WISH_SWITCH_COPY } from "@/config/wish.config";
+import { UI_CLASSES } from "./uiClasses";
 
 export interface WishVisibilitySwitchProps {
   readonly checked: boolean;
@@ -27,7 +28,7 @@ export function WishVisibilitySwitch({
   return (
     <div className="flex flex-col gap-1" data-testid="wish-visibility-switch" data-checked={checked ? "true" : "false"}>
       <div className="flex items-center justify-between gap-3">
-        <span id={labelId} className="font-semibold">
+        <span id={labelId} className={UI_CLASSES.subheading}>
           {WISH_SWITCH_COPY.label}
         </span>
         <button
@@ -40,13 +41,13 @@ export function WishVisibilitySwitch({
           disabled={disabled || busy}
           onClick={onToggle}
           className={`relative inline-flex min-h-11 min-w-11 w-16 shrink-0 items-center rounded-full p-1${animate ? " transition-colors" : ""} ${
-            checked ? "bg-amber-500" : "bg-zinc-300 dark:bg-zinc-600"
+            checked ? "bg-clay" : "bg-track"
           } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          <span aria-hidden="true" className={`h-9 w-9 rounded-full bg-white shadow${checked ? " translate-x-5" : ""}`} />
+          <span aria-hidden="true" className={`h-9 w-9 rounded-full bg-paper shadow-raised${checked ? " translate-x-5" : ""}`} />
         </button>
       </div>
-      <p id={helperId} className="text-sm text-zinc-600 dark:text-zinc-300">
+      <p id={helperId} className={UI_CLASSES.caption}>
         {WISH_SWITCH_COPY.helper}
       </p>
     </div>

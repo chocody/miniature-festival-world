@@ -3,6 +3,7 @@
 import { describeGrowingWorld } from "@/core/world/growingWorldScaler";
 import { getZonePagination, type ZonePagination } from "@/services/api/zonePagination";
 import { useWorldStore } from "@/store/useWorldStore";
+import { UI_CLASSES, UI_GLYPHS } from "./uiClasses";
 
 /** Thai UI copy. PLACEHOLDER wording (spec silent beyond "โซนคุ้งน้ำ" / "Zone 2, Zone 3"), Open question 2. */
 export const ZONE_NAV_COPY = Object.freeze({
@@ -46,22 +47,34 @@ export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {
       data-zone-count={view?.zoneCount}
       data-zone-status={zoneStatus}
       data-zone-item-count={itemCount}
-      className="mb-4 flex w-full items-center justify-between gap-2 text-sm"
+      className="flex w-full items-center justify-between gap-2"
     >
       {up !== null && (
-        <button type="button" onClick={() => void p.loadZone(up)}>
-          ‹ {ZONE_NAV_COPY.upstream}
+        <button
+          type="button"
+          aria-label={ZONE_NAV_COPY.upstream}
+          className={UI_CLASSES.iconButton}
+          onClick={() => void p.loadZone(up)}
+        >
+          <span aria-hidden="true">{UI_GLYPHS.previous}</span>
         </button>
       )}
-      <p aria-live="polite">{text}</p>
+      <p aria-live="polite" className="flex-1 text-center text-body font-medium text-ink">
+        {text}
+      </p>
       {zoneStatus === "error" && (
-        <button type="button" onClick={() => void p.retry()}>
+        <button type="button" className={UI_CLASSES.secondaryButton} onClick={() => void p.retry()}>
           {ZONE_NAV_COPY.retry}
         </button>
       )}
       {down !== null && (
-        <button type="button" onClick={() => void p.loadZone(down)}>
-          {ZONE_NAV_COPY.downstream} ›
+        <button
+          type="button"
+          aria-label={ZONE_NAV_COPY.downstream}
+          className={UI_CLASSES.iconButton}
+          onClick={() => void p.loadZone(down)}
+        >
+          <span aria-hidden="true">{UI_GLYPHS.next}</span>
         </button>
       )}
     </nav>

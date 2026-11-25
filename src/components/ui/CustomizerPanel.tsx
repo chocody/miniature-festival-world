@@ -30,6 +30,7 @@ import {
 import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
+import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 
 export interface CustomizerPanelProps {
   eventId: FestivalEventId | null;
@@ -55,16 +56,14 @@ function OptionButton({
       type="button"
       aria-pressed={pressed}
       onClick={onPress}
-      className={`flex min-h-11 min-w-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm transition-colors motion-reduce:transition-none ${
-        pressed
-          ? "border-amber-500 bg-amber-100 font-semibold text-amber-950 dark:bg-amber-400/20 dark:text-amber-100"
-          : "border-black/10 bg-white text-zinc-800 dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+      className={`${UI_CLASSES.chip} transition-colors motion-reduce:transition-none ${
+        pressed ? UI_CLASSES.chipOn : UI_CLASSES.chipOff
       }`}
     >
       {swatch && (
         <span
           aria-hidden="true"
-          className="h-5 w-5 shrink-0 rounded-full border border-black/20"
+          className={`h-5 w-5 ${UI_CLASSES.swatch}`}
           style={{ backgroundColor: swatch }}
         />
       )}
@@ -87,7 +86,7 @@ function ViewButton({ label, glyph, onPress }: { label: string; glyph: string; o
       type="button"
       aria-label={label}
       onClick={onPress}
-      className="grid min-h-11 min-w-11 place-items-center rounded-full border border-black/10 bg-white text-lg dark:border-white/15 dark:bg-zinc-800"
+      className={UI_CLASSES.iconButton}
     >
       <span aria-hidden="true">{glyph}</span>
     </button>
@@ -114,12 +113,12 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
     <section
       aria-label={CUSTOMIZER_COPY.panelLabel}
       data-testid="customizer-panel"
-      className={`${STAGE_LAYOUT_CLASSES.panel} flex flex-col gap-2 touch-manipulation`}
+      className={`${STAGE_LAYOUT_CLASSES.panel} flex flex-col gap-3 touch-manipulation`}
     >
-      {viewControlRef && <p className="text-xs text-zinc-600 dark:text-zinc-300">{CUSTOMIZER_COPY.gestureHint}</p>}
+      {viewControlRef && <p className={UI_CLASSES.caption}>{CUSTOMIZER_COPY.gestureHint}</p>}
       {eventId === "loy_krathong" && (
         <>
-          <div role="tablist" aria-label={CUSTOMIZER_COPY.tabListLabel} className="grid grid-cols-4 gap-1">
+          <div role="tablist" aria-label={CUSTOMIZER_COPY.tabListLabel} className="grid grid-cols-4 gap-1 rounded-full bg-ink/5 p-1">
             {CUSTOMIZER_TABS.map((t) => (
               <button
                 key={t.id}
@@ -130,7 +129,7 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
                 aria-controls={panelId}
                 data-tab-id={t.id}
                 onClick={() => setTab(t.id)}
-                className={`min-h-11 min-w-11 rounded-full text-sm ${tab === t.id ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"}`}
+                className={`min-h-11 min-w-11 rounded-full text-body ${tab === t.id ? "bg-paper font-semibold text-ink shadow-raised" : "font-medium text-ink hover:bg-paper/60"}`}
               >
                 {t.label}
               </button>
@@ -219,9 +218,10 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
           </div>
         )}
         <button
+          {...PRIMARY_ACTION_PROPS}
           type="button"
           onClick={onDone}
-          className="ml-auto min-h-11 min-w-11 rounded-full bg-zinc-900 px-5 text-white transition-colors motion-reduce:transition-none hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          className={`${UI_CLASSES.primaryButton} ml-auto transition-colors motion-reduce:transition-none`}
         >
           {CUSTOMIZER_COPY.done}
         </button>

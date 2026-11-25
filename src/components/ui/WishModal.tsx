@@ -14,6 +14,7 @@ import { describeModerationReasons, type ModerationReason } from "@/services/mod
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { OwnershipNotice } from "./OwnershipNotice";
+import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 import { WishVisibilitySwitch } from "./WishVisibilitySwitch";
 
 type StatusIssue = Exclude<WishComposerIssue, "name_blocked" | "wish_blocked">;
@@ -76,14 +77,14 @@ export function WishModal({ onSubmitted }: WishModalProps) {
       aria-labelledby={titleId}
       data-testid="wish-modal"
       data-reduced-motion={reducedMotion ? "true" : "false"}
-      className="flex w-full flex-col gap-4 rounded-3xl border border-black/10 bg-white p-4 shadow-lg dark:border-white/15 dark:bg-zinc-900"
+      className={`flex w-full flex-col gap-4 ${UI_CLASSES.card} p-card`}
     >
-      <h2 id={titleId} className="text-xl font-semibold">
+      <h2 id={titleId} className={UI_CLASSES.title}>
         {WISH_COPY.title}
       </h2>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor={nameId} className="text-sm font-medium">
+          <label htmlFor={nameId} className={UI_CLASSES.label}>
             {WISH_COPY.nameLabel}
           </label>
           <input
@@ -99,14 +100,14 @@ export function WishModal({ onSubmitted }: WishModalProps) {
               setName(e.target.value);
               setServerReasons(null);
             }}
-            className="min-h-11 w-full rounded-2xl border border-black/15 bg-white p-3 text-base dark:border-white/20 dark:bg-zinc-800"
+            className={UI_CLASSES.field}
           />
-          <p id={nameHintId} className="text-xs text-zinc-600 dark:text-zinc-300">
+          <p id={nameHintId} className={UI_CLASSES.caption}>
             {WISH_COPY.nameHint}
           </p>
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor={textId} className="text-sm font-medium">
+          <label htmlFor={textId} className={UI_CLASSES.label}>
             {WISH_COPY.textLabel}
           </label>
           <textarea
@@ -121,9 +122,9 @@ export function WishModal({ onSubmitted }: WishModalProps) {
               setText(e.target.value);
               setServerReasons(null);
             }}
-            className="w-full resize-none rounded-2xl border border-black/15 bg-white p-3 text-base dark:border-white/20 dark:bg-zinc-800"
+            className={`${UI_CLASSES.field} resize-none`}
           />
-          <p id={countId} className="self-end text-xs text-zinc-600 dark:text-zinc-300">
+          <p id={countId} className={`self-end ${UI_CLASSES.caption}`}>
             {`${text.length}/${WISH_TEXT_MAX_LENGTH}`}
           </p>
         </div>
@@ -136,7 +137,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
           animate={!reducedMotion}
         />
         {open && (
-          <p data-testid="wish-public-hint" className="text-sm text-zinc-700 dark:text-zinc-200">
+          <p data-testid="wish-public-hint" className={UI_CLASSES.body}>
             {MODERATION_COPY.publicHint}
           </p>
         )}
@@ -145,7 +146,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
             role="alert"
             id={warningId}
             data-testid="wish-moderation-warning"
-            className="rounded-2xl border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-100"
+            className={UI_CLASSES.alert}
           >
             <p className="font-semibold">{warning.title}</p>
             <ul className="list-disc pl-5">
@@ -157,15 +158,16 @@ export function WishModal({ onSubmitted }: WishModalProps) {
           </div>
         )}
         {status && (
-          <p data-testid="wish-status" aria-live="polite" className="text-sm text-zinc-600 dark:text-zinc-300">
+          <p data-testid="wish-status" aria-live="polite" className="text-body text-ink-muted">
             {status}
           </p>
         )}
         <OwnershipNotice />
         <button
+          {...PRIMARY_ACTION_PROPS}
           type="submit"
           disabled={!canSubmit}
-          className={`min-h-11 min-w-11 self-end rounded-full bg-zinc-900 px-5 text-white${transition} hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300`}
+          className={`${UI_CLASSES.primaryButton} self-end${transition}`}
         >
           {WISH_COPY.submit}
         </button>

@@ -1,5 +1,6 @@
 import { NO_ACTIVE_EVENT_COPY } from "@/config/noActiveEvent.config";
 import type { FestivalDatesView } from "@/core/events";
+import { UI_CLASSES } from "./uiClasses";
 
 export interface NoActiveEventScreenProps {
   readonly festival: FestivalDatesView | null;
@@ -12,18 +13,18 @@ export function NoActiveEventScreen({ festival }: NoActiveEventScreenProps) {
       aria-label={NO_ACTIVE_EVENT_COPY.regionLabel}
       data-testid="no-active-event"
       data-nearest-event={festival?.eventId}
-      className="flex min-h-[60vh] w-full items-center justify-center px-4 py-8"
+      className="flex min-h-dvh w-full items-center justify-center bg-stage px-4 py-8 text-ink"
     >
-      <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-3xl border border-amber-200/70 bg-amber-50/70 px-8 py-12 text-center dark:border-zinc-700 dark:bg-zinc-900/70">
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">{NO_ACTIVE_EVENT_COPY.lead}</p>
+      <div className={`flex w-full max-w-md flex-col items-center gap-3 ${UI_CLASSES.floating} px-8 py-12 text-center`}>
+        <p className="text-body text-ink-muted">{NO_ACTIVE_EVENT_COPY.lead}</p>
         {festival && (
           <>
-            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{festival.nameTh}</h1>
-            <p lang="en" className="text-base text-zinc-700 dark:text-zinc-200">
+            <h1 className="text-display font-semibold text-ink">{festival.nameTh}</h1>
+            <p lang="en" className="text-body text-ink-muted">
               {festival.name}
             </p>
             {festival.datesLabel !== null && (
-              <p data-testid="no-active-event-dates" className="text-base text-amber-800 dark:text-amber-200">
+              <p data-testid="no-active-event-dates" className="text-body font-medium text-clay">
                 {festival.datesLabel}
               </p>
             )}

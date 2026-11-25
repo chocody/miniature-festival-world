@@ -27,6 +27,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     "@/services/api/findMyCreation",
     "@/services/auth/myCreationsVault",
     "@/store/useWorldStore",
+    "./uiClasses", // MFW-55: class-string constants only (no imports)
   ],
 };
 const FILES = Object.keys(ALLOWED);

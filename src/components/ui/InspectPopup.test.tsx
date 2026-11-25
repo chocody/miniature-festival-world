@@ -158,7 +158,8 @@ describe("InspectPopup owner section (MFW-31)", () => {
     const { session } = fakeSession();
     render(<InspectPopup creation={creation(null)} onClose={vi.fn()} reportSession={session} />);
     const dialog = screen.getByRole("dialog");
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([COPY.close]);
+    // MFW-55: close is an icon button; its accessible name (aria-label) is still the close copy.
+    expect(screen.getAllByRole("button")).toEqual([screen.getByRole("button", { name: COPY.close })]);
     expect(dialog).not.toHaveTextContent(OWNER_WISH_COPY.heading);
   });
 
