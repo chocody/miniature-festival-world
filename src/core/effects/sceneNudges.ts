@@ -16,18 +16,21 @@ export interface NudgeSource {
   readonly pool: ObjectPool<NudgeState>;
   /** The one effect clock (SceneEffects' SCENE_EFFECT_CLOCK), ms. */
   readonly now: () => number;
+  /** MFW-58: the stretch copy whose meshes read this source (each stretch slot passes its own); default 0. */
+  readonly stretchIndex?: number;
 }
 
-/** First ACTIVE entry with this kind and index (slot order), or null. Allocation-free, scans pool.capacity. */
+/** First ACTIVE entry with this kind, index and stretch (slot order), or null. Allocation-free, scans pool.capacity. */
 export function findNudgeEntry(
   pool: ObjectPool<NudgeState>,
   kind: NudgeTargetKind,
   index: number,
+  stretchIndex: number = 0,
 ): PooledEntry<NudgeState> | null {
   if (pool.activeCount === 0) return null;
   for (let s = 0; s < pool.capacity; s++) {
     const e = pool.entryAt(s);
-    if (e.active && e.state.kind === kind && e.state.index === index) return e;
+    if (e.active && e.state.kind === kind && e.state.index === index && e.state.stretchIndex === stretchIndex) return e;
   }
   return null;
 }
@@ -66,9 +69,18 @@ export function releaseExpiredNudges(pool: ObjectPool<NudgeState>, nowMs: number
   return released;
 }
 
-/** Re-tapping an object that is already nudged restarts its entry (startedAtMs = nowMs); otherwise acquire(nowMs) (oldest recycled). */
-export function startNudge(pool: ObjectPool<NudgeState>, kind: NudgeTargetKind, index: number, nowMs: number): void {
-  const existing = findNudgeEntry(pool, kind, index);
+/**
+ * Re-tapping an object that is already nudged (same kind, index and stretch) restarts its entry (startedAtMs = nowMs); otherwise
+ * acquire(nowMs) (oldest recycled). The pool is one per canvas: its cap bounds the nudges of every stretch together (invariant E).
+ */
+export function startNudge(
+  pool: ObjectPool<NudgeState>,
+  kind: NudgeTargetKind,
+  index: number,
+  nowMs: number,
+  stretchIndex: number = 0,
+): void {
+  const existing = findNudgeEntry(pool, kind, index, stretchIndex);
   if (existing !== null) {
     existing.startedAtMs = nowMs;
     return;
@@ -76,6 +88,7 @@ export function startNudge(pool: ObjectPool<NudgeState>, kind: NudgeTargetKind, 
   const e = pool.acquire(nowMs);
   e.state.kind = kind;
   e.state.index = index;
+  e.state.stretchIndex = stretchIndex;
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   writeBlobShadowAt,
 } from "./blobShadowMeshes";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
+import { useStretchVisibility } from "./stretchVisibility";
 
 /**
  * Stylized water fans (MFW-49 AC4; the lamp light pools were removed in MFW-67). Every mesh is a vertex-alpha InstancedMesh (one
@@ -134,6 +135,7 @@ export function WaterGlints({
     [],
   );
   const mesh = useFanMesh(geometry, material, Math.max(count, 1), SCENE_OBJECT_NAMES.waterGlints);
+  const stretchVisible = useStretchVisibility();
   const [scratch] = useState<GlintScratch>(() => ({
     glint: createGlintPoseOut(),
     pose: createSplinePoseOut(),
@@ -149,7 +151,7 @@ export function WaterGlints({
     invalidate();
   }, [mesh, layout, count, reducedMotion, now, scratch, invalidate]);
   useFrame(() => {
-    if (reducedMotion || count === 0) return;
+    if (reducedMotion || count === 0 || !stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes
     writeGlints(mesh, layout, count, now(), scratch);
   });
   if (count === 0) return null;

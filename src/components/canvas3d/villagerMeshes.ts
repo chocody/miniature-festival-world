@@ -121,6 +121,8 @@ export interface VillagerNudgeInput {
   nowMs: number;
   reducedMotion: boolean;
   frame: NudgeFrame;
+  /** MFW-58: the stretch copy these villagers belong to (nudges of other stretches are ignored); default 0. */
+  stretchIndex?: number;
 }
 
 /**
@@ -147,7 +149,7 @@ export function writeVillagerInstances(
     villagerPoseInto(v, layout.channel, layout.bankProfile, VILLAGER_MOTION, timeMs, animated, pose);
     let lift = 0;
     let size = 1;
-    const e = nudge !== null ? findNudgeEntry(nudge.pool, "villager", v.def.villagerId) : null;
+    const e = nudge !== null ? findNudgeEntry(nudge.pool, "villager", v.def.villagerId, nudge.stretchIndex ?? 0) : null;
     if (nudge !== null && e !== null) {
       const f = writeNudgeAt("villager", nudge.nowMs - e.startedAtMs, nudge.reducedMotion, nudge.frame);
       lift = f.liftY * v.def.scale;

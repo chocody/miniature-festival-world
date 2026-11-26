@@ -17,12 +17,16 @@ const ALLOWED: Record<string, readonly string[]> = {
     "@/config/events/types",
     "@/config/world.config",
     "@/core/world/zoneManager",
+    "@/core/world/riverStretches", // MFW-58: the zone ↔ stretch mapping (three-free)
     "@/store/useWorldStore",
+    "./creationTypes", // MFW-58: type-only (the streamed zone map)
     "./zoneClient",
   ],
+  // MFW-58: three-free zone ↔ stretch mapping; its frame import is type-only.
+  "src/core/world/riverStretches.ts": ["@/config/world.config", "@/core/coordinates/endlessRiverFrame"],
   "src/core/world/zoneManager.ts": ["@/config/world.config"],
   "src/core/world/growingWorldScaler.ts": ["@/config/world.config"],
-  "src/store/useWorldStore.ts": ["zustand", "@/config/events/types", "@/services/api/creationTypes"],
+  "src/store/useWorldStore.ts": ["zustand", "@/config/events/types", "@/core/world/riverStretches", "@/services/api/creationTypes"],
   "src/components/ui/ZoneNavigator.tsx": [
     "react",
     "@/core/world/growingWorldScaler",

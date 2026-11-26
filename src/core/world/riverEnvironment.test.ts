@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { bankSurfaceY, type BankProfilePoint } from "./bankProfile";
+import { acrossOf, alongOf, createEndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
+import { LOY_KRATHONG_RIVER_ENVIRONMENT } from "@/config/events/loyKrathong.river.config";
 import {
   RIVER_CHANNEL_CURVE_ID,
   buildRibbonGeometryData,
   createRiverChannel,
   resolveBankPlacement,
   resolvePierLayout,
-  buildGroundHoleOutline,
+  buildGroundStripsData,
+  buildRibbonRowsGeometryData,
   resolveHouseFeatures,
   resolveRiverEnvironment,
   riverFrameAt,
@@ -157,7 +160,7 @@ describe("resolveRiverEnvironment", () => {
     waterUnderlap: 0.2,
     ribbonSegments: 4,
     bankProfile: PROFILE,
-    ground: { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 },
+    ground: { y: -0.5, holeMargin: 0.5, outerAcross: 20 },
     houses: [HOUSE, { ...HOUSE, progress: 0.3, roof: "pyramid" }],
     houseFacade: { door: { x: 0, y: 0.1, z: 0.3 }, windows: [{ x: -0.2, y: 0.3, z: 0.3 }, { x: 0.2, y: 0.3, z: 0.3 }] },
     trees: [PLACEMENT],
@@ -175,9 +178,12 @@ describe("resolveRiverEnvironment", () => {
     expect(l.housesByRoof.pyramid).toEqual([l.houses[1]]);
     expect(l.ribbonSegments).toBe(4);
     expect(l.ground).toMatchObject(def.ground);
-    // Straight channel (z = 0, width 4), 3-wide banks, holeMargin 0.5: rows 1..3 on each side at |z| = 4.5.
-    expect(l.ground.hole).toHaveLength(2 * (def.ribbonSegments - 1));
-    for (const p of l.ground.hole) expect(Math.abs(p.z)).toBeCloseTo(4.5, 5);
+    // MFW-58: straight channel (z = 0, width 4), 3-wide banks, holeMargin 0.5: strip inner edges at |z| = 4.5, outer at |z| = 20,
+    // plus the two cap rows; 2 strips × 4 quads + 2 caps × 1 quad.
+    expect(l.ground.strips.indices.length / 3).toBe(2 * 2 * def.ribbonSegments + 2 * 2);
+    const zs = new Set<number>();
+    for (let i = 0; i < l.ground.strips.vertexCount; i++) zs.add(Math.round(Math.abs(l.ground.strips.positions[i * 3 + 2]) * 1e4) / 1e4);
+    expect([...zs].sort((a, b) => a - b)).toEqual([4.5, 20]);
     expect(l.water.positions[2]).toBeCloseTo(-2.2);
     expect(l.bounds.minX).toBeCloseTo(0);
     expect(l.bounds.maxX).toBeCloseTo(20);
@@ -220,7 +226,7 @@ describe("resolveRiverEnvironment v2 validation (MFW-49)", () => {
       { offset: 0, y: -0.3 },
       { offset: 3, y: 0 },
     ],
-    ground: { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 },
+    ground: { y: -0.5, holeMargin: 0.5, outerAcross: 20 },
     houses: [{ ...PLACEMENT, roof: "pyramid" }],
     houseFacade: { door: { x: 0, y: 0, z: 0 }, windows: [] },
     trees: [],
@@ -238,9 +244,13 @@ describe("resolveRiverEnvironment v2 validation (MFW-49)", () => {
     expect(() => resolveRiverEnvironment({ ...base, bankProfile: [{ offset: 0, y: 0 }, { offset: 3, y: 0 }] })).toThrow(RangeError);
   });
   it("rejects a bad ground", () => {
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, radius: 0 } })).toThrow(RangeError);
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, segments: 2 } })).toThrow(RangeError);
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, segments: 3.5 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, outerAcross: 0 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, outerAcross: Number.NaN } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, outerAcross: 4 } })).toThrow(/outerAcross/); // < inner edge 4.5
+    expect(() => resolveRiverEnvironment({ ...base, ribbonSegments: 1 })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, holeMargin: -1 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, holeMargin: 3 } })).toThrow(RangeError);
+    expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, holeMargin: Number.NaN } })).toThrow(RangeError);
     expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, y: -0.3 } })).toThrow(RangeError); // = profile[0].y
     expect(() => resolveRiverEnvironment({ ...base, ground: { ...base.ground, y: -0.2 } })).toThrow(RangeError);
   });
@@ -280,42 +290,75 @@ describe("resolveHouseFeatures", () => {
   });
 });
 
-describe("buildGroundHoleOutline (MFW-49 ground hole)", () => {
-  it("follows both outer bank edges pulled in by the margin, rows 1 … n − 1, left then right reversed", () => {
-    const out = buildGroundHoleOutline(channel, 3, 0.5, 4);
-    expect(out.map((p) => [p.x, p.z])).toEqual(
-      [[5, -4.5], [10, -4.5], [15, -4.5], [15, 4.5], [10, 4.5], [5, 4.5]].map(([x, z]) => [expect.closeTo(x, 5), expect.closeTo(z, 5)]),
-    );
+describe("ribbon rows and ground strips (MFW-58)", () => {
+  it("buildRibbonGeometryData = buildRibbonRowsGeometryData rows 0..segments, bit-identical; partial rows match", () => {
+    const full = buildRibbonGeometryData(channel, -2, 3, 6);
+    const rows = buildRibbonRowsGeometryData(channel, -2, 3, 6, 0, 6);
+    expect(Array.from(rows.positions)).toEqual(Array.from(full.positions));
+    expect(Array.from(rows.indices)).toEqual(Array.from(full.indices));
+    const tail = buildRibbonRowsGeometryData(channel, -2, 3, 6, 5, 6);
+    expect(Array.from(tail.positions)).toEqual(Array.from(full.positions.slice(5 * 6)));
+    expect(() => buildRibbonRowsGeometryData(channel, -2, 3, 6, 3, 3)).toThrow(RangeError);
+    expect(() => buildRibbonRowsGeometryData(channel, -2, 3, 6, 0, 7)).toThrow(RangeError);
   });
-  it("is empty with fewer than 3 segments", () => {
-    expect(buildGroundHoleOutline(channel, 3, 0.5, 2)).toEqual([]);
+
+  const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
+  const lkChannel = createRiverChannel(def.channel);
+  const frame = createEndlessRiverFrame(def.channel.controlPoints);
+  const inner = def.channel.width / 2 + def.bankWidth - def.ground.holeMargin;
+  const strips = buildGroundStripsData(lkChannel, frame, inner, def.ground.outerAcross, def.ribbonSegments);
+  const n = def.ribbonSegments;
+  const vx = (i: number) => strips.positions[i * 3];
+  const vz = (i: number) => strips.positions[i * 3 + 2];
+  /** Signed xz area ×2 of triangle t, with the same convention for the water ribbon. */
+  const signed = (data: { positions: Float32Array; indices: Uint32Array }, t: number) => {
+    const p = (k: number) => [data.positions[data.indices[t * 3 + k] * 3], data.positions[data.indices[t * 3 + k] * 3 + 2]];
+    const [a, b, c] = [p(0), p(1), p(2)];
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  };
+
+  it("never folds: every strip triangle has the water ribbon's winding (faces up) and a positive area", () => {
+    const water = buildRibbonGeometryData(lkChannel, -2.4, 2.4, n);
+    const sign = Math.sign(signed(water, 0));
+    expect(sign).not.toBe(0);
+    for (let t = 0; t < water.indices.length / 3; t++) expect(Math.sign(signed(water, t))).toBe(sign);
+    for (let t = 0; t < strips.indices.length / 3; t++) {
+      expect(Math.sign(signed(strips, t)), `triangle ${t}`).toBe(sign);
+      expect(Math.abs(signed(strips, t))).toBeGreaterThan(1e-6);
+    }
   });
-  it("rejects a bad hole margin and a ground that does not enclose the river", () => {
-    const base = {
-      channel: STRAIGHT,
-      waterSurfaceY: -0.24,
-      bankTopY: -0.14,
-      bankWidth: 3,
-      waterUnderlap: 0.2,
-      ribbonSegments: 4,
-      bankProfile: [
-        { offset: 0, y: -0.3 },
-        { offset: 3, y: 0 },
-      ],
-      houses: [],
-      houseFacade: { door: { x: 0, y: 0, z: 0 }, windows: [] },
-      trees: [],
-      bushes: [],
-      rocks: [],
-      lamps: [],
-      pier: PIER,
-      paths: [],
-    } satisfies Omit<RiverEnvironmentDefinition, "ground">;
-    const g = { radius: 40, y: -0.5, segments: 16, holeMargin: 0.5 };
-    expect(() => resolveRiverEnvironment({ ...base, ground: g })).not.toThrow();
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: -1 } })).toThrow(RangeError);
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: 3 } })).toThrow(RangeError);
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, holeMargin: Number.NaN } })).toThrow(RangeError);
-    expect(() => resolveRiverEnvironment({ ...base, ground: { ...g, radius: 10 } })).toThrow(/enclose/);
+
+  it("has a straight outer edge at across ±outerAcross (1e-5 float32) and the inner edge at the inner lateral", () => {
+    for (let i = 0; i <= n; i++) {
+      // left strip: 2i = outer, 2i+1 = inner; right strip: base + 2i = inner, base + 2i + 1 = outer
+      const base = 2 * (n + 1);
+      expect(acrossOf(frame, vx(2 * i), vz(2 * i))).toBeCloseTo(-def.ground.outerAcross, 4);
+      expect(acrossOf(frame, vx(base + 2 * i + 1), vz(base + 2 * i + 1))).toBeCloseTo(def.ground.outerAcross, 4);
+      const { centerline: c } = riverFrameAt(lkChannel, i / n);
+      expect(Math.hypot(vx(2 * i + 1) - c.x, vz(2 * i + 1) - c.z)).toBeCloseTo(inner, 4);
+      expect(Math.hypot(vx(base + 2 * i) - c.x, vz(base + 2 * i) - c.z)).toBeCloseTo(inner, 4);
+      // The outer vertex sits at the centreline's along coordinate (rows stay perpendicular to the axis).
+      expect(alongOf(frame, vx(2 * i), vz(2 * i))).toBeCloseTo(alongOf(frame, c.x, c.z), 4);
+    }
+    expect(strips.indices.length / 3).toBeLessThanOrEqual(4 * (n + 1) * 2);
+  });
+
+  it("joins the next copy: the last row of stretch s meets the first row of stretch s + 1 (offset T), within 1e-4", () => {
+    // Outer vertices join exactly (same along, same across); inner vertices within the centreline's seam gap (lead probe < 1e-4).
+    const base = 2 * (n + 1);
+    const pairs = [
+      [2 * n, 0],
+      [2 * n + 1, 1],
+      [base + 2 * n, base],
+      [base + 2 * n + 1, base + 1],
+    ];
+    for (const [end, start] of pairs) {
+      expect(Math.hypot(vx(end) - (vx(start) + frame.periodX), vz(end) - (vz(start) + frame.periodZ))).toBeLessThan(1e-4);
+    }
+  });
+
+  it("rejects an outer edge that does not clear the inner edge", () => {
+    expect(() => buildGroundStripsData(lkChannel, frame, inner, inner - 1, n)).toThrow(RangeError);
+    expect(() => buildGroundStripsData(lkChannel, frame, inner, def.ground.outerAcross, 1)).toThrow(RangeError);
   });
 });

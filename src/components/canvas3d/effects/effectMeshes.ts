@@ -43,6 +43,7 @@ import {
   type SparkFrame,
   type WindowGlowState,
 } from "@/core/effects";
+import { stretchOffsetInto, type EndlessRiverFrame, type MutableXZ } from "@/core/coordinates/endlessRiverFrame";
 import type { InstanceTransform } from "@/core/world";
 import { createPartGeometry } from "../geometry";
 import { composeInstanceMatrix } from "../instancing";
@@ -78,6 +79,21 @@ export function createEffectFrameScratch(): EffectFrameScratch {
     spark: createSparkFrame(),
     lantern: createLanternFrame(),
   };
+}
+
+/** MFW-58 stretch offset scratch of the glow writers (never escapes). */
+const scratchOffset: MutableXZ = { x: 0, z: 0 };
+
+/** s·T of an entry's stretch into scratchOffset; (0, 0) without a frame or for stretch 0. False for a non-safe-integer stretch. */
+function writeStretchOffset(frame: EndlessRiverFrame | null, stretchIndex: number): boolean {
+  if (!Number.isSafeInteger(stretchIndex)) return false;
+  if (frame === null || stretchIndex === 0) {
+    scratchOffset.x = 0;
+    scratchOffset.z = 0;
+    return true;
+  }
+  stretchOffsetInto(frame, stretchIndex, scratchOffset);
+  return true;
 }
 
 /** Effects never intercept taps. */
@@ -164,7 +180,10 @@ export function writeRippleInstances(
   return finishWrite(target, n);
 }
 
-/** Same for lamp glows; an entry whose lampIndex is outside `lamps` is released. Returns n. */
+/**
+ * Same for lamp glows; an entry whose lampIndex is outside `lamps` (or whose stretch is not a safe integer) is released. MFW-58: the
+ * glow sits at the lamp of its stretch copy, lamp + s·T (`frame`; null = stretch 0 only). Returns n.
+ */
 export function writeLampGlowInstances(
   target: EffectMesh,
   pool: ObjectPool<LampGlowState>,
@@ -173,13 +192,14 @@ export function writeLampGlowInstances(
   nowMs: number,
   reducedMotion: boolean,
   scratch: EffectFrameScratch,
+  frame: EndlessRiverFrame | null = null,
 ): number {
   let n = 0;
   for (let s = 0; s < pool.capacity; s++) {
     const e = pool.entryAt(s);
     if (!e.active) continue;
     const lamp = lamps[e.state.lampIndex];
-    if (lamp === undefined) {
+    if (lamp === undefined || !writeStretchOffset(frame, e.state.stretchIndex)) {
       pool.release(e);
       continue;
     }
@@ -191,7 +211,11 @@ export function writeLampGlowInstances(
     const size = lamp.scale * LAMP_GLOW_LOOK.shellScale * f.scale;
     scratch.matrix
       .makeScale(size, size, size)
-      .setPosition(lamp.position.x, lamp.position.y + lampHead.yOffset * lamp.scale, lamp.position.z);
+      .setPosition(
+        lamp.position.x + scratchOffset.x,
+        lamp.position.y + lampHead.yOffset * lamp.scale,
+        lamp.position.z + scratchOffset.z,
+      );
     target.mesh.setMatrixAt(n, scratch.matrix);
     target.mesh.setColorAt(n, scratch.color.copy(target.baseColor).multiplyScalar(f.intensity));
     n++;
@@ -214,7 +238,8 @@ export function createWindowGlowMesh(houseCapacity: number, windowsPerHouse: num
 /**
  * Per active house h and window w < windowsPerHouse: t = houseWindows[h·W + w] (a house without its windows releases the entry);
  * matrix = composeInstanceMatrix(t, windowPart) · S(shellScale); colour = base × intensity (writeLampGlowFrameAt with WINDOW_GLOW_LOOK
- * and NO_BOUNCE: attack, steady hold, release; no flicker). Returns the instance count. Allocation-free.
+ * and NO_BOUNCE: attack, steady hold, release; no flicker). MFW-58: the windows of the entry's stretch copy (+ s·T, `frame`; null =
+ * stretch 0 only). Returns the instance count. Allocation-free.
  */
 export function writeWindowGlowInstances(
   target: EffectMesh,
@@ -225,6 +250,7 @@ export function writeWindowGlowInstances(
   nowMs: number,
   reducedMotion: boolean,
   scratch: EffectFrameScratch,
+  frame: EndlessRiverFrame | null = null,
 ): number {
   let n = 0;
   if (pool.activeCount > 0) {
@@ -234,7 +260,13 @@ export function writeWindowGlowInstances(
     const e = pool.entryAt(s);
     if (!e.active) continue;
     const first = e.state.houseIndex * windowsPerHouse;
-    if (!Number.isInteger(first) || first < 0 || first + windowsPerHouse > houseWindows.length || n + windowsPerHouse > target.capacity) {
+    if (
+      !Number.isInteger(first) ||
+      first < 0 ||
+      first + windowsPerHouse > houseWindows.length ||
+      n + windowsPerHouse > target.capacity ||
+      !writeStretchOffset(frame, e.state.stretchIndex)
+    ) {
       pool.release(e);
       continue;
     }
@@ -245,6 +277,9 @@ export function writeWindowGlowInstances(
     }
     for (let w = 0; w < windowsPerHouse; w++) {
       composeInstanceMatrix(houseWindows[first + w], windowPart, scratch.matrix).multiply(scratch.scaleMatrix);
+      // Pre-translate by the stretch offset: T(s·T) · M only adds to the translation column.
+      scratch.matrix.elements[12] += scratchOffset.x;
+      scratch.matrix.elements[14] += scratchOffset.z;
       target.mesh.setMatrixAt(n, scratch.matrix);
       target.mesh.setColorAt(n, scratch.color.copy(target.baseColor).multiplyScalar(f.intensity));
       n++;

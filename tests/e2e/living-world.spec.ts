@@ -24,8 +24,10 @@ function readInstances(page: Page, name: string): Promise<InstanceRead | null> {
     const scene = (window as unknown as { __mfwProbe?: { scene: { traverse(f: (o: Obj) => void): void } | null } }).__mfwProbe?.scene;
     if (!scene) return null;
     let found: Obj | null = null;
+    // MFW-58: every stretch copy has its own villagers / motes; the first match is the camera's stretch (rendered first). Copies
+    // outside the view are culled and skip their writes, so a later match would read a still mesh.
     scene.traverse((o) => {
-      if (o.name === n && o.instanceMatrix) found = o;
+      if (found === null && o.name === n && o.instanceMatrix) found = o;
     });
     const mesh = found as Obj | null;
     if (!mesh || !mesh.instanceMatrix) return null;

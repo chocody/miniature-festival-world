@@ -17,6 +17,7 @@ import {
 } from "./ambientMeshes";
 import { useIdleRedraw } from "./idleRedraw";
 import { useLivingWorldSettings } from "./useLivingWorldSettings";
+import { useStretchVisibility } from "./stretchVisibility";
 
 /**
  * MFW-50 ambient life (backlog story 9-4, AC3, AC4): floating light motes (fireflies at NIGHT) and flickering lanterns at NIGHT
@@ -69,6 +70,7 @@ export function AmbientMotes({
   const mesh = useMemo(() => (count > 0 ? createMoteInstances(geometry, material, count) : null), [geometry, material, count]);
   useEffect(() => () => mesh?.dispose(), [mesh]);
   const [scratch] = useState(createMoteWriteScratch);
+  const stretchVisible = useStretchVisibility();
 
   useLayoutEffect(() => {
     applyMoteLook(material, lightPreset);
@@ -82,7 +84,7 @@ export function AmbientMotes({
   }, [mesh, anchors, now, moving, scratch, invalidate]);
 
   useFrame(() => {
-    if (!mesh || !moving) return;
+    if (!mesh || !moving || !stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes
     writeMoteInstances(mesh, anchors, now(), true, AMBIENT_MOTES, scratch);
   });
 
@@ -103,6 +105,7 @@ export function LanternFlicker({
   const invalidate = useThree((state) => state.invalidate);
   const base = VILLAGE_LIGHTS[lightPreset].lanternEmissiveIntensity;
   const active = s.lanternFlicker && base > 0;
+  const stretchVisible = useStretchVisibility();
 
   useLayoutEffect(() => {
     const material = meshRef.current?.material;
@@ -113,7 +116,7 @@ export function LanternFlicker({
 
   useFrame(() => {
     const material = meshRef.current?.material;
-    if (!active || !(material instanceof MeshStandardMaterial)) return;
+    if (!active || !stretchVisible.visible || !(material instanceof MeshStandardMaterial)) return;
     writeLanternFlicker(material, base, now(), true, LANTERN_FLICKER);
   });
 

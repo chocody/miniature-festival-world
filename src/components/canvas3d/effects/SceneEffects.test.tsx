@@ -19,6 +19,8 @@ import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
 import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle } from "./SceneEffects";
 import { fireworkInstancesPerBurst } from "./effectMeshes";
+import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
+import { getLoyKrathongEndlessRiverFrame } from "@/core/world/endlessRiver";
 
 const r3f = vi.hoisted(() => ({ frame: null as null | (() => void), invalidate: vi.fn() }));
 const spies = vi.hoisted(() => ({ ripple: vi.fn(), glow: vi.fn(), meshes: [] as import("three").InstancedMesh[] }));
@@ -63,6 +65,7 @@ const ui = (
   ref: React.Ref<SceneEffectsHandle>,
   pools: ObjectPoolManager = createObjectPoolManager(CAPS),
   reducedMotion = false,
+  frame: EndlessRiverFrame | null = null,
 ) => (
   <SceneEffects
     handleRef={ref}
@@ -77,6 +80,7 @@ const ui = (
     fireworkBaseY={LOY_KRATHONG_RIVER_LAYOUT.bankTopY}
     fireworkSparks={SPARKS}
     now={() => NOW}
+    frame={frame}
   />
 );
 
@@ -372,5 +376,77 @@ describe("SceneEffects reactions (MFW-60)", () => {
       expect(launches.length).toBeGreaterThan(1);
       NOW = start + 10_000;
     }
+  });
+});
+
+describe("SceneEffects across stretches (MFW-58)", () => {
+  const frame = getLoyKrathongEndlessRiverFrame();
+  const at = (mesh: InstancedMesh, i: number) => {
+    const m = new Matrix4();
+    mesh.getMatrixAt(i, m);
+    return new Vector3().setFromMatrixPosition(m);
+  };
+
+  it("react(lamp, 2, null, 1): the glow sits at lamps[2] + T and the sky lantern rises from lamp + T", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools, false, frame));
+    expect(ref.current!.react("lamp", 2, null, 1)).toBe(SCENE_TAP_REACTIONS.lamp.gimmick);
+    NOW += LAMP_GLOW_LOOK.attackMs;
+    r3f.frame!();
+    const glow = at(meshNamed(SCENE_OBJECT_NAMES.lampGlows), 0);
+    expect(glow.x).toBeCloseTo(lamps[2].position.x + frame.periodX, 4);
+    expect(glow.z).toBeCloseTo(lamps[2].position.z + frame.periodZ, 4);
+    const lantern = [0, 1].map((i) => pools.skyLantern.entryAt(i)).find((e) => e.active)!;
+    expect(lantern.state.x).toBeCloseTo(lamps[2].position.x + frame.periodX, 9);
+    expect(lantern.state.z).toBeCloseTo(lamps[2].position.z + frame.periodZ, 9);
+  });
+
+  it("the same lamp in another stretch is a separate glow; a re-tap in the same stretch re-triggers it", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager({ ...CAPS, glow: 3 });
+    render(ui(ref, pools, false, frame));
+    ref.current!.lightLamp(1, 0);
+    ref.current!.lightLamp(1, 1);
+    ref.current!.lightLamp(1, 1);
+    expect(ref.current!.activeCount("glow")).toBe(2);
+    expect(ref.current!.lightLamp(1, 0.5)).toBe(false);
+  });
+
+  it("react(house, 0, null, −1): the window glow sits at the windows − T", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref, createObjectPoolManager(CAPS), false, frame));
+    expect(ref.current!.react("house", 0, null, -1)).toBe(SCENE_TAP_REACTIONS.house.gimmick);
+    NOW += WINDOW_GLOW_LOOK.attackMs;
+    r3f.frame!();
+    const mesh = meshNamed(SCENE_OBJECT_NAMES.windowGlows);
+    for (let w = 0; w < W; w++) {
+      const want = LOY_KRATHONG_RIVER_LAYOUT.houseWindows[w].position;
+      const got = at(mesh, w);
+      expect(got.x - want.x).toBeCloseTo(-frame.periodX, 1);
+      expect(got.z - want.z).toBeCloseTo(-frame.periodZ, 1);
+    }
+  });
+
+  it("react(sky, 0, at, 1) launches the firework at `at` unchanged (already world-view space)", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools, false, frame));
+    const tap = { x: frame.periodX + 1.5, z: frame.periodZ - 3 };
+    expect(ref.current!.react("sky", 0, tap, 1)).toBe(SCENE_TAP_REACTIONS.sky.gimmick);
+    const e = [0, 1].map((i) => pools.firework.entryAt(i)).find((x) => x.active)!;
+    expect(e.state.x).toBe(tap.x);
+    expect(e.state.z).toBe(tap.z);
+  });
+
+  it("caps hold across stretches; a non-integer stretch starts nothing", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref, createObjectPoolManager(CAPS), false, frame));
+    for (const s of [-1, 0, 1]) for (let i = 0; i < 4; i++) ref.current!.react("water", 0, { x: s * frame.periodX, z: i }, s);
+    expect(ref.current!.activeCount("ripple")).toBe(CAPS.ripple);
+    for (const s of [-1, 0, 1]) for (let i = 0; i < 4; i++) ref.current!.react("tree", i, null, s);
+    expect(ref.current!.activeCount("nudge")).toBe(CAPS.nudge);
+    expect(ref.current!.react("lamp", 0, null, Number.NaN)).toBeNull();
+    expect(ref.current!.react("sky", 0, { x: 0, z: 0 }, 1.5)).toBeNull();
   });
 });

@@ -22,9 +22,9 @@ const rocks = LOY_KRATHONG_RIVER_LAYOUT.rocks;
 const part = RIVER_ENVIRONMENT_PARTS.rock;
 let NOW = 10_000;
 
-function setup() {
-  const pool = createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge;
-  const nudges: NudgeSource = { pool, now: () => NOW };
+function setup(stretchIndex?: number, sharedPool?: NudgeSource["pool"]) {
+  const pool = sharedPool ?? createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge;
+  const nudges: NudgeSource = { pool, now: () => NOW, stretchIndex };
   const rockMesh = new InstancedMesh(new BoxGeometry(), new MeshStandardMaterial(), rocks.length);
   const m = new Matrix4();
   rocks.forEach((r, i) => rockMesh.setMatrixAt(i, composeInstanceMatrix(r, part, m)));
@@ -99,5 +99,17 @@ describe("PropNudges (MFW-60)", () => {
     frame();
     expect(rockMesh.instanceMatrix.version).toBe(version);
     expect(deck.scale.x).toBe(1);
+  });
+});
+
+describe("PropNudges per stretch (MFW-58)", () => {
+  it("a rock nudge tagged stretch 1 bounces only the reader of stretch 1", () => {
+    const a = setup(0);
+    const b = setup(1, a.pool);
+    startNudge(a.pool, "rock", 1, NOW, 1);
+    NOW += TAP_BOUNCE_LOOKS.rock.periodMs / 4;
+    frames.forEach((f) => f());
+    expect(scaleOf(b.rockMesh, 1)).toBeGreaterThan(rest(1) * 1.01);
+    expect(scaleOf(a.rockMesh, 1)).toBeCloseTo(rest(1), 6);
   });
 });

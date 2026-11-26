@@ -19,6 +19,7 @@ import { createTapProxy } from "./effects/riverTapProxy";
 import { isTapClick } from "./effects/tapPoint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { useLivingWorldSettings } from "./useLivingWorldSettings";
+import { useStretchVisibility } from "./stretchVisibility";
 import {
   createVillagerAssets,
   createVillagerMeshes,
@@ -71,8 +72,11 @@ export function Villagers({ layout, now, nudges = null, onVillagerTapped }: Vill
   /** The hop input, re-made only when the pool changes; nowMs / reducedMotion are refreshed before every write. */
   const nudgeRef = useRef<VillagerNudgeInput | null>(null);
   const wasNudging = useRef(false);
+  const stretchVisible = useStretchVisibility();
   useLayoutEffect(() => {
-    nudgeRef.current = nudges ? { pool: nudges.pool, nowMs: 0, reducedMotion: false, frame: createNudgeFrame() } : null;
+    nudgeRef.current = nudges
+      ? { pool: nudges.pool, nowMs: 0, reducedMotion: false, frame: createNudgeFrame(), stretchIndex: nudges.stretchIndex ?? 0 }
+      : null;
   }, [nudges]);
 
   useLayoutEffect(() => {
@@ -91,6 +95,7 @@ export function Villagers({ layout, now, nudges = null, onVillagerTapped }: Vill
     const nudge = nudgeRef.current;
     const nudging = nudge !== null && nudge.pool.activeCount > 0;
     if (!walk && !nudging && !wasNudging.current) return;
+    if (!stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes
     if (nudge !== null && nudges) {
       nudge.nowMs = nudges.now();
       nudge.reducedMotion = reducedMotion;

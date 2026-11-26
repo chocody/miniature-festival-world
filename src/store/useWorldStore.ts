@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { FestivalEventId } from "@/config/events/types";
+import type { StretchAnchor } from "@/core/world/riverStretches";
 import type { PublicCreation } from "@/services/api/creationTypes";
 
 export type ZoneLoadStatus = "idle" | "loading" | "ready" | "error";
@@ -17,9 +18,19 @@ export interface WorldState {
   focusedCreationId: string | null;
   /** Incremented by MFW-30 Find My on every focus request (selecting the same krathong again flies again). Monotonic per world session. */
   focusRequestId: number;
+  /** MFW-58: stretch of the endless river the camera (3D) or the navigator (2D) is in. Render-time only, never persisted. */
+  currentStretchIndex: number;
+  /** MFW-58: zone(s) = wrap(anchor.zoneId + s − anchor.stretchIndex) (riverStretches.ts). Null until a zone is chosen. Never persisted. */
+  stretchAnchor: StretchAnchor | null;
+  /**
+   * MFW-58: public items of every streamed zone (the current one included; `zoneItems` is the same array as the current zone's
+   * entry), ≤ ZONE_ITEM_CAP each, at most the zones of the load window. Public fields only (invariant C).
+   */
+  streamedZoneItems: Readonly<Record<number, readonly PublicCreation[]>>;
 }
 
 export const NO_ZONE_ITEMS: readonly PublicCreation[] = Object.freeze([]);
+export const NO_STREAMED_ZONES: Readonly<Record<number, readonly PublicCreation[]>> = Object.freeze({});
 
 export const INITIAL_WORLD_STATE: Readonly<WorldState> = Object.freeze({
   currentZoneId: null,
@@ -30,6 +41,9 @@ export const INITIAL_WORLD_STATE: Readonly<WorldState> = Object.freeze({
   zoneItems: NO_ZONE_ITEMS,
   focusedCreationId: null,
   focusRequestId: 0,
+  currentStretchIndex: 0,
+  stretchAnchor: null,
+  streamedZoneItems: NO_STREAMED_ZONES,
 });
 
 export const useWorldStore = create<WorldState>()(() => ({ ...INITIAL_WORLD_STATE }));

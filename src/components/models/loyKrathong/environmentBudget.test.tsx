@@ -7,7 +7,6 @@ import { createBlobShadowGeometry, createVertexAlphaGeometry } from "@/component
 import {
   countTriangles,
   createBankGeometry,
-  createGroundGeometry,
   createInstancedPartGeometry,
   createRibbonGeometry,
 } from "@/components/canvas3d/geometry";
@@ -66,7 +65,7 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
   add(1, tris(createRibbonGeometry(l.water))); // 1 water
   add(1, tris(createBankGeometry(l.banks.left))); // 2 bank left
   add(1, tris(createBankGeometry(l.banks.right))); // 3 bank right
-  add(1, tris(createGroundGeometry(l.ground))); // 4 ground ring
+  add(1, tris(createRibbonGeometry(l.ground.strips))); // 4 ground strips (MFW-58; per stretch copy)
   part(parts.houseBody, l.houses); // 5
   part(parts.houseRoof, l.housesByRoof.pyramid); // 6
   part(parts.houseRoofGable, l.housesByRoof.gable); // 7

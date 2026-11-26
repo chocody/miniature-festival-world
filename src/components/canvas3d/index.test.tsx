@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OrthographicCamera, type Vector3 } from "three";
+import { BufferGeometry, OrthographicCamera, type Vector3 } from "three";
 import { EFFECT_POOL_CAPS, LIVING_WORLD_TIERS, TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS } from "@/config/look.config";
@@ -28,21 +28,27 @@ import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.rive
 import { createRitualDropMapper } from "./ritualSite";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
-import { prepareRiverItems, selectVisibleRiverItems, getLoyKrathongRiverLanes, getRiverItemPositionAt } from "@/core/world";
+import {
+  getLoyKrathongEndlessRiverFrame,
+  getLoyKrathongRiverLanes,
+  getRiverItemPositionAt,
+  prepareRiverItems,
+  selectVisibleRiverItems,
+  zoneIdForStretch,
+} from "@/core/world";
+import { getZonePagination } from "@/services/api/zonePagination";
 import {
   applyCameraRigPose,
   applyPanDrag,
   createCameraRigState,
   getCameraRigPose,
   getFramedCameraZoom,
-  getRiverPanBounds,
   getRotatedCameraOffsetInto,
   isInsidePanBounds,
   twistCameraRig,
   type CameraRigState,
 } from "@/core/camera";
 import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
-import { LOY_KRATHONG_RIVER_ENVIRONMENT } from "@/config/events/loyKrathong.river.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
@@ -63,6 +69,7 @@ import {
   TOY_SCENE_CAMERA,
   TOY_SCENE_CANVAS_CAMERA,
   TOY_SCENE_LIGHTING,
+  WORLD_PAN_BOUNDS,
 } from "./index";
 
 const assets = vi.hoisted(() => ({ created: 0, disposed: 0 }));
@@ -157,6 +164,26 @@ vi.mock("./OwnKrathong", async (importOriginal) => {
     OwnKrathong: (props: React.ComponentProps<typeof actual.OwnKrathong>) => {
       ownRenders.last = props as unknown as Record<string, unknown>;
       return React.createElement(actual.OwnKrathong, props);
+    },
+  };
+});
+
+const tickers = vi.hoisted(() => ({ mounted: 0 }));
+
+/** MFW-58: counts AmbientTicker mounts (the idle-redraw registration must exist once per canvas, not per stretch slot). */
+vi.mock("./AmbientLife", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./AmbientLife")>();
+  const React = await import("react");
+  return {
+    ...actual,
+    AmbientTicker: (props: React.ComponentProps<typeof actual.AmbientTicker>) => {
+      React.useEffect(() => {
+        tickers.mounted += 1;
+        return () => {
+          tickers.mounted -= 1;
+        };
+      }, []);
+      return React.createElement(actual.AmbientTicker, props);
     },
   };
 });
@@ -282,6 +309,8 @@ afterAll(() => {
 });
 
 const viewport = () => screen.getByRole("region", { name: "Toy-like night river preview" });
+/** MFW-58: the stretch slot groups, in render order (current first). */
+const stretchSlots = (c: HTMLElement) => Array.from(c.querySelectorAll('[name^="river-stretch-"]'));
 const waterMesh = (c: HTMLElement) => c.querySelector('[name="scene-water"]')!;
 const lampMesh = (c: HTMLElement) => c.querySelector('[name="scene-lamp-heads"]')!;
 const krathongMesh = (c: HTMLElement) => c.querySelector('[name="scene-krathong"]')!;
@@ -385,9 +414,14 @@ describe("toy-like night scene", () => {
   it.each(["HIGH", "MEDIUM", "LOW"] as const)("%s: soft blob shadows under the props and the own krathong (AC2)", (tier) => {
     useDeviceStore.getState().setQualityTier(tier);
     const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
-    expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.environmentBlobShadows}"]`)).toHaveLength(1);
+    // MFW-58: one environment / river blob-shadow mesh per stretch slot (3 slots); one for the own krathong.
+    const slots = stretchSlots(container);
+    expect(slots).toHaveLength(3);
+    for (const slot of slots) {
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.environmentBlobShadows}"]`)).toHaveLength(1);
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toHaveLength(1);
+    }
     expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.krathongBlobShadow}"]`)).toHaveLength(1);
-    expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.riverBlobShadows}"]`)).toHaveLength(1);
   });
 
   it("AUTO follows the device's local time (AC3)", () => {
@@ -1395,10 +1429,12 @@ describe("river batch and perf probe (MFW-34)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const items = [riverItem("a"), riverItem("b"), riverItem("c")];
     const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
-    const groups = container.querySelectorAll('[name^="river-item-"]');
+    const current = stretchSlots(container)[0]; // MFW-58: the camera's stretch (one persistent batch per slot, 3 slots)
+    const groups = current.querySelectorAll('[name^="river-item-"]');
     expect(groups).toHaveLength(3);
     for (const g of groups) expect(g.querySelector('mesh:not([name^="river-hit-"])')).toBeNull(); // only MFW-28 hit proxies remain
-    const batch = container.querySelectorAll('[name="river-krathong-batch"]');
+    expect(container.querySelectorAll('[name="river-krathong-batch"]')).toHaveLength(stretchSlots(container).length);
+    const batch = current.querySelectorAll('[name="river-krathong-batch"]');
     expect(batch).toHaveLength(1);
     expect(batch[0].querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
     rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
@@ -1715,7 +1751,7 @@ describe("krathong model v2 (MFW-48)", () => {
     const river = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[own, otherItem("a"), otherItem("b")]} />);
     expect(viewport()).toHaveAttribute("data-own-krathong-pose", "RIVER");
     expectOneV2Model(river.container);
-    const batch = river.container.querySelectorAll('[name="river-krathong-batch"]');
+    const batch = stretchSlots(river.container)[0].querySelectorAll('[name="river-krathong-batch"]'); // MFW-58: one per stretch slot
     expect(batch).toHaveLength(1);
     expect(batch[0].querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
   });
@@ -1737,8 +1773,14 @@ describe("krathong model v2 (MFW-48)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     const worldView = container.querySelector(`[name="${SCENE_OBJECT_NAMES.worldView}"]`)!;
-    expect(worldView.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagers}"]`)).toHaveLength(1);
-    expect(worldView.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagerBlobShadows}"]`)).toHaveLength(1);
+    // MFW-58: villagers are per stretch (open question 9 of the spec): one set per slot, 3 slots.
+    const slots = stretchSlots(container);
+    expect(slots).toHaveLength(3);
+    for (const slot of slots) {
+      expect(worldView.contains(slot)).toBe(true);
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagers}"]`)).toHaveLength(1);
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagerBlobShadows}"]`)).toHaveLength(1);
+    }
     expect(worldView.querySelectorAll("primitive").length).toBeGreaterThan(0);
   });
 
@@ -1770,7 +1812,8 @@ describe("krathong model v2 (MFW-48)", () => {
 });
 
 describe("camera drag-to-travel (MFW-57)", () => {
-  const BOUNDS = getRiverPanBounds(LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
+  // MFW-58: the scene's own bounds — the endless-river corridor (unbounded along, the channel corridor across).
+  const BOUNDS = WORLD_PAN_BOUNDS;
   const ZOOM = SCENE_CAMERA_ZOOM; // jsdom has no ResizeObserver: the base zoom stays SCENE_CAMERA_ZOOM
   type Move = readonly [number, number];
   /** One-pointer drag through the separator's eyes: the first PAN_RIVER carries the whole displacement since down. */
@@ -1983,7 +2026,7 @@ describe("camera drag-to-travel (MFW-57)", () => {
     // The focus is read back as camera position − offset, so allow float round-off at the snapped edge (MFW-49: with the wider
     // channel the bound is −2.9, read back as −2.9000000000000004).
     const EPS = 1e-9;
-    const loose = { minX: BOUNDS.minX - EPS, maxX: BOUNDS.maxX + EPS, minZ: BOUNDS.minZ - EPS, maxZ: BOUNDS.maxZ + EPS };
+    const loose = { ...BOUNDS, minX: BOUNDS.minX - EPS, maxX: BOUNDS.maxX + EPS, minZ: BOUNDS.minZ - EPS, maxZ: BOUNDS.maxZ + EPS };
     expect(isInsidePanBounds(reduced.x, reduced.z, loose)).toBe(true);
     cleanup();
 
@@ -2057,5 +2100,210 @@ describe("natural look, no rings (MFW-67)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     render(<SceneViewport mode="RITUAL_RELEASE" />);
     expect(chip().className).not.toMatch(/\b(border|shadow|ring|outline)(-|\b)/);
+  });
+});
+
+describe("endless river (MFW-58)", () => {
+  const frame = getLoyKrathongEndlessRiverFrame();
+  const storeItem = (zoneId: number, i: number): PublicCreation => ({
+    id: `00000000-0000-4000-8000-${String(zoneId * 1000 + i).padStart(12, "0")}`,
+    eventId: "loy_krathong",
+    zoneId,
+    appearance: serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE) as unknown as PublicCreation["appearance"],
+    coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: (i % 100) / 100, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+    publicWishText: null,
+    createdAt: "2026-11-24T12:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    displayName: null,
+  });
+  const zones = { 1: [storeItem(1, 1)], 2: [storeItem(2, 1), storeItem(2, 2)], 3: [storeItem(3, 1), storeItem(3, 2), storeItem(3, 3)] };
+  /** World of 3 zones, anchor {anchorStretch, anchorZone}, camera in stretch s; every zone streamed. */
+  const setWorld = (s: number, anchorStretch = 0, anchorZone = 3, zoneCount = 3) => {
+    const anchor = { stretchIndex: anchorStretch, zoneId: anchorZone };
+    const zoneId = zoneIdForStretch(s, anchor, zoneCount)!;
+    const streamed: Record<number, readonly PublicCreation[]> = zoneCount === 1 ? { 1: zones[1] } : zones;
+    act(() =>
+      useWorldStore.setState({
+        eventId: "loy_krathong",
+        zoneCount,
+        zoneStatus: "ready",
+        currentStretchIndex: s,
+        stretchAnchor: anchor,
+        currentZoneId: zoneId,
+        zoneItems: streamed[zoneId] ?? [],
+        streamedZoneItems: streamed,
+      }),
+    );
+  };
+  const names = (c: HTMLElement) => stretchSlots(c).map((g) => g.getAttribute("name"));
+  /** Sums the `position` attributes of the element and its ancestors (the DOM stub of a three world position). */
+  const sumPositions = (start: Element): [number, number, number] => {
+    const sum: [number, number, number] = [0, 0, 0];
+    for (let el: Element | null = start; el !== null; el = el.parentElement) {
+      const p = el.getAttribute("position");
+      if (p === null) continue;
+      p.split(",").map(Number).forEach((v, k) => (sum[k] += v));
+    }
+    return sum;
+  };
+  const useHierarchyPositions = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(this: Element, target: Vector3) {
+        return target.set(...sumPositions(this));
+      },
+    });
+  const restoreStub = () =>
+    Object.defineProperty(HTMLUnknownElement.prototype, "getWorldPosition", {
+      configurable: true,
+      value(target: Vector3) {
+        target.set(0, 0, 0);
+        return target;
+      },
+    });
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-9);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-11-24T12:00:30.000Z"));
+    useDeviceStore.getState().setQualityTier("HIGH");
+    useHierarchyPositions();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreStub();
+  });
+
+  it("renders 3 stretch slots, current first; the slot elements are re-used (ring) when the camera crosses a seam", () => {
+    setWorld(0);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(names(container)).toEqual(["river-stretch-0", "river-stretch--1", "river-stretch-1"]);
+    expect(viewport()).toHaveAttribute("data-stretch-index", "0");
+    expect(viewport()).toHaveAttribute("data-streamed-zone-ids", "3,2,1");
+    const one = container.querySelector('[name="river-stretch-1"]');
+    const zero = container.querySelector('[name="river-stretch-0"]');
+    setWorld(1);
+    expect(names(container)).toEqual(["river-stretch-1", "river-stretch-0", "river-stretch-2"]);
+    expect(container.querySelector('[name="river-stretch-1"]')).toBe(one);
+    expect(container.querySelector('[name="river-stretch-0"]')).toBe(zero);
+    expect(viewport()).toHaveAttribute("data-stretch-index", "1");
+    expect(viewport()).toHaveAttribute("data-streamed-zone-ids", "1,3,2");
+    expect(viewport()).toHaveAttribute("data-zone-id", "1");
+    expect(container.querySelector('[name="river-stretch-2"]')!.getAttribute("position")).toBe(`${2 * frame.periodX},0,${2 * frame.periodZ}`);
+  });
+
+  it("neighbour slots show their streamed zones (current: the store's zone); with one zone every slot shows it", () => {
+    setWorld(0);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const counts = () => stretchSlots(container).map((g) => g.querySelectorAll('[name^="river-item-"]').length);
+    expect(counts()).toEqual([3, 2, 1]);
+    expect(viewport()).toHaveAttribute("data-river-item-count", "3");
+    cleanup();
+    setWorld(5, 0, 1, 1);
+    const single = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(stretchSlots(single.container).map((g) => g.querySelectorAll('[name^="river-item-"]').length)).toEqual([1, 1, 1]);
+    expect(viewport()).toHaveAttribute("data-streamed-zone-ids", "1,1,1");
+  });
+
+  it("outside WORLD_EXPLORE / RITUAL_RELEASE the neighbour slots draw scenery only; no data-stretch-index", () => {
+    setWorld(0);
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(stretchSlots(container)).toHaveLength(3);
+    expect(container.querySelectorAll('[name^="river-item-"]')).toHaveLength(0);
+    expect(viewport()).not.toHaveAttribute("data-stretch-index");
+  });
+
+  it("a seam crossing creates no geometry (persistent slots; only the leapfrogged slot re-plans its krathongs)", () => {
+    setWorld(0);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    setWorld(1); // warm-up crossing
+    setWorld(0);
+    const attrs = vi.spyOn(BufferGeometry.prototype, "setAttribute");
+    const index = vi.spyOn(BufferGeometry.prototype, "setIndex");
+    for (const s of [1, 2, 3, 2, 1]) setWorld(s);
+    expect(attrs).not.toHaveBeenCalled();
+    expect(index).not.toHaveBeenCalled();
+    attrs.mockRestore();
+    index.mockRestore();
+  });
+
+  it("Find My after travel flies to the lane pose + S·T of the current stretch", () => {
+    setWorld(2, 2, 1, 1);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    act(() => useWorldStore.setState({ focusedCreationId: zones[1][0].id, focusRequestId: 1 }));
+    expect(viewport()).toHaveAttribute("data-find-my", "following");
+    const anchor = container.querySelector(`[name="${SCENE_OBJECT_NAMES.findMyAnchor}"]`)!;
+    expect(container.querySelector('[name="river-stretch-2"]')!.contains(anchor)).toBe(true);
+    const lanes = getLoyKrathongRiverLanes();
+    const [prepared] = prepareRiverItems([{ id: zones[1][0].id, coord: zones[1][0].coord as never, createdAtMs: Date.parse(zones[1][0].createdAt) }], lanes);
+    const local = getRiverItemPositionAt(prepared, lanes, Date.now())!.world;
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    const to = r3f.flightStarts[before].to as Record<string, number>;
+    near(to.focusX, local.x + 2 * frame.periodX);
+    near(to.focusY, local.y);
+    near(to.focusZ, local.z + 2 * frame.periodZ);
+  });
+
+  it("the camera never flies on its own when the Find My krathong leaves the stretch window", () => {
+    const five = (s: number) => setWorld(s, 0, 3, 5); // 5 zones: the window of 3 stretches does not always show zone 3
+    five(0);
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    act(() => useWorldStore.setState({ focusedCreationId: zones[3][0].id, focusRequestId: 1 }));
+    expect(viewport()).toHaveAttribute("data-find-my", "following");
+    const after = r3f.flightStarts.length;
+    five(1); // zone 3 is now the slot behind: still followed
+    expect(viewport()).toHaveAttribute("data-find-my", "following");
+    five(2); // zone 3 is 2 stretches behind: out of the window
+    expect(viewport()).not.toHaveAttribute("data-find-my");
+    five(5); // zone 3 again in the current slot (5 stretches on): no flight without a new request
+    expect(r3f.flightStarts).toHaveLength(after);
+  });
+
+  it("the navigator jump is a camera flight by ±T, an instant cut under reduced motion; unregistered outside WORLD_EXPLORE", () => {
+    setWorld(0);
+    useDeviceStore.getState().setReducedMotion(true);
+    const { rerender } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const before = r3f.flightStarts.length;
+    act(() => getZonePagination().jumpBy(1));
+    expect(r3f.flightStarts).toHaveLength(before + 1);
+    const flight = r3f.flightStarts[before];
+    expect(flight.immediate).toBe(true);
+    const to = flight.to as Record<string, number>;
+    expect(to.focusX - frame.periodX).toBeCloseTo(0, 6); // the rig starts at the origin in this stub (no frames)
+    expect(to.focusZ - frame.periodZ).toBeCloseTo(0, 6);
+    rerender(<SceneViewport mode="CUSTOMIZE" />);
+    const n = r3f.flightStarts.length;
+    act(() => getZonePagination().jumpBy(1)); // no driver: pages the store instead
+    expect(r3f.flightStarts.length).toBe(n);
+    expect(useWorldStore.getState().currentStretchIndex).toBe(1);
+  });
+
+  it("prop proxies and villagers are per slot; the idle-redraw ticker is mounted once per canvas", () => {
+    setWorld(0);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    for (const slot of stretchSlots(container)) {
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.propTapPrefix}house-0"]`)).toHaveLength(1);
+      expect(slot.querySelectorAll(`[name="${SCENE_OBJECT_NAMES.villagers}"]`)).toHaveLength(1);
+    }
+    expect(tickers.mounted).toBe(1);
+  });
+
+  it("a lamp tap in the slot ahead flies to that slot's lamp and glows there", () => {
+    setWorld(0);
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const ahead = stretchSlots(container)[2];
+    expect(ahead.getAttribute("name")).toBe("river-stretch-1");
+    const before = r3f.flightStarts.length;
+    fireEvent.click(ahead.querySelector('[name="scene-lamp-tap-3"]')!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "lamp-glow");
+    expect(r3f.flightStarts.length).toBe(before + 1);
+    const head = lampHeadPosition(LOY_KRATHONG_RIVER_LAYOUT.lamps[3], RIVER_ENVIRONMENT_PARTS.lampHead.yOffset);
+    const to = r3f.flightStarts[before].to as Record<string, number>;
+    near(to.focusX, head[0] + frame.periodX);
+    near(to.focusZ, head[2] + frame.periodZ);
+    const glow = poolManagers.at(-1)!.glow;
+    const lit = Array.from({ length: glow.capacity }, (_, i) => glow.entryAt(i)).find((e) => e.active)!;
+    expect(lit.state).toEqual({ lampIndex: 3, stretchIndex: 1 });
   });
 });

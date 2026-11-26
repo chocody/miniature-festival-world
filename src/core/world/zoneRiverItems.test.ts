@@ -90,3 +90,27 @@ describe("publicCreationsToRiverItems", () => {
     expect(publicCreationsToRiverItems([], QUERY)).toEqual([]);
   });
 });
+
+describe("getZoneRiverItems (MFW-58)", () => {
+  it("equals publicCreationsToRiverItems and is the same reference for the same array and query", async () => {
+    const { getZoneRiverItems, publicCreationsToRiverItems } = await import("./zoneRiverItems");
+    const creations = Object.freeze([
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        eventId: "loy_krathong",
+        zoneId: 2,
+        appearance: { base: "banana_trunk_01" },
+        coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: 0.1, speedFactor: 0.008, lateralOffset: 0 },
+        publicWishText: null,
+        createdAt: "2026-11-24T12:00:00.000Z",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    ]) as never;
+    const q = { eventId: "loy_krathong", zoneId: 2 } as const;
+    const a = getZoneRiverItems(creations, q);
+    expect(a).toEqual(publicCreationsToRiverItems(creations, q));
+    expect(getZoneRiverItems(creations, q)).toBe(a);
+    expect(getZoneRiverItems(creations, { ...q, zoneId: 3 })).toEqual([]);
+    expect(getZoneRiverItems([...(creations as unknown as never[])], q)).not.toBe(a);
+  });
+});

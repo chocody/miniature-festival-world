@@ -149,6 +149,24 @@ describe("patchZoneItemWish", () => {
     expect(patchZoneItemWish(store, uuid(1), { publicWishText: null, displayName: "n" })).toBe(true);
     expect(store.getState().zoneItems[0]).toMatchObject({ publicWishText: null, displayName: null });
   });
+
+  it("MFW-58: also replaces the current zone's streamed entry with the same new frozen array; other zones keep theirs", () => {
+    const items = Object.freeze([item(1), item(2)]);
+    const other = Object.freeze([item(7)]);
+    const { store } = makeStore({
+      eventId: "loy_krathong",
+      currentZoneId: 2,
+      zoneStatus: "ready",
+      zoneItems: items,
+      streamedZoneItems: Object.freeze({ 2: items, 3: other }),
+    });
+    expect(patchZoneItemWish(store, uuid(2), { publicWishText: "open", displayName: "Mali" })).toBe(true);
+    const s = store.getState();
+    expect(s.streamedZoneItems[2]).toBe(s.zoneItems);
+    expect(s.streamedZoneItems[3]).toBe(other);
+    expect(Object.isFrozen(s.streamedZoneItems)).toBe(true);
+    expect(s.zoneItems[1]).toMatchObject({ publicWishText: "open", displayName: "Mali" });
+  });
 });
 
 describe("syncWorldAfterSwitch", () => {

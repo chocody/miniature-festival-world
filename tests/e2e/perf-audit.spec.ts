@@ -148,6 +148,8 @@ async function goToZone(page: Page, target: number, expectedItems: number) {
   await expect(nav).toHaveAttribute("data-zone-id", String(target));
   await expect(nav).toHaveAttribute("data-zone-status", "ready");
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-river-item-count", String(expectedItems));
+  // MFW-58: the navigator now flies the camera one stretch along the endless river; sample only once the flight has landed.
+  await settleCamera(page);
 }
 
 async function sample(page: Page): Promise<ProbeSample> {
@@ -187,8 +189,10 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
   test.setTimeout(E2E_PERF_TEST_TIMEOUT_MS);
   const errors = collectErrors(page);
   await forceTier(page, 8, 8);
-  await routeZones(page, 3, { 1: 1, 2: 80 });
-  await mockCreateCreation(page, { zoneId: 3 }); // the release lands in the empty zone 3, which the audit never measures
+  // MFW-58: the stretches next to the camera's also draw their zones' krathongs, so every zone is non-empty (same appearance → the
+  // same batch draw calls per visible stretch) and the "one" zone's neighbours hold one krathong each, like the "full" zone's.
+  await routeZones(page, 5, { 1: 1, 2: 80, 3: 1, 4: 1, 5: 1 });
+  await mockCreateCreation(page, { zoneId: 5 }); // the release lands in zone 5, which the audit never measures
   // pinned: the forced 3D tier cannot fall back to 2D mid-audit on a slow SwiftShader runner (FPS readings are then n/a)
   const { customize, fpsCustomize } = await walkToWorld(page, true);
   const tierNow = () => root(page).getAttribute("data-quality-tier");
@@ -201,7 +205,7 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
     const full = await sample(page);
     const fpsFull = await readFps(page);
     const t1 = await tierNow();
-    await goToZone(page, 1, 1);
+    await goToZone(page, 4, 1);
     const t2 = await tierNow();
     const one = await sample(page);
     const fpsOne = await readFps(page);
@@ -235,8 +239,9 @@ test("LOW: memory stays flat across repeated zone switches", async ({ page }, te
   const errors = collectErrors(page);
   await forceTier(page, 2, 2);
   await paceFrames(page);
-  await routeZones(page, 4, { 1: 1, 2: 80, 3: 80 });
-  await mockCreateCreation(page, { zoneId: 4 }); // the release lands in the empty zone 4, which the audit never measures
+  // MFW-58: every zone is non-empty (the neighbour stretches draw their zones too; one krathong in zone 4 keeps the calls comparable).
+  await routeZones(page, 4, { 1: 1, 2: 80, 3: 80, 4: 1 });
+  await mockCreateCreation(page, { zoneId: 4 }); // the release lands in zone 4, which the audit never measures
   await walkToWorld(page);
   const cdp = await page.context().newCDPSession(page);
 

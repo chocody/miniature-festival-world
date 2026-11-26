@@ -38,7 +38,7 @@ import {
   type PartGeometrySpec,
   type ScenePartSpec,
 } from "@/config/scene.config";
-import { createRiverLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
+import { acrossOf, createEndlessRiverFrame, createRiverLane, locateOnEndlessLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { getFramedCameraZoom } from "@/core/camera";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
 import { FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
@@ -101,17 +101,11 @@ function makeCamera(width: number, height: number, factor: number, zoom: number 
 }
 const ndc = (camera: OrthographicCamera, p: WorldVec3) => new Vector3(p.x, p.y, p.z).project(camera);
 const onScreen = (v: Vector3) => Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
-/** Even-odd point-in-polygon test against the ground's hole outline (xz). */
-function insideHole(p: { readonly x: number; readonly z: number }): boolean {
-  const hole = layout.ground.hole;
-  let inside = false;
-  for (let i = 0, j = hole.length - 1; i < hole.length; j = i++) {
-    const a = hole[i];
-    const b = hole[j];
-    if (a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-  }
-  return inside;
-}
+/** MFW-58: the endless stretch frame (the ground strips' straight outer edge is at ±outerAcross from its axis). */
+const STRETCH_FRAME = createEndlessRiverFrame(LOY_KRATHONG_RIVER_ENVIRONMENT.channel.controlPoints);
+/** Inner edge of the ground strips (lateral from the centreline): the banks' outer edge pulled in by holeMargin. */
+const GROUND_INNER_LATERAL =
+  layout.channel.width / 2 + LOY_KRATHONG_RIVER_ENVIRONMENT.bankWidth - LOY_KRATHONG_RIVER_ENVIRONMENT.ground.holeMargin;
 
 describe("river layout", () => {
   it("has houses, trees, lamps and a pier", () => {
@@ -351,11 +345,12 @@ describe("river layout", () => {
           const hit = near.clone().addScaledVector(dir, t);
           const depth = hit.clone().applyMatrix4(camera.matrixWorldInverse).z * -1;
           if (depth < SCENE_CAMERA_NEAR) continue;
-          const r = Math.hypot(hit.x, hit.z);
-          expect(r, `${w}x${h} ${factor} ${x},${y}`).toBeLessThanOrEqual(layout.ground.radius);
-          // Inside the ground's hole the point is under the water or a bank (MFW-49 ground hole).
-          if (insideHole(hit)) {
-            const lateral = Math.abs(locateOnLane(layout.channel, hit).lateralOffset) * layout.channel.width;
+          // MFW-58: inside the ground band of the endless river (the strips of this stretch or a neighbour copy, which join).
+          const across = Math.abs(acrossOf(STRETCH_FRAME, hit.x, hit.z));
+          expect(across, `${w}x${h} ${factor} ${x},${y}`).toBeLessThanOrEqual(layout.ground.outerAcross);
+          // Between the strips (the hole under the river) the point is under the water or a bank (MFW-49 hole design).
+          const lateral = Math.abs(locateOnEndlessLane(layout.channel, STRETCH_FRAME, hit).lateralOffset) * layout.channel.width;
+          if (lateral < GROUND_INNER_LATERAL) {
             expect(lateral).toBeLessThanOrEqual(layout.channel.width / 2 + LOY_KRATHONG_RIVER_ENVIRONMENT.bankWidth);
           }
         }
@@ -367,17 +362,21 @@ describe("river layout", () => {
     expect(layout.ground.y).toBeLessThan(layout.waterSurfaceY);
   });
 
-  it("R2b: the ground's hole stays under the water and banks, deep enough that no gap shows under a bank edge", () => {
+  it("R2b: the hole between the ground strips stays under the water and banks, deep enough that no gap shows under a bank edge", () => {
     const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
-    expect(layout.ground.hole.length).toBeGreaterThanOrEqual(3);
     // A camera ray can pass under the highest bank edge by at most (edge height − ground y) / tan(camera elevation).
     const elevation = Math.atan2(CAMERA_FLIGHT_OFFSET[1], Math.hypot(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]));
     const step = Math.max(...def.bankProfile.map((p) => p.y)) - layout.ground.y;
     expect(def.ground.holeMargin).toBeGreaterThanOrEqual(step / Math.tan(elevation));
-    for (const p of layout.ground.hole) {
-      expect(Math.hypot(p.x, p.z)).toBeLessThan(layout.ground.radius);
+    // MFW-58: the strips' inner vertices (the hole edge) lie under the banks, holeMargin inside their outer edge.
+    const strips = layout.ground.strips;
+    const n = layout.ribbonSegments;
+    const innerVertices = [...Array.from({ length: n + 1 }, (_, i) => 2 * i + 1), ...Array.from({ length: n + 1 }, (_, i) => 2 * (n + 1) + 2 * i)];
+    for (const k of innerVertices) {
+      const p = { x: strips.positions[k * 3], z: strips.positions[k * 3 + 2] };
       const lateral = Math.abs(locateOnLane(layout.channel, p).lateralOffset) * layout.channel.width;
-      expect(lateral + def.ground.holeMargin).toBeLessThanOrEqual(layout.channel.width / 2 + def.bankWidth + 1e-6);
+      expect(lateral + def.ground.holeMargin).toBeLessThanOrEqual(layout.channel.width / 2 + def.bankWidth + 1e-4);
+      expect(Math.abs(acrossOf(STRETCH_FRAME, p.x, p.z))).toBeLessThan(layout.ground.outerAcross);
     }
   });
 
@@ -556,5 +555,37 @@ describe("MFW-70 foliage", () => {
     expect(foliageForTier(foliage, "LOW").clumps).toBe(foliage.clumpsLow);
     expect(foliageForTier(foliage, "LOW").sway).toBe(false);
     expect(foliageForTier(foliage, "HIGH").sway).toBe(true);
+  });
+});
+
+describe("MFW-58 stretch extent and scenery top", () => {
+  it("the prop margin is at least every prop's footprint radius", async () => {
+    const { RIVER_STRETCH_PROP_MARGIN } = await import("./riverLayout");
+    const { LOY_KRATHONG_TREE_SHAPES, LOY_KRATHONG_BUSH_CLUMPS, LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION } = await import(
+      "@/config/events/loyKrathong.river.config"
+    );
+    const { TREE_SHAPE_IDS, foliageClumpsExtent } = await import("@/core/world");
+    const { VILLAGER_FOOTPRINT_RADIUS } = await import("@/config/events/loyKrathong.life.config");
+    const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
+    const maxScale = Math.max(...[def.houses, def.trees, def.bushes, def.rocks, def.lamps].flatMap((l) => l.map((p) => p.scale)));
+    const gable = parts.houseRoofGable.geometry as { width: number; depth: number };
+    const body = parts.houseBody.geometry as { width: number; depth: number };
+    const footprints = [
+      Math.hypot(gable.width / 2, gable.depth / 2) * maxScale,
+      Math.hypot(body.width / 2, body.depth / 2) * maxScale,
+      ...TREE_SHAPE_IDS.map(
+        (id) => foliageClumpsExtent(LOY_KRATHONG_TREE_SHAPES[id].clumps, LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude).footprintRadius * maxScale,
+      ),
+      foliageClumpsExtent(LOY_KRATHONG_BUSH_CLUMPS, LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude).footprintRadius * maxScale,
+      VILLAGER_FOOTPRINT_RADIUS * 2,
+    ];
+    for (const f of footprints) expect(f).toBeLessThanOrEqual(RIVER_STRETCH_PROP_MARGIN);
+  });
+
+  it("getRiverSceneryTopY is above the banks and the villagers' heads, and cached", async () => {
+    const { getRiverSceneryTopY } = await import("./riverLayout");
+    const { VILLAGER_HEIGHT } = await import("@/config/events/loyKrathong.life.config");
+    expect(getRiverSceneryTopY()).toBe(getRiverSceneryTopY());
+    expect(getRiverSceneryTopY()).toBeGreaterThan(layout.bankTopY + VILLAGER_HEIGHT);
   });
 });

@@ -14,6 +14,8 @@ import {
   SCENE_CAMERA_ZOOM_MAX,
 } from "@/config/camera.config";
 import { PINCH_ZOOM_MAX } from "@/config/interaction.config";
+import { LOY_KRATHONG_RIVER_CHANNEL } from "@/config/events/loyKrathong.river.config";
+import { acrossOf, alongOf, createEndlessRiverFrame, frameToWorldInto } from "@/core/coordinates/endlessRiverFrame";
 import { getFramedCameraZoom } from "./viewportFraming";
 import { getCameraFlightPose } from "./index";
 import {
@@ -25,8 +27,10 @@ import {
   endPan,
   getFlightYaw,
   getPanFocusDelta,
+  getEndlessRiverPanBounds,
   getRiverPanBounds,
   getRotateStepPose,
+  getTravelStepPose,
   getYawAfterTwist,
   isInsidePanBounds,
   stepCameraRig,
@@ -365,5 +369,107 @@ describe("camera rig flights (MFW-57)", () => {
     const second = getRotateStepPose(rig, 0.5); // mid-flight: builds on the destination
     expect(second.yawRad).toBeCloseTo(0.3 + 2 * 0.5, 12);
     expect(second.focusX).toBe(1);
+  });
+});
+
+describe("endless-river corridor bounds (MFW-58)", () => {
+  const frame = createEndlessRiverFrame(LOY_KRATHONG_RIVER_CHANNEL.controlPoints);
+  const corridor = getEndlessRiverPanBounds(frame, LOY_KRATHONG_RIVER_CHANNEL);
+  const zoom = 50;
+  const at = (along: number, across: number) => frameToWorldInto(frame, along, across, { x: 0, z: 0 });
+
+  it("is unbounded along the river and keeps the channel corridor across", () => {
+    expect(corridor.minX).toBe(-Infinity);
+    expect(corridor.maxX).toBe(Infinity);
+    const across = LOY_KRATHONG_RIVER_CHANNEL.controlPoints.map((p) => acrossOf(frame, p.x, p.z));
+    expect(corridor.minZ).toBeCloseTo(Math.min(...across) - LOY_KRATHONG_RIVER_CHANNEL.width / 2, 12);
+    expect(corridor.maxZ).toBeCloseTo(Math.max(...across) + LOY_KRATHONG_RIVER_CHANNEL.width / 2, 12);
+    expect(corridor.frame).toEqual({ originX: frame.originX, originZ: frame.originZ, axisX: frame.axisX, axisZ: frame.axisZ });
+    expect(isInsidePanBounds(at(1e5, 0).x, at(1e5, 0).z, corridor)).toBe(true);
+    expect(isInsidePanBounds(at(-3e4, 0).x, at(-3e4, 0).z, corridor)).toBe(true);
+    expect(isInsidePanBounds(at(0, corridor.maxZ + 0.1).x, at(0, corridor.maxZ + 0.1).z, corridor)).toBe(false);
+  });
+
+  it("a drag goes far past the old maxX 12 with no resistance along the river", () => {
+    const old = getRiverPanBounds(LOY_KRATHONG_RIVER_CHANNEL);
+    expect(old.maxX).toBe(12);
+    const rig = rigAt();
+    const open = rigAt();
+    for (let i = 0; i < 40; i++) {
+      // A finger moving left (−x on screen at yaw 0) travels the camera downstream.
+      applyPanDrag(rig, -120, 0, zoom, i * 16, corridor);
+      applyPanDrag(open, -120, 0, zoom, i * 16, OPEN);
+    }
+    const along = alongOf(frame, rig.focusX, rig.focusZ);
+    expect(along).toBeGreaterThan(3 * frame.length);
+    // Along the axis the corridor resists nothing: the along travel equals the open-bounds travel.
+    expect(along).toBeCloseTo(alongOf(frame, open.focusX, open.focusZ), 9);
+    expect(rig.focusX).toBeGreaterThan(old.maxX + CAMERA_PAN_MAX_OVERSHOOT);
+  });
+
+  it("keeps the MFW-57 rubber band across the river", () => {
+    const rig = rigAt();
+    const edge = at(5, corridor.maxZ);
+    rig.focusX = edge.x;
+    rig.focusZ = edge.z;
+    for (let i = 0; i < 30; i++) applyPanDrag(rig, 0, -200, zoom, i * 16, corridor); // finger up = focus toward −z / far bank
+    const across = acrossOf(frame, rig.focusX, rig.focusZ);
+    const overshoot = Math.max(across - corridor.maxZ, corridor.minZ - across);
+    expect(overshoot).toBeGreaterThan(0);
+    expect(overshoot).toBeLessThanOrEqual(CAMERA_PAN_MAX_OVERSHOOT + 1e-9);
+  });
+
+  it("endPan / stepCameraRig: coast along never stops at a bound; out of the corridor eases back across only", () => {
+    const rig = rigAt({ lastPanTime: 1000, velocityX: 10 * frame.axisX, velocityZ: 10 * frame.axisZ });
+    const start = at(30 * frame.length, 0);
+    rig.focusX = start.x;
+    rig.focusZ = start.z;
+    expect(endPan(rig, 1010, corridor, false)).toBe(true);
+    for (let i = 0; i < 200; i++) stepCameraRig(rig, 16, corridor);
+    expect(rig.phase).toBe("MANUAL");
+    // Coast distance v·τ, short by at most the stop speed · τ (the coast ends below CAMERA_PAN_STOP_SPEED).
+    const travelled = alongOf(frame, rig.focusX, rig.focusZ) - 30 * frame.length;
+    const tau = CAMERA_PAN_EASE_TIME_CONSTANT_MS / 1000;
+    expect(travelled).toBeLessThanOrEqual(10 * tau + 1e-9);
+    expect(travelled).toBeGreaterThanOrEqual(10 * tau - CAMERA_PAN_STOP_SPEED * tau - 1e-9);
+    expect(Math.abs(acrossOf(frame, rig.focusX, rig.focusZ))).toBeLessThan(1e-9);
+
+    const out = rigAt();
+    const p = at(-50, corridor.maxZ + 0.5);
+    out.focusX = p.x;
+    out.focusZ = p.z;
+    expect(endPan(out, null, corridor, false)).toBe(true);
+    for (let i = 0; i < 200; i++) stepCameraRig(out, 16, corridor);
+    expect(acrossOf(frame, out.focusX, out.focusZ)).toBeCloseTo(corridor.maxZ, 9);
+    expect(alongOf(frame, out.focusX, out.focusZ)).toBeCloseTo(-50, 9);
+  });
+
+  it("reduced motion: endPan cuts back across at once and keeps the along position", () => {
+    const rig = rigAt({ lastPanTime: 1000, velocityX: 5 });
+    const p = at(1234, corridor.minZ - 0.4);
+    rig.focusX = p.x;
+    rig.focusZ = p.z;
+    expect(endPan(rig, 1005, corridor, true)).toBe(false);
+    expect(rig.phase).toBe("MANUAL");
+    expect(acrossOf(frame, rig.focusX, rig.focusZ)).toBeCloseTo(corridor.minZ, 9);
+    expect(alongOf(frame, rig.focusX, rig.focusZ)).toBeCloseTo(1234, 9);
+    expect(rig.velocityX).toBe(0);
+  });
+
+  it("getTravelStepPose builds on the flight destination while flying, else on the focus, and keeps the yaw", () => {
+    const rig = rigAt({ focusX: 1, focusY: 0.2, focusZ: 2, yawRad: 0.3 });
+    expect(getTravelStepPose(rig, frame.periodX, frame.periodZ)).toEqual({
+      focusX: 1 + frame.periodX,
+      focusY: 0.2,
+      focusZ: 2 + frame.periodZ,
+      yawRad: 0.3,
+    });
+    beginRigFlight(rig, { focusX: 10, focusY: 0.1, focusZ: -1, yawRad: 1 });
+    expect(getTravelStepPose(rig, -frame.periodX, -frame.periodZ)).toEqual({
+      focusX: 10 - frame.periodX,
+      focusY: 0.1,
+      focusZ: -1 - frame.periodZ,
+      yawRad: 1,
+    });
   });
 });

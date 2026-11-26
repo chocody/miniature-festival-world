@@ -926,3 +926,39 @@ Production build, SwiftShader, phone 390×844, after the release (pier view).
 | House lights, day | ![day house lights](screenshots/mfw-60/day-house-lights.png) |
 | Tree shake, day | ![day tree shake](screenshots/mfw-60/day-tree-shake.png) |
 | Reduced-motion firework, night | ![night reduced-motion firework](screenshots/mfw-60/night-reduced-motion-firework.png) |
+
+## 17. Endless river (MFW-58, backlog 11.2)
+
+The world is an endless chain of identical **stretches**: stretch s is today's river (water, banks, ground, village, foliage,
+villagers, motes) translated by s·T, where **T = last − first centreline control point = (24, −1.1)**, |T| ≈ 24.025. The centreline
+already joins itself C1 under this translation (end / start tangents differ by ≈ 1.9e-4°), so no control point moved and every stored
+`SplinePathCoord` keeps its meaning. `src/core/coordinates/endlessRiverFrame.ts` (three-free, shared by 3D and 2D) holds the frame;
+`endlessSpline.ts` maps a lane pose to stretch s (pose + s·T).
+
+- **Zones per stretch.** zone(s) = wrap(anchor.zoneId + s − anchor.stretchIndex) over N zones (`riverStretches.ts`): with one zone every
+  stretch shows zone 1; after the last zone comes zone 1 again (open question 37). `loadZone(z)` (Find My, release, retry) re-anchors so
+  the stretch under the camera shows z. Nothing new is persisted.
+- **Slots.** 3 persistent stretch copies (`RIVER_STRETCH_RENDER_RADIUS` 1: S − 1, S, S + 1), keyed by s mod 3 and rendered current
+  first (`RiverStretch.tsx`). A seam crossing leapfrogs the far slot: it re-plans that slot's krathongs and creates no GPU resource. A slot
+  outside the view is hidden per frame (yaw-aware along-axis culling) and its per-frame writers skip their work.
+- **Streaming.** The 3D scene keeps the zones of `ZONE_STREAM_LOAD_RADIUS` 2 stretches on each side loaded (≤ 5 zones); farther zones
+  are dropped. The 2D fallback loads only the paged zone (radius 0) and pages with wrap-around.
+- **Ground.** The MFW-68 disc became two strips per stretch (from the banks' outer edge pulled in by `holeMargin` 1 out to a straight
+  edge at ±`outerAcross` 30 from the river axis) plus a cap row under the river at each stretch end; copies join exactly at the seams and
+  nothing is overdrawn (`sceneCoverage.test.ts` proves no background at every size, pinch, yaw and corridor focus).
+- **Camera.** The pan bounds are an endless corridor: unbounded along the river, the MFW-57 rubber band across it. The navigator's ‹ ›
+  fly the camera by ±T (instant cut under reduced motion) and its label is the live position indicator.
+- **Scenery** is identical in every stretch (DAY and NIGHT alike); seeded variation is a follow-up. With 2+ zones a krathong that drifts
+  past its stretch end wraps to its stretch start (no fade).
+
+Screenshots (production build, SwiftShader, `screenshots/mfw-58/`): seam between two stretches (desktop DAY, phone DAY), stretch 1 at
+NIGHT, the navigator after a jump, Find My after travelling two stretches (desktop DAY, phone NIGHT).
+
+| | |
+|---|---|
+| Seam, desktop, day | ![seam desktop day](screenshots/mfw-58/desktop-1280x800-seam-day.png) |
+| Stretch 1, desktop, night | ![stretch 1 desktop night](screenshots/mfw-58/desktop-1280x800-stretch1-night.png) |
+| Find My after travel, desktop, day | ![find my desktop day](screenshots/mfw-58/desktop-1280x800-findmy-after-travel-day.png) |
+| Seam, phone, day | ![seam phone day](screenshots/mfw-58/phone-360x640-seam-day.png) |
+| Navigator next, phone, night | ![navigator phone night](screenshots/mfw-58/phone-360x640-navigator-next-night.png) |
+| Find My after travel, phone, night | ![find my phone night](screenshots/mfw-58/phone-360x640-findmy-after-travel-night.png) |

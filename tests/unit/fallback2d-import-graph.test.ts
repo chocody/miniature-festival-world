@@ -11,6 +11,10 @@ const ENTRIES = [
   "src/core/coordinates/validateCoord.ts",
   "src/core/coordinates/splineProgress.ts",
   "src/core/coordinates/CylindricalCoord.ts",
+  // MFW-58: the stretch mapping shared by the 3D slots and the 2D paging (invariant B).
+  "src/core/coordinates/endlessRiverFrame.ts",
+  "src/core/world/riverStretches.ts",
+  "src/core/world/endlessRiver.ts",
 ];
 const FORBIDDEN_SPECIFIER = /^(three|@react-three\/|@react-spring\/)/;
 const FORBIDDEN_DIRS = ["src/components/canvas3d/", "src/components/models/"];

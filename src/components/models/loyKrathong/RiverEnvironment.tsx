@@ -7,7 +7,7 @@ import { hasAnyTapProxyHit, hasTapProxyHit } from "@/components/canvas3d/effects
 import { createTapProxy } from "@/components/canvas3d/effects/riverTapProxy";
 import { isTapClick, tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
 import { InstancedPart } from "@/components/canvas3d/InstancedPart";
-import { createBankGeometry, createGroundGeometry, createRibbonGeometry } from "@/components/canvas3d/geometry";
+import { createBankGeometry, createRibbonGeometry } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import {
   PIER_DECK_MATERIAL,
@@ -62,7 +62,7 @@ function useBankGeometry(data: BankGeometryData) {
 }
 
 /**
- * Low-poly riverside diorama: water, rounded banks on a ground disc, a village (two roof kinds, doors, windows), foliage
+ * Low-poly riverside diorama (one stretch of the endless river, MFW-58): water, rounded banks on ground strips, a village (two roof kinds, doors, windows), foliage
  * (leaf-clump trees, bushes and reeds, MFW-70), rocks, lamps and a pier. No lights: windows and lanterns glow by emissive per
  * light preset. Only the foliage moves: it sways on HIGH and MEDIUM, and only on frames that are already rendered.
  */
@@ -87,8 +87,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
   const water = useRibbonGeometry(layout.water);
   const bankLeft = useBankGeometry(layout.banks.left);
   const bankRight = useBankGeometry(layout.banks.right);
-  const ground = useMemo(() => createGroundGeometry(layout.ground), [layout.ground]);
-  useEffect(() => () => ground.dispose(), [ground]);
+  const ground = useRibbonGeometry(layout.ground.strips); // MFW-58: the stretch's ground strips (faces up, local xz)
   const village = VILLAGE_LIGHTS[lightPreset];
   const parts = RIVER_ENVIRONMENT_PARTS;
   const lampProxy = useMemo(() => createTapProxy(LAMP_TAP_RADIUS), []);
@@ -127,7 +126,6 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         name={SCENE_OBJECT_NAMES.ground}
         geometry={ground}
         position={[0, layout.ground.y, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
         renderOrder={RIVER_GROUND_RENDER_ORDER}
         receiveShadow={shadows}
         onClick={onLandClick}
