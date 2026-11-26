@@ -682,7 +682,7 @@
           "summary": "More scene gimmicks — houses, trees, villagers and sky lanterns react to taps",
           "goal": "Small delights everywhere: most things in the scene answer a tap.",
           "ac": [
-            "New tap reactions (open question 35): house → windows light up with a puff of chimney smoke; tree → leaves shake and a few fall; villager → waves or hops; lantern → a sky lantern (โคมลอย) rises and fades; sky → a firework is launched",
+            "New tap reactions (open question 35): house → windows light up; tree → leaves shake; villager → hops; lantern → a sky lantern (โคมลอย) rises and fades; sky → a firework is launched (the chimney smoke, the falling leaves and the villager wave are 11.6)",
             "Anything in the scene can be interacted with (owner, 2026-11-25): every visible object type answers a tap; feedback is natural (a small bounce or light change, no rings or halos — see 13.3) so people learn what can be tapped",
             "Every effect comes from ObjectPoolManager with a fixed cap from config: no new objects per tap and no per-frame allocation (r3f-perf-reviewer PASS)",
             "Reduced motion: reactions are instant state changes without bounce or particles; nothing flashes faster than WCAG 2.3.1 allows",
@@ -721,6 +721,28 @@
           "blockedBy": [
             "11.2",
             "9.5"
+          ]
+        },
+        {
+          "id": "11.6",
+          "summary": "Scene gimmicks, part 2 — chimney smoke, falling leaves and a villager wave",
+          "goal": "The rest of the tap reactions the owner asked for (open question 35), split from 11.4 by the lead on 2026-11-26 because 11.4 was too large for one PR.",
+          "ac": [
+            "House tap: besides the window light-up of 11.4, a puff of smoke rises from the roof (or from a small chimney added to the house model) and fades",
+            "Tree tap: besides the leaf shake of 11.4, a few leaves fall and fade on the ground",
+            "Villager tap: the villager waves (or keeps the hop of 11.4 if a wave needs arms the silhouette does not have — the lead decides and records it)",
+            "Every effect comes from ObjectPoolManager with a fixed cap from config; no new shader program, no new objects per tap, no per-frame allocation; natural look, no rings or halos (13.3)",
+            "Reduced motion: instant state changes without particles; unit tests cover each reaction's timing and pool cap; e2e taps at least one of the new reactions"
+          ],
+          "labels": [
+            "loy-krathong",
+            "interaction",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "11.4"
           ]
         }
       ]
