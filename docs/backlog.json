@@ -639,7 +639,7 @@
           "ac": [
             "Travelling along the river never reaches an edge: banks, trees, houses and villagers continue ahead and behind, generated deterministically from the position along the river (everyone sees the same scenery)",
             "Zones stream in seamlessly: the neighbouring zone's krathongs load before they come into view, far zones are unloaded and disposed, and the number of rendered items stays within the tier budget (80 per zone, invariant E); the zone navigator becomes a position indicator and jump shortcut. When the event has only one zone (or after the last zone) the river wraps around: the same zone comes back as if the river flows on (open question 37)",
-            "Positions are still derived only from stored coords (zone_id + SplinePathCoord); nothing new is persisted; the 2D fallback shows the same continuous river from the same data",
+            "Positions are still derived only from stored coords (zone_id + SplinePathCoord); nothing new is persisted; the 2D fallback keeps reading the same data through the same stretch mapping as the 3D scene (unit-tested agreement); the continuous 2D river view is 11.5",
             "Memory stays flat during a long travel and no hitch exceeds the tier budget when a zone streams in (probe numbers recorded in the PR the same way as docs/perf/MFW-34.md)",
             "Find My and fly-to work along the whole river; reduced motion uses instant cuts"
           ],
@@ -699,6 +699,28 @@
             "11.3",
             "9.3",
             "9.4"
+          ]
+        },
+        {
+          "id": "11.5",
+          "summary": "2D fallback shows the continuous river",
+          "goal": "The 2D view shows the same endless river as the 3D world, from the same data (second slice of 11.2, split by the lead on 2026-11-26 because 11.2 was too large for one PR).",
+          "ac": [
+            "FALLBACK_2D draws the river as one continuous strip you can travel along: stretches join without a page flip, using the shared stretch mapping of 11.2 (zone index + SplinePathCoord → position along the endless river); no 2D-only position field (invariant B) and round-trip tests cover the 2D mapping",
+            "Zones stream in 2D as in 3D: the neighbouring zone loads before it comes into view, far zones are dropped, and at most the item cap is drawn per zone (invariant E); with one zone (or after the last zone) the river wraps around",
+            "The zone navigator shows the position along the river and jumps one stretch; Find My brings the krathong into view anywhere along the river; reduced motion uses instant cuts",
+            "Nothing new is persisted; memory stays flat during a long travel",
+            "e2e covers travelling across a stretch boundary in FALLBACK_2D"
+          ],
+          "labels": [
+            "fallback2d",
+            "world",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "11.2",
+            "9.5"
           ]
         }
       ]
