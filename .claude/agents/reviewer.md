@@ -49,8 +49,9 @@ that only say "could be better".
 ## Report (only this)
 
 ```
+VERDICT: PASS | FIX FIRST        <- the very first line of the report; FIX FIRST when any Critical/High
 ### Verdict
-PASS | FIX FIRST        (FIX FIRST when any Critical/High)
+PASS | FIX FIRST
 ### Findings
 **[Severity]** path:line — title
 Scenario: …

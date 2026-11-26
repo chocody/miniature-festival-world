@@ -76,7 +76,8 @@ Low-severity / style notes are out of scope — leave them to `reviewer`.
 
 ## What to report
 
-Return ONLY this structure:
+Return ONLY this structure. The very first line of the report is `VERDICT: PASS` or `VERDICT: FIX FIRST`
+(the loop refuses to open a PR otherwise), then:
 
 ### Verdict
 **PASS** or **FIX FIRST** (any Critical or High = FIX FIRST)
