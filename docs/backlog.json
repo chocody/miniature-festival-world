@@ -703,24 +703,23 @@
         },
         {
           "id": "11.5",
-          "summary": "2D fallback shows the continuous river",
-          "goal": "The 2D view shows the same endless river as the 3D world, from the same data (second slice of 11.2, split by the lead on 2026-11-26 because 11.2 was too large for one PR).",
+          "summary": "Remove the 2D fallback",
+          "goal": "The owner decided on 2026-11-26 to drop the flat 2D fallback (\"เอา 2d ออกไปเลย\"); this replaces the earlier 11.5 (continuous 2D river), which is no longer built. Only the 3D scene remains, with the quality tiers HIGH, MEDIUM and LOW.",
           "ac": [
-            "FALLBACK_2D draws the river as one continuous strip you can travel along: stretches join without a page flip, using the shared stretch mapping of 11.2 (zone index + SplinePathCoord → position along the endless river); no 2D-only position field (invariant B) and round-trip tests cover the 2D mapping",
-            "Zones stream in 2D as in 3D: the neighbouring zone loads before it comes into view, far zones are dropped, and at most the item cap is drawn per zone (invariant E); with one zone (or after the last zone) the river wraps around",
-            "The zone navigator shows the position along the river and jumps one stretch; Find My brings the krathong into view anywhere along the river; reduced motion uses instant cuts",
-            "Nothing new is persisted; memory stays flat during a long travel",
-            "e2e covers travelling across a stretch boundary in FALLBACK_2D"
+            "The FALLBACK_2D tier is gone: the tiers are HIGH | MEDIUM | LOW in useDeviceStore and performance.config.ts; a device whose FPS stays low steps down to LOW and stays there instead of switching to 2D",
+            "Without WebGL the stage shows a short Thai notice that the device cannot show the 3D scene, instead of the scene; nothing crashes, and an e2e covers it (the notice text and what else the page offers are a loop decision recorded for the owner)",
+            "src/core/fallback2d, src/components/canvas2d, the 2D-only tests and e2e specs, the 2D day/night switch path and every import of them are removed; shared code used by 3D (coordinate converters, stretch mapping, zone paging) stays, with its 3D round-trip tests",
+            "Invariant A (parametric coordinates only) is unchanged; CLAUDE.md invariants B and F, docs/spec/open-questions.md and the look doc record the owner decision; no shader program or render budget is added",
+            "typecheck, lint, unit tests, build and the full e2e are green"
           ],
           "labels": [
-            "fallback2d",
-            "world",
+            "loy-krathong",
             "perf",
-            "dev-opus"
+            "3d",
+            "cleanup"
           ],
           "blockedBy": [
-            "11.2",
-            "9.5"
+            "11.2"
           ]
         },
         {
