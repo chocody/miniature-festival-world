@@ -1,16 +1,24 @@
 import { buildPropTapTargets, type PropTapTarget } from "@/components/canvas3d/effects/propTapTargets";
 import {
+  buildHouseSmokeOrigins,
+  buildTreeLeafAnchors,
+  type TreeLeafAnchor,
+} from "@/components/canvas3d/effects/sceneEffectAnchors";
+import { CHIMNEY_SMOKE_LOOK } from "@/config/gimmicks.config";
+import {
   LOY_KRATHONG_BUSH_CLUMPS,
   LOY_KRATHONG_RIVER_ENVIRONMENT,
   LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION,
   LOY_KRATHONG_TREE_SHAPES,
+  LOY_KRATHONG_TREES,
   RIVER_ENVIRONMENT_PARTS,
   RIVER_FOLIAGE_PARTS,
   type RiverFoliageParts,
 } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_VILLAGERS, VILLAGER_HEIGHT } from "@/config/events/loyKrathong.life.config";
-import { FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
+import { FALLING_LEAF_SLOTS, FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
 import type { ScenePartSpec } from "@/config/scene.config";
+import type { WorldVec3 } from "@/core/coordinates";
 import { alongOf } from "@/core/coordinates/endlessRiverFrame";
 import {
   TREE_SHAPE_IDS,
@@ -70,6 +78,26 @@ export const LOY_KRATHONG_PROP_TAP_TARGETS: readonly PropTapTarget[] = buildProp
   RIVER_FOLIAGE_PARTS.FULL.riversidePlant,
   LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude,
 );
+
+/** MFW-72: one chimney-smoke origin per house (its roof top, no chimney model), derived once from the layout. Render-time only. */
+export const LOY_KRATHONG_HOUSE_SMOKE_ORIGINS: readonly WorldVec3[] = buildHouseSmokeOrigins(
+  LOY_KRATHONG_RIVER_LAYOUT.houses,
+  LOY_KRATHONG_RIVER_ENVIRONMENT.houses.map((h) => h.roof),
+  RIVER_ENVIRONMENT_PARTS,
+  CHIMNEY_SMOKE_LOOK.originLiftY,
+);
+
+/** MFW-72: the falling-leaf paths of every tree (FALLING_LEAF_SLOTS each), derived once from the layout. Render-time only. */
+export const LOY_KRATHONG_TREE_LEAF_ANCHORS: readonly TreeLeafAnchor[] = buildTreeLeafAnchors({
+  trees: LOY_KRATHONG_TREES,
+  trunks: LOY_KRATHONG_RIVER_FOLIAGE.trunks,
+  clumps: LOY_KRATHONG_RIVER_FOLIAGE.clumps,
+  clumpOwners: LOY_KRATHONG_RIVER_FOLIAGE.clumpOwners,
+  clumpLumpAmplitude: LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude,
+  channel: LOY_KRATHONG_RIVER_LAYOUT.channel,
+  bankProfile: LOY_KRATHONG_RIVER_LAYOUT.bankProfile,
+  slots: FALLING_LEAF_SLOTS,
+});
 
 /** World position of a lamp's head (centre of the glow shell and of the tap proxy). Render-time only. */
 export function lampHeadPosition(lamp: InstanceTransform, headYOffset: number): readonly [number, number, number] {

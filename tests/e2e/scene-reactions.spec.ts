@@ -5,6 +5,7 @@ import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import {
+  E2E_CHIMNEY_SMOKE_NAME,
   E2E_DRAG_START_DISTANCE_PX,
   E2E_FIREWORK_NAME,
   E2E_PINNED_TIER_URL,
@@ -21,6 +22,7 @@ import {
  * MFW-60 (backlog 11.4): scene reactions on the production build (SwiftShader). A sky tap (bare land) launches a firework, a house
  * tap lights its windows, a drag fires nothing, no reaction adds a shader program and nothing draws a ring or a halo. Every target
  * is located through the scene probe (never a fixed screen point) and every check polls a DOM attribute.
+ * MFW-72 (backlog 11.6): the house tap also puffs chimney smoke (no new program, no ring or halo); under reduced motion it does not.
  */
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
@@ -97,6 +99,8 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "house-lights");
   await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
   await expect.poll(() => sceneObjectVisible(page, E2E_WINDOW_GLOW_NAME)).toBe(true);
+  // MFW-72: the smoke puff is drawn too; the program and ring / halo checks below cover it.
+  await expect.poll(() => sceneObjectVisible(page, E2E_CHIMNEY_SMOKE_NAME)).toBe(true);
 
   await waitForCameraRest(page);
   const water = await locateStableTarget(page, "water");
@@ -129,7 +133,10 @@ test.describe("reduced motion", () => {
     await page.touchscreen.tap(house.x, house.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "house-lights");
     await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
+    // MFW-72: the instant state is the window light-up; no smoke particles under reduced motion.
+    await expect.poll(() => sceneObjectVisible(page, E2E_WINDOW_GLOW_NAME)).toBe(true);
     await nextFrames(page);
+    expect(await sceneObjectVisible(page, E2E_CHIMNEY_SMOKE_NAME)).toBe(false);
     expect(errors.pageErrors).toEqual([]);
     expect(errors.consoleErrors).toEqual([]);
   });

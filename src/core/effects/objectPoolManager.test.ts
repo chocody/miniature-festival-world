@@ -63,3 +63,21 @@ describe("MFW-60 pools", () => {
     expect(m.skyLantern.entryAt(0).state).toEqual({ x: 0, y: 0, z: 0 });
   });
 });
+
+describe("MFW-72 pools", () => {
+  it.each(["HIGH", "MEDIUM", "LOW"] as const)("PM1 %s: chimneySmoke and fallingLeaves exist with the tier caps, neutral states", (tier) => {
+    const caps = EFFECT_POOL_CAPS[tier];
+    const m = createObjectPoolManager(caps);
+    expect(m.chimneySmoke.capacity).toBe(caps.chimneySmoke);
+    expect(m.fallingLeaves.capacity).toBe(caps.fallingLeaves);
+    expect(m.chimneySmoke.entryAt(0).state).toEqual({ houseIndex: 0, stretchIndex: 0, driftX: 1, driftZ: 0 });
+    expect(m.fallingLeaves.entryAt(0).state).toEqual({ treeIndex: 0, stretchIndex: 0 });
+    m.chimneySmoke.acquire(1);
+    m.fallingLeaves.acquire(1);
+    expect(m.activeCount("chimneySmoke")).toBe(1);
+    expect(m.activeCount("fallingLeaves")).toBe(1);
+    m.releaseAll();
+    expect(m.activeCount("chimneySmoke")).toBe(0);
+    expect(m.activeCount("fallingLeaves")).toBe(0);
+  });
+});

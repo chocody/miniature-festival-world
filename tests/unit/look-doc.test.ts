@@ -48,4 +48,11 @@ describe("art-direction note (MFW-47 AC1)", () => {
       expect(doc).toContain(term);
     }
   });
+
+  it("documents the scene reactions part 2 (MFW-72, §18)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    for (const term of ["## 18. Scene reactions part 2 (MFW-72", "CHIMNEY_SMOKE_LOOK", "FALLING_LEAF_LOOK", "screenshots/mfw-72/", "hop"]) {
+      expect(doc).toContain(term);
+    }
+  });
 });

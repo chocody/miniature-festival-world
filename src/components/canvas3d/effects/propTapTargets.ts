@@ -51,7 +51,7 @@ function target(kind: PropTapTarget["kind"], index: number, center: WorldVec3, b
 }
 
 /** Axis-aligned box over an owner's clumps (sphere radius = clump scale × (1 + lump)) plus an optional base point → centre + largest half-extent. */
-function foliageBody(
+export function foliageBody(
   clumps: readonly FoliageInstance[],
   owners: readonly FoliageOwnerRef[],
   kind: "tree" | "bush",

@@ -48,6 +48,26 @@ export interface SkyLanternState {
   z: number;
 }
 
+/**
+ * Index into the scene layout's houses whose roof puffs smoke (MFW-72), in stretch `stretchIndex` (drawn at + s·T). Render-time only —
+ * NEVER persisted or sent (invariant A).
+ */
+export interface ChimneySmokeState {
+  houseIndex: number;
+  stretchIndex: number;
+  /** Horizontal drift chosen at tap time (writeSmokeDriftInto: toward the middle of the screen). */
+  driftX: number;
+  driftZ: number;
+}
+/**
+ * Index into the scene layout's trees whose leaves fall (MFW-72), in stretch `stretchIndex` (drawn at + s·T). Render-time only —
+ * NEVER persisted or sent (invariant A).
+ */
+export interface FallingLeavesState {
+  treeIndex: number;
+  stretchIndex: number;
+}
+
 export interface ObjectPoolManager {
   readonly ripple: ObjectPool<RippleState>;
   readonly glow: ObjectPool<LampGlowState>;
@@ -55,6 +75,8 @@ export interface ObjectPoolManager {
   readonly windowGlow: ObjectPool<WindowGlowState>;
   readonly firework: ObjectPool<FireworkState>;
   readonly skyLantern: ObjectPool<SkyLanternState>;
+  readonly chimneySmoke: ObjectPool<ChimneySmokeState>;
+  readonly fallingLeaves: ObjectPool<FallingLeavesState>;
   activeCount(kind: EffectKind): number;
   releaseAll(): void;
 }
@@ -67,6 +89,8 @@ export function createObjectPoolManager(caps: EffectPoolCaps): ObjectPoolManager
   const windowGlow = createObjectPool<WindowGlowState>(caps.windowGlow, () => ({ houseIndex: 0, stretchIndex: 0 }));
   const firework = createObjectPool<FireworkState>(caps.firework, () => ({ x: 0, y: 0, z: 0, paletteIndex: 0 }));
   const skyLantern = createObjectPool<SkyLanternState>(caps.skyLantern, () => ({ x: 0, y: 0, z: 0 }));
+  const chimneySmoke = createObjectPool<ChimneySmokeState>(caps.chimneySmoke, () => ({ houseIndex: 0, stretchIndex: 0, driftX: 1, driftZ: 0 }));
+  const fallingLeaves = createObjectPool<FallingLeavesState>(caps.fallingLeaves, () => ({ treeIndex: 0, stretchIndex: 0 }));
   return {
     ripple,
     glow,
@@ -74,6 +98,8 @@ export function createObjectPoolManager(caps: EffectPoolCaps): ObjectPoolManager
     windowGlow,
     firework,
     skyLantern,
+    chimneySmoke,
+    fallingLeaves,
     activeCount(kind) {
       switch (kind) {
         case "ripple":
@@ -88,6 +114,10 @@ export function createObjectPoolManager(caps: EffectPoolCaps): ObjectPoolManager
           return firework.activeCount;
         case "skyLantern":
           return skyLantern.activeCount;
+        case "chimneySmoke":
+          return chimneySmoke.activeCount;
+        case "fallingLeaves":
+          return fallingLeaves.activeCount;
       }
     },
     releaseAll() {
@@ -97,6 +127,8 @@ export function createObjectPoolManager(caps: EffectPoolCaps): ObjectPoolManager
       windowGlow.releaseAll();
       firework.releaseAll();
       skyLantern.releaseAll();
+      chimneySmoke.releaseAll();
+      fallingLeaves.releaseAll();
     },
   };
 }

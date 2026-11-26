@@ -1183,6 +1183,37 @@ describe("scene reactions (MFW-60)", () => {
     expect(viewport()).toHaveAttribute("data-last-gimmick", "firework");
     expect(pools().firework.capacity).toBe(EFFECT_POOL_CAPS.LOW.firework);
   });
+
+  it("IX6 (MFW-72): a house tap also puffs smoke, a tree tap drops leaves; reduced motion: neither, gimmicks still recorded; LOW caps", () => {
+    const proxy = (c: HTMLElement, name: string) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.propTapPrefix}${name}"]`)!;
+    const first = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(proxy(first.container, "house-0"));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "house-lights");
+    expect(pools().activeCount("chimneySmoke")).toBe(1);
+    fireEvent.click(proxy(first.container, "tree-1"));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "tree-shake");
+    expect(pools().activeCount("fallingLeaves")).toBe(1);
+    first.unmount();
+    useDeviceStore.getState().setReducedMotion(true);
+    try {
+      const reduced = render(<SceneViewport mode="WORLD_EXPLORE" />);
+      fireEvent.click(proxy(reduced.container, "house-0"));
+      expect(viewport()).toHaveAttribute("data-last-gimmick", "house-lights");
+      expect(pools().activeCount("windowGlow")).toBe(1);
+      expect(pools().activeCount("chimneySmoke")).toBe(0);
+      fireEvent.click(proxy(reduced.container, "tree-1"));
+      expect(viewport()).toHaveAttribute("data-last-gimmick", "tree-shake");
+      expect(pools().activeCount("nudge")).toBe(1);
+      expect(pools().activeCount("fallingLeaves")).toBe(0);
+      reduced.unmount();
+    } finally {
+      useDeviceStore.getState().setReducedMotion(false);
+    }
+    useDeviceStore.getState().setQualityTier("LOW");
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(pools().chimneySmoke.capacity).toBe(EFFECT_POOL_CAPS.LOW.chimneySmoke);
+    expect(pools().fallingLeaves.capacity).toBe(EFFECT_POOL_CAPS.LOW.fallingLeaves);
+  });
 });
 
 describe("owner private wish reveal in the popup (MFW-31)", () => {

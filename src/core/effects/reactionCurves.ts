@@ -1,8 +1,11 @@
 import {
+  CHIMNEY_SMOKE_LOOK,
+  FALLING_LEAF_LOOK,
   FIREWORK_LOOK,
   REDUCED_MOTION_TAP_CUE,
   SKY_LANTERN_LOOK,
   TAP_BOUNCE_LOOKS,
+  TAP_SHAKE_WIND,
   TAP_SHAKE_LOOKS,
   VILLAGER_TAP_HOP,
   type NudgeTargetKind,
@@ -165,7 +168,8 @@ export function fireworkDurationMs(reducedMotion: boolean): number {
   return reducedMotion ? FIREWORK_LOOK.reducedMotionHoldMs : FIREWORK_LOOK.shellRiseMs + FIREWORK_LOOK.burstMs;
 }
 
-const GOLDEN_ANGLE_RAD = Math.PI * (3 - Math.sqrt(5));
+/** The golden angle (≈ 137.5°): spreads per-index phases and directions evenly. Geometry, not a product number. */
+export const GOLDEN_ANGLE_RAD = Math.PI * (3 - Math.sqrt(5));
 
 /** Golden-angle (Fibonacci) unit directions into `out` (length ≥ 3·count); deterministic. Called once per mesh, never per frame. */
 export function fireworkDirectionsInto(count: number, out: Float32Array): Float32Array {
@@ -223,4 +227,190 @@ export function writeSkyLanternAt(ageMs: number, reducedMotion: boolean, out: La
   out.size = u < L.fadeStartRatio ? 1 : (1 - u) / (1 - L.fadeStartRatio);
   out.done = false;
   return out;
+}
+
+/*
+ * MFW-72 (backlog 11.6): chimney smoke and falling leaves. No reduced-motion parameter: under reduced motion these effects never start
+ * (SceneEffects) and running ones are released (the writers); the instant state is MFW-60's window glow / size-up cue.
+ */
+
+export interface SmokePuffFrame {
+  dx: number; // offsets from the smoke origin (roof top)
+  dy: number;
+  dz: number;
+  radius: number; // world radius of the puff
+  visible: boolean;
+  done: boolean;
+}
+export function createSmokePuffFrame(): SmokePuffFrame {
+  return { dx: 0, dy: 0, dz: 0, radius: 0, visible: false, done: true };
+}
+
+/**
+ * Puff k of a smoke drifting along the horizontal world vector (driftX, driftZ) (from writeSmokeDriftInto; its length may exceed 1):
+ * a = age − k·staggerMs; a < 0 → invisible, not done; u = a / puffLifeMs ≥ 1 → invisible, done, radius 0. Else e = 1 − (1 − u)²;
+ * dy = riseHeight·e; w = wobbleAmplitude·sin(2π·a / wobblePeriodMs + k·GOLDEN_ANGLE_RAD) across the drift; g = driftDistance·(1 − (1 − u)^
+ * driftEaseExponent); dx = driftX·g + w·(−driftZ)/|d|; dz = driftZ·g + w·driftX/|d|; grow = start + (end − start)·e; radius = grow for u < fadeStartRatio,
+ * else grow·(1 − u)/(1 − fadeStartRatio); visible = radius > 0. A zero drift only wobbles along x.
+ */
+export function writeSmokePuffAt(ageMs: number, puffIndex: number, driftX: number, driftZ: number, out: SmokePuffFrame): SmokePuffFrame {
+  const L = CHIMNEY_SMOKE_LOOK;
+  const a = normaliseAge(ageMs) - puffIndex * L.staggerMs;
+  out.dx = 0;
+  out.dy = 0;
+  out.dz = 0;
+  out.radius = 0;
+  if (!(a >= 0)) {
+    out.visible = false;
+    out.done = false;
+    return out;
+  }
+  const u = a / L.puffLifeMs;
+  if (u >= 1) {
+    out.visible = false;
+    out.done = true;
+    return out;
+  }
+  const ease = 1 - (1 - u) ** 2;
+  const w = L.wobbleAmplitude * Math.sin((TAU * a) / L.wobblePeriodMs + puffIndex * GOLDEN_ANGLE_RAD);
+  const len = Math.hypot(driftX, driftZ);
+  const px = len > 0 ? -driftZ / len : 0;
+  const pz = len > 0 ? driftX / len : 1;
+  out.dy = L.riseHeight * ease;
+  const drift = L.driftDistance * (1 - (1 - u) ** L.driftEaseExponent);
+  out.dx = driftX * drift + px * w;
+  out.dz = driftZ * drift + pz * w;
+  const grow = L.startRadius + (L.endRadius - L.startRadius) * ease;
+  out.radius = u < L.fadeStartRatio ? grow : (grow * (1 - u)) / (1 - L.fadeStartRatio);
+  out.visible = out.radius > 0;
+  out.done = false;
+  return out;
+}
+
+/** Mutable horizontal world vector (render-time only). */
+export interface SmokeDrift {
+  x: number;
+  z: number;
+}
+
+/**
+ * The drift of one smoke, chosen once per tap so the plume leans toward the middle of the screen (it never hides under the top card
+ * or runs off an edge). Inputs: the smoke origin in NDC (ndcX, ndcY), the view aspect (width / height), the camera's +X axis (right)
+ * and +Z axis (back, toward the viewer) in world space. Screen target s = normalise(−ndcX·aspect, −ndcY) (screen right / up); world
+ * drift = rightH·sx − backH·sy / max(backY, minElevationSin) (rightH, backH = the horizontal unit parts; moving toward the viewer moves
+ * down the screen by sin(elevation) per unit, hence the division). Near the centre (|s| < centreFallbackNdc), a degenerate camera or
+ * non-finite input → TAP_SHAKE_WIND. Allocation-free.
+ */
+export function writeSmokeDriftInto(
+  ndcX: number,
+  ndcY: number,
+  aspect: number,
+  rightX: number,
+  rightZ: number,
+  backX: number,
+  backY: number,
+  backZ: number,
+  out: SmokeDrift,
+): SmokeDrift {
+  const L = CHIMNEY_SMOKE_LOOK;
+  out.x = TAP_SHAKE_WIND.windDirX;
+  out.z = TAP_SHAKE_WIND.windDirZ;
+  const sxRaw = -ndcX * (Number.isFinite(aspect) && aspect > 0 ? aspect : 1);
+  const syRaw = -ndcY;
+  const sLen = Math.hypot(sxRaw, syRaw);
+  const rLen = Math.hypot(rightX, rightZ);
+  const bLen = Math.hypot(backX, backZ);
+  if (!(sLen >= L.centreFallbackNdc) || !(rLen > 0) || !(bLen > 0) || !Number.isFinite(backY)) return out;
+  const sx = sxRaw / sLen;
+  const sy = syRaw / sLen;
+  const toward = -sy / Math.max(backY, L.minElevationSin);
+  out.x = (rightX / rLen) * sx + (backX / bLen) * toward;
+  out.z = (rightZ / rLen) * sx + (backZ / bLen) * toward;
+  return out;
+}
+
+/** Whole smoke life: the last puff leaves at (puffs − 1)·staggerMs and lives puffLifeMs. */
+export function chimneySmokeDurationMs(puffs: number): number {
+  return Math.max(0, puffs - 1) * CHIMNEY_SMOKE_LOOK.staggerMs + CHIMNEY_SMOKE_LOOK.puffLifeMs;
+}
+/** The smoke is still emitting (a re-tap on the same house is absorbed) until its last puff has left. */
+export function chimneySmokeEmitMs(puffs: number): number {
+  return Math.max(0, puffs - 1) * CHIMNEY_SMOKE_LOOK.staggerMs;
+}
+
+export interface FallingLeafFrame {
+  fall: number; // 0 at the spawn point … 1 at the landing point
+  sway: number; // world offset across the wind
+  yawRad: number;
+  tiltRad: number;
+  size: number; // × FALLING_LEAF_LOOK.length
+  visible: boolean;
+  done: boolean;
+}
+export function createFallingLeafFrame(): FallingLeafFrame {
+  return { fall: 0, sway: 0, yawRad: 0, tiltRad: 0, size: 0, visible: false, done: true };
+}
+
+/**
+ * Leaf k of a fall: a = age − k·staggerMs; a < 0 → invisible, size 0. Fall phase (u = a / fallMs < 1): fall = u²(3 − 2u),
+ * φ = 2π·a / swayPeriodMs + k·GOLDEN_ANGLE_RAD, sway = swayAmplitude·sin φ·(1 − u), tilt = (tiltAmplitudeRad·cos φ − flightPitchRad)·(1 − u⁴)
+ * (negative = the spine points up, the face shows; 0 = flat),
+ * yaw = 2π·spinTurns·u + k·GOLDEN_ANGLE_RAD, size 1. Rest (restMs): fall 1, sway 0, tilt 0, yaw final, size 1. Fade (fadeMs):
+ * size = 1 − (a − fallMs − restMs) / fadeMs. After → invisible, done.
+ */
+export function writeFallingLeafAt(ageMs: number, leafIndex: number, out: FallingLeafFrame): FallingLeafFrame {
+  const L = FALLING_LEAF_LOOK;
+  const a = normaliseAge(ageMs) - leafIndex * L.staggerMs;
+  const phase0 = leafIndex * GOLDEN_ANGLE_RAD;
+  out.sway = 0;
+  out.tiltRad = 0;
+  if (!(a >= 0)) {
+    out.fall = 0;
+    out.yawRad = phase0;
+    out.size = 0;
+    out.visible = false;
+    out.done = false;
+    return out;
+  }
+  if (a < L.fallMs) {
+    const u = a / L.fallMs;
+    const phi = (TAU * a) / L.swayPeriodMs + phase0;
+    out.fall = u * u * (3 - 2 * u);
+    out.sway = L.swayAmplitude * Math.sin(phi) * (1 - u);
+    out.tiltRad = (L.tiltAmplitudeRad * Math.cos(phi) - L.flightPitchRad) * (1 - u ** 4); // pitched up in flight, flat on landing
+    out.yawRad = TAU * L.spinTurns * u + phase0;
+    out.size = 1;
+    out.visible = true;
+    out.done = false;
+    return out;
+  }
+  out.fall = 1;
+  out.yawRad = TAU * L.spinTurns + phase0;
+  const fadeAge = a - L.fallMs - L.restMs;
+  if (fadeAge < 0) {
+    out.size = 1;
+    out.visible = true;
+    out.done = false;
+    return out;
+  }
+  if (fadeAge < L.fadeMs) {
+    out.size = 1 - fadeAge / L.fadeMs;
+    out.visible = out.size > 0;
+    out.done = false;
+    return out;
+  }
+  out.size = 0;
+  out.visible = false;
+  out.done = true;
+  return out;
+}
+
+/** Whole fall life: the last leaf leaves at (leaves − 1)·staggerMs, falls, rests and fades. */
+export function fallingLeavesDurationMs(leaves: number): number {
+  const L = FALLING_LEAF_LOOK;
+  return Math.max(0, leaves - 1) * L.staggerMs + L.fallMs + L.restMs + L.fadeMs;
+}
+/** The fall is still "in the air" (a re-tap on the same tree is absorbed) until its last leaf has landed. */
+export function fallingLeavesEmitMs(leaves: number): number {
+  return Math.max(0, leaves - 1) * FALLING_LEAF_LOOK.staggerMs + FALLING_LEAF_LOOK.fallMs;
 }

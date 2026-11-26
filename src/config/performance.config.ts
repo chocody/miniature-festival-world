@@ -97,20 +97,32 @@ export const TIER_ANTIALIAS: Readonly<Record<RenderTier, boolean>> = Object.free
 
 /**
  * Pooled scene effects (spec §3 core/effects: "ObjectPoolManager (Ripples, Fireworks, Confetti, Glow)"). ripple + glow since MFW-28;
- * MFW-60 adds nudge (a tapped tree / bush / reed / rock / pier / villager moves), windowGlow (house lights), firework and skyLantern.
+ * MFW-60 adds nudge (a tapped tree / bush / reed / rock / pier / villager moves), windowGlow (house lights), firework and skyLantern;
+ * MFW-72 adds chimneySmoke (a smoke puff from a tapped house's roof) and fallingLeaves (a few leaves fall from a tapped tree).
  */
-export const EFFECT_KINDS = ["ripple", "glow", "nudge", "windowGlow", "firework", "skyLantern"] as const;
+export const EFFECT_KINDS = [
+  "ripple",
+  "glow",
+  "nudge",
+  "windowGlow",
+  "firework",
+  "skyLantern",
+  "chimneySmoke",
+  "fallingLeaves",
+] as const;
 export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type EffectPoolCaps = Readonly<Record<EffectKind, number>>;
 
 /**
  * Max concurrent pooled effects per 3D tier (invariant E: fixed cap; a new tap recycles the oldest). ripple / glow: PLACEHOLDER
  * (spec silent, MFW-28). nudge / windowGlow / firework / skyLantern: DRAFT (MFW-60 loop decision, not yet reviewed by the owner).
+ * chimneySmoke / fallingLeaves (concurrent smokes / leaf falls, = the windowGlow column): DRAFT (MFW-72 loop decision, not yet
+ * reviewed by the owner).
  */
 export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Object.freeze({
-  HIGH: Object.freeze({ ripple: 8, glow: 6, nudge: 8, windowGlow: 3, firework: 3, skyLantern: 4 }),
-  MEDIUM: Object.freeze({ ripple: 6, glow: 4, nudge: 6, windowGlow: 2, firework: 2, skyLantern: 3 }),
-  LOW: Object.freeze({ ripple: 3, glow: 2, nudge: 4, windowGlow: 1, firework: 1, skyLantern: 1 }),
+  HIGH: Object.freeze({ ripple: 8, glow: 6, nudge: 8, windowGlow: 3, firework: 3, skyLantern: 4, chimneySmoke: 3, fallingLeaves: 3 }),
+  MEDIUM: Object.freeze({ ripple: 6, glow: 4, nudge: 6, windowGlow: 2, firework: 2, skyLantern: 3, chimneySmoke: 2, fallingLeaves: 2 }),
+  LOW: Object.freeze({ ripple: 3, glow: 2, nudge: 4, windowGlow: 1, firework: 1, skyLantern: 1, chimneySmoke: 1, fallingLeaves: 1 }),
 });
 
 /**
@@ -119,6 +131,13 @@ export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Ob
  * yet reviewed by the owner).
  */
 export const FIREWORK_SPARKS_PER_BURST: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 32, MEDIUM: 24, LOW: 12 });
+
+/** Smoke puffs per house tap per 3D tier (LOW = the cheap variant: fewer puffs; fix round 5/4/3 → 6/5/3, denser). DRAFT (MFW-72 loop decision, not yet reviewed by the owner). */
+export const CHIMNEY_SMOKE_PUFFS_PER_TAP: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 6, MEDIUM: 5, LOW: 3 });
+/** Falling leaves per tree tap per 3D tier (LOW = the cheap variant: fewer leaves; fix round 6/5/3 → 8/6/3). DRAFT (MFW-72 loop decision, not yet reviewed by the owner). */
+export const FALLING_LEAVES_PER_TAP: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 8, MEDIUM: 6, LOW: 3 });
+/** Leaf paths precomputed per tree: enough for the largest per-tap count (technical, MFW-72). */
+export const FALLING_LEAF_SLOTS = Math.max(...Object.values(FALLING_LEAVES_PER_TAP));
 
 // Technical numbers (lead decision, MFW-49)
 
