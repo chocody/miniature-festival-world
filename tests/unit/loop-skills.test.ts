@@ -88,6 +88,52 @@ describe("loop skills", () => {
     }
   });
 
+  it("loop-ticket wires the loop tooling and its gates (they must not disappear)", () => {
+    for (const marker of [
+      "scripts/loop-brief.mjs",
+      "docs/loop/context.md",
+      "scripts/spec-lint.mjs",
+      "24 KB for S/M, 40 KB for L",
+      "scripts/loop-verify.mjs",
+      "tree hash",
+      "--verdicts <SCRATCH> --key <KEY>",
+      "VERDICT: PASS|FIX FIRST|GOAL NOT MET",
+      "pr-land <PR> --sha <SHA>",
+      "scripts/loop-metrics.mjs",
+    ]) {
+      expect(ticket).toContain(marker);
+    }
+    // every pr-create the skill shows carries the verdict gate (a parked ticket's `--draft` PR has no verdicts by definition)
+    const creates = ticket.split("\n").filter((l) => l.includes("gh-rest.mjs pr-create") && !l.includes("--draft"));
+    expect(creates.length).toBeGreaterThan(0);
+    for (const l of creates) expect(l).toContain("--verdicts");
+    // the brief is generated, never a pasted copy of the invariants
+    expect(ticket).not.toContain("pasted verbatim");
+  });
+
+  it("every merge in Step 7 goes through pr-land, the normal and the CI-rerun path", () => {
+    const step7 = ticket.slice(ticket.indexOf("## Step 7"), ticket.indexOf("## Review mode"));
+    expect(step7).toMatch(/pr-land <PR> --sha <SHA> \[--risk\]\n/); // normal path
+    expect(step7).toMatch(/pr-land <PR> --sha <SHA> \[--risk\] --ignore <failed check-run id/); // after ci-rerun
+    expect(step7).not.toMatch(/has already merged/);
+    expect(step7).toContain("is **not** a CI attempt and never gets a `ci-rerun`");
+    // the old unpinned merge command is gone: pr-merge is only mentioned, never a command line to run
+    expect(step7).not.toMatch(/^\s*(?:cd <WT> && )?node scripts\/gh-rest\.mjs pr-merge/m);
+  });
+
+  it("the reviewing agents start their report with a VERDICT line", () => {
+    for (const name of ["reviewer", "qa", "privacy-auditor", "r3f-perf-reviewer"]) {
+      expect(read(`.claude/agents/${name}.md`)).toContain("VERDICT: PASS");
+    }
+  });
+
+  it("lead.md carries the sizing step, the caps and the 3D planning checklist", () => {
+    const lead = read(".claude/agents/lead.md");
+    for (const marker of ["sizing", "24 KB (24,576 bytes) for S and M, 40 KB (40,960 bytes) for L", "3D / canvas work", "one timer/clock per canvas", "no new shader program"]) {
+      expect(lead).toContain(marker);
+    }
+  });
+
   it("loop-epic supports a cap, parallel lanes and a merge queue", () => {
     const hint = frontmatter(epic)["argument-hint"];
     expect(hint).toContain("--max");

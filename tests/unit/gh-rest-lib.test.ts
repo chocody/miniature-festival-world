@@ -11,6 +11,8 @@ import {
   gitNetArgs,
   isBranchName,
   parseHttpStatus,
+  requiredVerdictRoles,
+  verdictProblems,
   selectCiRun,
   squashTitle,
   summarizePr,
@@ -284,5 +286,47 @@ describe("createGitHub", () => {
     expect(calls[1]).toEqual(expect.arrayContaining(["POST", `${REPO}/actions/runs/123/rerun-failed-jobs`]));
     const refused = fakeRun([checkRuns, fail(403, "forbidden")]);
     expect(() => createGitHub({ run: refused.run }).ciRerun(SHA)).toThrow(GhApiError);
+  });
+});
+
+describe("verdict gate (pr-create --verdicts)", () => {
+  const files = (m: Record<string, string>) => (f: string) => (f in m ? m[f] : null);
+  it("always requires reviewer and qa; auditors follow the changed paths", () => {
+    expect(requiredVerdictRoles(["README.md"])).toEqual(["reviewer", "qa"]);
+    expect(requiredVerdictRoles(["src/components/canvas3d/Scene.tsx"])).toEqual(["reviewer", "qa", "r3f-perf-reviewer"]);
+    expect(requiredVerdictRoles(["src/core/fallback2d/x.ts", "supabase/migrations/1.sql"]).sort()).toEqual(
+      ["privacy-auditor", "qa", "r3f-perf-reviewer", "reviewer"].sort(),
+    );
+    expect(requiredVerdictRoles(["src/app/api/creations/route.ts"])).toContain("privacy-auditor");
+    expect(requiredVerdictRoles(["README.md"], ["privacy-auditor"])).toContain("privacy-auditor");
+  });
+  it("names the missing qa file", () => {
+    const p = verdictProblems({ key: "MFW-9", roles: ["reviewer", "qa"], read: files({ "MFW-9-reviewer.md": "VERDICT: PASS\n### Findings\nNone" }) });
+    expect(p).toEqual(["missing MFW-9-qa.md (the qa report is required)"]);
+  });
+  it("refuses any first line other than VERDICT: PASS", () => {
+    const read = files({ "MFW-9-reviewer.md": "VERDICT: FIX FIRST\n", "MFW-9-qa.md": "### Verdict\nPASS\n", "MFW-9-r3f-perf-reviewer.md": "\n\nVERDICT: PASS\n" });
+    const p = verdictProblems({ key: "MFW-9", roles: ["reviewer", "qa", "r3f-perf-reviewer"], read });
+    expect(p).toHaveLength(2);
+    expect(p[0]).toContain("MFW-9-reviewer.md: VERDICT: FIX FIRST, needs VERDICT: PASS");
+    expect(p[1]).toContain("MFW-9-qa.md: first line must be");
+  });
+  it("passes when every report says PASS", () => {
+    const read = files({ "MFW-9-reviewer.md": "VERDICT: PASS\n", "MFW-9-qa.md": "VERDICT: PASS\n" });
+    expect(verdictProblems({ key: "MFW-9", roles: ["reviewer", "qa"], read })).toEqual([]);
+  });
+});
+
+describe("mergeRefusal", () => {
+  it("returns pr-merge's refusals as values and null when the PR may merge", () => {
+    const mk = (pr: Record<string, unknown>, files: unknown[] = []) => {
+      const { run } = fakeRun([ok(prJson(pr)), ok(files)]);
+      return createGitHub({ run }).mergeRefusal(7, SHA);
+    };
+    expect(mk({})).toBeNull();
+    expect(mk({ draft: true })).toMatchObject({ merged: false, reason: "PR is a draft" });
+    expect(mk({ head: { sha: OTHER, ref: "feat/MFW-9-y" } })).toMatchObject({ merged: false });
+    expect(mk({ labels: [{ name: "owner-merge" }] })).toMatchObject({ reason: expect.stringContaining("owner-merge required") });
+    expect(mk({}, [{ filename: "supabase/x.sql" }])).toMatchObject({ reason: expect.stringContaining("supabase/") });
   });
 });

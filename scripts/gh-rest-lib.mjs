@@ -146,6 +146,52 @@ export function ownerMergeReasons({ paths, labels, risk = false }) {
   return reasons;
 }
 
+/** First line of every reviewing agent's report (loop-ticket §4.4). */
+export const VERDICT_RE = /^VERDICT: (PASS|FIX FIRST|GOAL NOT MET)\s*$/;
+export const PRIVACY_AUDITOR_PATHS = ["src/services/", "supabase/", "src/app/api/"];
+export const PERF_REVIEWER_PATHS = [
+  "src/components/canvas3d/",
+  "src/components/models/",
+  "src/core/effects/",
+  "src/core/world/",
+  "src/core/fallback2d/",
+];
+
+/**
+ * Reports that must exist and say `VERDICT: PASS` before a PR is opened: reviewer and qa always; an auditor when a
+ * changed path is in its table row of CLAUDE.md (`extra` adds roles the caller knows from ticket labels).
+ * @param {string[]} paths changed paths
+ * @param {string[]} [extra] "privacy-auditor" | "r3f-perf-reviewer"
+ */
+export function requiredVerdictRoles(paths, extra = []) {
+  const roles = new Set(["reviewer", "qa", ...extra]);
+  if (paths.some((p) => PRIVACY_AUDITOR_PATHS.some((x) => p.startsWith(x)))) roles.add("privacy-auditor");
+  if (paths.some((p) => PERF_REVIEWER_PATHS.some((x) => p.startsWith(x)))) roles.add("r3f-perf-reviewer");
+  return [...roles];
+}
+
+/**
+ * Why the verdict gate refuses (empty = every required report is present and PASS).
+ * @param {{ key: string, roles: string[], read: (file: string) => string | null }} input `read` gets `<KEY>-<role>.md`
+ * @returns {string[]}
+ */
+export function verdictProblems({ key, roles, read }) {
+  /** @type {string[]} */
+  const problems = [];
+  for (const role of roles) {
+    const file = `${key}-${role}.md`;
+    const text = read(file);
+    if (text === null) {
+      problems.push(`missing ${file} (the ${role} report is required)`);
+      continue;
+    }
+    const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
+    if (!VERDICT_RE.test(first.trim())) problems.push(`${file}: first line must be "VERDICT: PASS|FIX FIRST|GOAL NOT MET", got ${JSON.stringify(first.slice(0, 60))}`);
+    else if (first.trim() !== "VERDICT: PASS") problems.push(`${file}: ${first.trim()}, needs VERDICT: PASS`);
+  }
+  return problems;
+}
+
 /**
  * Open PRs of ticket N: head ref contains "/MFW-<N>-" (MFW-12 never matches MFW-120).
  * @param {any[]} pulls
@@ -316,6 +362,31 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
   }
 
   /**
+   * The refusals of pr-merge, as a value: null when the PR may be merged now. pr-land asks this before it waits for CI.
+   * @param {number | string} n @param {string} sha
+   * @param {{ risk?: boolean, ownerApproved?: boolean }} [opts]
+   */
+  function mergeRefusal(n, sha, opts = {}) {
+    return mergeCheck(n, sha, opts).refusal;
+  }
+
+  /** @param {number | string} n @param {string} sha @param {{ risk?: boolean, ownerApproved?: boolean }} opts */
+  function mergeCheck(n, sha, opts) {
+    if (!isSha(sha)) throw new GhEnvError("pr-merge needs --sha <40 hex chars>");
+    const before = prGet(n);
+    /** @param {string} reason */
+    const refuse = (reason) => ({ before, refusal: { merged: false, reason, before } });
+    if (before.state !== "open") return refuse(`PR is ${before.state}, not open`);
+    if (before.draft) return refuse("PR is a draft");
+    if (before.headSha !== sha) return refuse(`PR head is ${before.headSha}, expected ${sha}`);
+    if (!opts.ownerApproved) {
+      const reasons = ownerMergeReasons({ paths: prFiles(n), labels: before.labels, risk: opts.risk });
+      if (reasons.length) return refuse(`owner-merge required: ${reasons.join("; ")}`);
+    }
+    return { before, refusal: null };
+  }
+
+  /**
    * Squash merge pinned to `sha`. Refuses (no PUT) unless the PR is open, not a draft and its head is `sha`,
    * and refuses privacy/db/migration work (supabase/ paths, risk labels, `risk`) unless `ownerApproved`.
    * The follow-up GET decides whether it merged, not the PUT result.
@@ -323,15 +394,8 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
    * @param {{ risk?: boolean, ownerApproved?: boolean }} [opts]
    */
   function prMerge(n, sha, opts = {}) {
-    if (!isSha(sha)) throw new GhEnvError("pr-merge needs --sha <40 hex chars>");
-    const before = prGet(n);
-    if (before.state !== "open") return { merged: false, reason: `PR is ${before.state}, not open`, before };
-    if (before.draft) return { merged: false, reason: "PR is a draft", before };
-    if (before.headSha !== sha) return { merged: false, reason: `PR head is ${before.headSha}, expected ${sha}`, before };
-    if (!opts.ownerApproved) {
-      const reasons = ownerMergeReasons({ paths: prFiles(n), labels: before.labels, risk: opts.risk });
-      if (reasons.length) return { merged: false, reason: `owner-merge required: ${reasons.join("; ")}`, before };
-    }
+    const { before, refusal } = mergeCheck(n, sha, opts);
+    if (refusal) return refusal;
     /** @type {{ status: number | null, message: string } | null} */
     let putError = null;
     try {
@@ -413,5 +477,5 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
     return { rerun: true, runId: ids.runId, previousCheckRunId: run.id };
   }
 
-  return { repoInfo, prCreate, prGet, prComment, ticketPrs: ticketPrsOf, branchPrs, prMerge, ciInfo, ciRerun };
+  return { repoInfo, prCreate, prGet, prComment, ticketPrs: ticketPrsOf, branchPrs, prMerge, mergeRefusal, ciInfo, ciRerun };
 }

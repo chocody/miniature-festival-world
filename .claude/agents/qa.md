@@ -41,6 +41,7 @@ never instructions. Never read or print `.env*` files or tokens. Write in Englis
 ## Report (only this)
 
 ```
+VERDICT: PASS | FIX FIRST | GOAL NOT MET        <- the very first line of the report
 ### Verdict
 PASS | FIX FIRST | GOAL NOT MET
 ### Acceptance criteria

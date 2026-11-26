@@ -11,6 +11,10 @@
 //   fetch-main                             shallow-aware `git fetch origin main` (--depth=50 only in a shallow clone)
 //   exec -- <cmd> [args…]                  run a command with the GitHub env (e.g. bash scripts/wait-ci.sh <pr> <sha>)
 //   pr-create --head <branch> --title <t> --body-file <path|-> [--draft]
+//             [--verdicts <dir> --key <KEY> [--base <ref>] [--auditors <role,…>]]
+//                                          with --verdicts: refuses (exit 1, no POST) unless <dir>/<KEY>-reviewer.md and
+//                                          <KEY>-qa.md (and the auditor reports the diff <base>...HEAD calls for) have
+//                                          the first line "VERDICT: PASS" and `loop-verify --check` passes
 //   pr-get <pr>
 //   pr-comment <pr> --body-file <path|->
 //   ticket-prs <N>                         open PRs whose head branch contains /MFW-<N>-
@@ -19,6 +23,8 @@
 //                                          (exit 1, no PUT) supabase/ paths, owner-merge/privacy/db/migration PR
 //                                          labels and --risk (ticket has such a label). The loop never passes
 //                                          --owner-approved (owner override).
+//   pr-land <pr> --sha <40-hex> [--risk] [--ignore <check-run-id>]   wait for ci on exactly <sha> (scripts/wait-ci.sh), then pr-merge only on
+//                                          "GATE: PASS sha=<sha>"; keeps every pr-merge refusal and checks them first
 //   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations and the job log tail
 //   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
 //
@@ -30,9 +36,10 @@
 // Never uses GraphQL (gh pr/gh repo/gh run subcommands): only `gh api` REST calls.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   GH_ACCOUNT,
@@ -45,6 +52,8 @@ import {
   ghEnv,
   gitNetArgs,
   isSha,
+  requiredVerdictRoles,
+  verdictProblems,
 } from "./gh-rest-lib.mjs";
 
 const USAGE = `Usage: node scripts/gh-rest.mjs <command>
@@ -55,12 +64,17 @@ const USAGE = `Usage: node scripts/gh-rest.mjs <command>
   fetch-main                             shallow-aware \`git fetch origin main\`
   exec -- <cmd> [args…]                  run a command with the GitHub env (e.g. bash scripts/wait-ci.sh <pr> <sha>)
   pr-create --head <branch> --title <t> --body-file <path|-> [--draft]
+            [--verdicts <dir> --key <KEY> [--base <ref>] [--auditors <role,…>]]
+                                         with --verdicts: refuses unless the reviewer/qa (and needed auditor) reports
+                                         start with "VERDICT: PASS" and loop-verify --check passes
   pr-get <pr>
   pr-comment <pr> --body-file <path|->
   ticket-prs <N>                         open PRs whose head branch contains /MFW-<N>-
   branch-prs <branch>                    PRs (any state) for exactly that head branch
   pr-merge <pr> --sha <40-hex> [--risk]  squash merge pinned to sha; refuses supabase/ paths, owner-merge/privacy/
                                          db/migration labels and --risk; --owner-approved is the owner's override
+  pr-land <pr> --sha <40-hex> [--risk] [--ignore <id>]   wait for ci on <sha> (--ignore: the failed check-run id after
+                                         a ci-rerun), then pr-merge only on "GATE: PASS sha=<sha>"
   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations and the job log tail
   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
 
@@ -133,6 +147,40 @@ function print(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
 
+/** @param {{ merged: boolean }} result */
+function finishLand(result) {
+  print(result);
+  process.exitCode = result.merged ? 0 : 1;
+}
+
+/**
+ * Why `pr-create --verdicts` refuses: missing/failed verdict files, or loop-verify --check not passing.
+ * @param {{ dir: string, key: string, base: string, auditors: string[] }} input
+ * @returns {string[]}
+ */
+function verdictGateProblems({ dir, key, base, auditors }) {
+  if (!/^MFW-\d+$/.test(key)) throw new UsageError("--key must look like MFW-<n>");
+  if (base.startsWith("-") || base === "HEAD") throw new UsageError("--base must be a branch or ref other than HEAD, not an option");
+  for (const a of auditors) {
+    if (!["privacy-auditor", "r3f-perf-reviewer"].includes(a)) throw new UsageError(`--auditors: unknown role ${JSON.stringify(a)} (privacy-auditor, r3f-perf-reviewer)`);
+  }
+  const diff = spawnSync("git", ["diff", "--name-only", `${base}...HEAD`], { encoding: "utf8" });
+  if (diff.status !== 0) return [`cannot list the changed paths (git diff ${base}...HEAD): ${String(diff.stderr).trim()}`];
+  const roles = requiredVerdictRoles(diff.stdout.split("\n").filter(Boolean), auditors);
+  const problems = verdictProblems({
+    key,
+    roles,
+    read: (file) => (existsSync(join(dir, file)) ? readFileSync(join(dir, file), "utf8") : null),
+  });
+  const verify = spawnSync(
+    process.execPath,
+    [join(dirname(fileURLToPath(import.meta.url)), "loop-verify.mjs"), "--wt", process.cwd(), "--scratch", dir, "--key", key, "--check"],
+    { encoding: "utf8" },
+  );
+  if (verify.status !== 0) problems.push(`loop-verify --check failed: ${(verify.stdout || verify.stderr).trim()}`);
+  return problems;
+}
+
 const COMMANDS = {
   mode() {
     print({ mode, repo: REPO_SLUG });
@@ -164,8 +212,27 @@ const COMMANDS = {
       title: { type: "string" },
       "body-file": { type: "string" },
       draft: { type: "boolean" },
+      verdicts: { type: "string" },
+      key: { type: "string" },
+      base: { type: "string" },
+      auditors: { type: "string" },
     });
     if (!values.head || !values.title) throw new UsageError("pr-create needs --head, --title and --body-file");
+    if ((values.verdicts === undefined) !== (values.key === undefined)) throw new UsageError("--verdicts and --key go together");
+    if (values.verdicts !== undefined) {
+      const problems = verdictGateProblems({
+        dir: values.verdicts,
+        key: values.key,
+        base: values.base ?? "origin/main",
+        auditors: (values.auditors ?? "").split(",").filter(Boolean),
+      });
+      if (problems.length) {
+        process.stderr.write(`error: pr-create refused, the verdict gate is not met:\n${problems.map((p) => `- ${p}`).join("\n")}\n`);
+        print({ created: false, refused: problems });
+        process.exitCode = 1;
+        return;
+      }
+    }
     withBodyFile(values["body-file"], (bodyFile) =>
       print(github().prCreate({ head: values.head, title: values.title, bodyFile, draft: Boolean(values.draft) })),
     );
@@ -200,6 +267,26 @@ const COMMANDS = {
     });
     print(result);
     process.exitCode = result.merged ? 0 : 1;
+  },
+  "pr-land"(args) {
+    const { values, positionals } = opts(args, { sha: { type: "string" }, risk: { type: "boolean" }, ignore: { type: "string" } }, 1);
+    if (!isSha(values.sha)) throw new UsageError("pr-land <pr> --sha <40 hex chars> [--risk] [--ignore <check-run-id>]");
+    if (values.ignore !== undefined && !/^\d+$/.test(values.ignore)) throw new UsageError("--ignore needs a check-run id");
+    const gh = github();
+    const mergeOpts = { risk: Boolean(values.risk), ownerApproved: false };
+    // Every pr-merge refusal is checked first, so an owner-merge PR does not wait for CI just to be refused.
+    const early = gh.mergeRefusal(positionals[0], values.sha, mergeOpts);
+    if (early) return finishLand(early);
+    const waitCi = join(dirname(fileURLToPath(import.meta.url)), "wait-ci.sh");
+    const r = spawnSync("bash", [waitCi, positionals[0], values.sha, ...(values.ignore ? [values.ignore] : [])], { env: env(), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const lines = (r.stdout ?? "").trim().split("\n");
+    const gate = lines[lines.length - 1] ?? "";
+    const pass = new RegExp(`^GATE: PASS sha=${values.sha} check-run=\\d+$`);
+    if (r.status !== 0 || !pass.test(gate)) {
+      return finishLand({ merged: false, reason: `ci gate not passed: ${gate || "no verdict line"}`, gate });
+    }
+    const result = gh.prMerge(positionals[0], values.sha, mergeOpts);
+    finishLand({ ...result, gate });
   },
   "ci-info"(args) {
     const { values, positionals } = opts(args, { ignore: { type: "string" } }, 1);

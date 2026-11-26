@@ -171,39 +171,50 @@ Use the project agents in `.claude/agents/` through the Agent tool (`subagent_ty
 `reviewer`, `qa`, plus `privacy-auditor` and `r3f-perf-reviewer` when they apply. Pass `model` on every Agent
 call per Step 2. They start with zero context: everything is in the brief and the files it names. Save every
 agent's final report to `<SCRATCH>/<KEY>-<role>[-<round>].md` and keep only verdicts and findings in your own
-context.
+context. Roles are `lead`, `dev`, `reviewer`, `qa`, `privacy-auditor`, `r3f-perf-reviewer`. The **latest** report
+of each reviewing role (reviewer, qa, auditors) is also the file without a round suffix,
+`<SCRATCH>/<KEY>-<role>.md`: the PR gate (Step 6.5) reads exactly those, and their first line is
+`VERDICT: PASS|FIX FIRST|GOAL NOT MET`. Save the report as the agent wrote it; never edit a verdict.
 
 ### 4.1 The brief
 
-Write `<SCRATCH>/<KEY>-brief.md` (the roles read it; you give them its path):
-- Working directory (`WT`, absolute), branch name, ticket key + URL + summary + type + labels.
-- Goal and every acceptance criterion from `spec` in the `get` output (that is `docs/backlog.json`, the
-  source of truth); add the Jira `description` only if it says something the spec entry does not.
-- Spec files to read: always `CLAUDE.md` and `docs/spec/README.md`; the epic's loop file
-  `docs/spec/06-loops/loop-<n>.md`; `docs/spec/04-coordinates.md` for coordinate/3D/2D work;
-  `docs/spec/05-privacy-db.md` for privacy/db/api/auth work; `docs/spec/03-structure.md` for where files go.
-- The full "Non-negotiable invariants" section of `CLAUDE.md`, pasted verbatim.
-- Decided open questions (with the decision and who made it). Technical questions left to the lead:
-  "decide, write the decision in the spec's Plan, and append `— Decided in MFW-<N>: <decision>` to that
-  row's "Decide in" cell in `docs/spec/open-questions.md`" (that exact marker is what closes a row; do not
-  reword or delete other rows).
-- Constraints: build only this ticket's AC — nothing from later tickets; no new dependency unless an AC
-  needs it (say why in the report); never read or touch `.env*`; CI and previews have no Supabase env;
-  if the spec is silent, say so instead of inventing numbers or behavior; do not commit.
-- `BASE` for diffs (`main` in a plain run; `origin/main` as of lane start in a lane), the e2e port
-  (`E2E_PORT=<PORT>`), the qa port (`QA_PORT`), `SCRATCH`, the spec path `<SCRATCH>/<KEY>-spec.md`, the dev
-  report path `<SCRATCH>/<KEY>-devreport.md`, and "no human is watching; do not ask questions — report them".
+Generate it with the script (never write it by hand, never paste `CLAUDE.md`'s invariants into it — the agents
+read `CLAUDE.md` themselves):
+```bash
+cd <WT> && node scripts/loop-brief.mjs <KEY> --wt <WT> --base <BASE> --port <PORT> --qa-port <QA_PORT> --scratch <SCRATCH> --context-file docs/loop/context.md
+```
+It runs `node scripts/jira.mjs get <KEY>` itself (add `--get-file <json>` to reuse the output you already have),
+writes `<SCRATCH>/<KEY>-brief.md` and prints the path. The brief holds: `WT`, branch, ticket key/URL/summary/type/labels,
+the goal and **every** acceptance criterion (the `get` output's `acceptanceCriteria`), the spec files to read
+(`CLAUDE.md`, `docs/spec/README.md`, `docs/spec/03-structure.md`, the epic's `docs/spec/06-loops/loop-<n>.md`,
+`04-coordinates.md` for coordinate/3D/2D work, `05-privacy-db.md` for privacy/db/api work), the unresolved open
+questions, the constraints (only this ticket's AC, no new dependency unless an AC needs it, never touch `.env*`, say
+so if the spec is silent, do not commit, no human is watching), `BASE`, `E2E_PORT`, `QA_PORT`, `SCRATCH`, and the
+spec and dev-report paths. `docs/loop/context.md` (shared code/CI facts) is appended.
+
+After generating it, append by hand only what the script cannot know: owner decisions found in Step 1.8 (quote them
+with who decided and when; the dev records them as `— Decided in MFW-<N>: <decision> (owner, Jira comment <date>)` in
+`docs/spec/open-questions.md`), and for a technical open question the line "decide, write the decision in the spec's
+Plan, and append `— Decided in MFW-<N>: <decision>` to that row's "Decide in" cell" (that exact marker closes a row;
+do not reword or delete other rows).
 
 ### 4.2 Lead (`lead`, opus)
 
-Prompt: "Read the brief at <path>; write the spec to <spec path>." When it returns, read the spec and check it
-is **file-level**: every file path to create/modify, exported names with signatures/types, each AC mapped to
-named tests, verify commands. If something is missing, resume the same lead once (SendMessage to it if your
-tools allow, else a new `lead` call with the brief + the current spec + what is missing). Still not
-file-level → the dev uses `opus` (comment the change on Jira).
+Prompt: "Read the brief at <path>; write the spec to <spec path>." The lead first replies with its **sizing** (S/M/L,
+shared files it will touch, a card split proposal if L): if it proposes a split for an L card, treat that as a
+**PARK** ("card too large: <proposal>") unless the ticket's AC clearly fit one PR. Then it writes the spec. Do not read
+the spec whole. Run the linter with the AC count and the size (`--size S|M|L`, from Step 2):
+```bash
+cd <WT> && node scripts/spec-lint.mjs <spec path> --ac <n> --size <S|M|L>
+```
+It checks the 7 headings, that every AC 1..n names a test file, the size cap (**24 KB for S/M, 40 KB for L**) and that
+fenced code is at most 30% of the file. Exit 1 → resume the same lead **once** (SendMessage if your tools allow, else
+a new `lead` call with the brief + the current spec + the linter's list). Still failing → the dev uses `opus`
+(comment the change on Jira) and you read only the parts the linter flagged. A passing spec is file-level by
+construction (paths, signatures, AC → named tests); skim just `## Open questions` and `## Decisions`.
 
 There is no human watching mid-run: do not stop to show Goal/Scope/AC. Post the lead's Goal and Acceptance
-criteria → checks as a Jira comment. If the lead lists an **Open question that is a product decision
+criteria → checks as a Jira comment (read those two sections only). If the lead lists an **Open question that is a product decision
 (Step 1.8 rules) → PARK**. Technical open questions: take the lead's decision; it is recorded in the spec and
 (if a row exists) in `docs/spec/open-questions.md` by the dev. Trivial tasks still get the dev and the full
 review — every ticket gets the full gate.
@@ -244,21 +255,23 @@ dev report and findings) with: reviewer Critical/High, qa HIGH/MEDIUM, auditor C
 re-run reviewer ∥ qa ∥ the same auditors (add an auditor if the fix now touches its paths), telling each the
 previous findings to re-check.
 
-## Step 5 — Verify locally
+## Step 5 — Verify locally (once, on the final tree)
 
-Run each command separately (so you know which one failed) as `cd <WT> && …`:
+Run it **once**, after the last change: after the review/fix round, and after the final rebase or merge of main
+(Step 6.3). The dev has already run typecheck, lint, unit and its own e2e specs; this is the single full run:
 ```bash
-cd <WT> && pnpm typecheck
-cd <WT> && pnpm lint
-cd <WT> && pnpm test
-cd <WT> && pnpm build
-cd <WT> && node -e 'const s=require("net").createServer();s.once("error",()=>{console.log("port <PORT> in use");process.exit(1)});s.listen(<PORT>,()=>s.close(()=>console.log("port <PORT> free")))'
-cd <WT> && E2E_PORT=<PORT> CI=1 pnpm e2e
+cd <WT> && node scripts/loop-verify.mjs --wt <WT> --port <PORT> --scratch <SCRATCH> --key <KEY>
 ```
-`CI=1` makes Playwright start a fresh production server instead of reusing whatever listens on the port
-(a stale server would test old code). If `<PORT>` is busy, do not kill anything — PARK ("port <PORT> in use").
-In a cloud session Playwright uses the pre-installed browser from `PW_CHROMIUM_PATH`; never run
-`playwright install` there (a missing browser is an environment problem → PARK with the error).
+It checks that `<PORT>` is free (busy → exit 3, nothing runs → **PARK** "port <PORT> in use"; never kill a process),
+then runs `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` and `E2E_PORT=<PORT> CI=1 pnpm e2e` as separate
+commands (stops at the first failure), writes `<SCRATCH>/<KEY>-verify.json` bound to the **tree hash** of the working
+tree, and prints only the failing step's log tail (full logs: `<SCRATCH>/<KEY>-verify-<step>.log`). Exit 0 = all five
+green. If anything changes the tree afterwards (an edit, a rebase, a merge of main) the record is void:
+`node scripts/loop-verify.mjs --wt <WT> --scratch <SCRATCH> --key <KEY> --check` exits 1 and `pr-create` (Step 6.5)
+refuses; run the full verify again. `CI=1` makes Playwright start a fresh production server instead of reusing whatever
+listens on the port (a stale server would test old code). In a cloud session Playwright uses the pre-installed
+browser from `PW_CHROMIUM_PATH`; never run `playwright install` there (a missing browser is an environment problem →
+PARK with the error).
 
 Also refuse loosened tests: `git -C <WT> diff <BASE> -- '*.test.*' '*.spec.*' tests/` plus untracked test files
 must not add `.skip(`, `.only(`, `.todo(`, `test.fixme`, `xit(`/`xdescribe(` or delete existing assertions;
@@ -266,8 +279,8 @@ must not add `.skip(`, `.only(`, `.todo(`, `test.fixme`, `xit(`/`xdescribe(` or 
 `tsconfig.json` must not be weakened. Any of that → PARK.
 
 If a command fails: one repair attempt — send dev the spec + the exact failing output ("fix the cause;
-never skip, loosen or delete tests"), then have `reviewer` review only that repair, then re-run **all**
-verify commands. Still red, or the reviewer finds Critical/High in the repair → **PARK**.
+never skip, loosen or delete tests"), then have `reviewer` review only that repair, then re-run the full
+`loop-verify`. Still red, or the reviewer finds Critical/High in the repair → **PARK**.
 
 ## Step 6 — Commit, push, PR, In Review
 
@@ -301,16 +314,16 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
 3. **Sync with main before the first push** (plain run and lane): `node scripts/gh-rest.mjs fetch-main`; if
    `git -C <WT> merge-base --is-ancestor origin/main HEAD` fails, `git -C <WT> rebase origin/main` — allowed
    because the commit has never been pushed. Conflict → `git -C <WT> rebase --abort` and **PARK**
-   ("conflicts with main"). After a rebase re-run **all** Step 5 commands (red → the Step 5 repair rule: one
+   ("conflicts with main"). After a rebase re-run the full Step 5 `loop-verify` (red → the Step 5 repair rule: one
    repair + reviewer, else PARK) and refresh `SHA`.
    Once a branch is pushed it is **never** rebased or force-pushed. If a pushed branch later must pick up
    main (GitHub reports a conflict, `mergeable: false`), `git -C <WT> merge origin/main` (a merge commit, no
-   history rewrite), re-run Step 5, push, set `SHA` to the new head, redo the owner-merge path check (Step 7.3)
+   history rewrite), re-run Step 5 (`loop-verify`), push, set `SHA` to the new head, redo the owner-merge path check (Step 7.3)
    and restart Step 7.1 with the new `SHA`. This does **not** count as a CI attempt. On a conflict PARK.
 4. Push: `cd <WT> && node scripts/gh-rest.mjs git push -u origin <BRANCH>`.
 5. Open the PR (title = commit subject), body in English:
    ```bash
-   cd <WT> && node scripts/gh-rest.mjs pr-create --head <BRANCH> --title "<subject>" --body-file - <<'EOF'
+   cd <WT> && node scripts/gh-rest.mjs pr-create --head <BRANCH> --title "<subject>" --verdicts <SCRATCH> --key <KEY> [--auditors <role,…>] --body-file - <<'EOF'
    ## Summary
    <2–4 sentences from the lead's Goal>. Jira: [MFW-<N>](https://chocody.atlassian.net/browse/MFW-<N>)
 
@@ -338,6 +351,15 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
    EOF
    ```
+   `--verdicts <SCRATCH> --key <KEY>` is the gate: `pr-create` refuses (exit 1, nothing is created) unless
+   `<SCRATCH>/<KEY>-reviewer.md` and `<KEY>-qa.md` exist with the first line `VERDICT: PASS`, the auditor reports the diff
+   `origin/main...HEAD` calls for exist and say `VERDICT: PASS` (`privacy-auditor` for `src/services/`, `supabase/`,
+   `src/app/api/`; `r3f-perf-reviewer` for `src/components/canvas3d/`, `src/components/models/`, `src/core/effects/`,
+   `src/core/world/`, `src/core/fallback2d/`; pass `--auditors privacy-auditor,r3f-perf-reviewer` for an auditor that
+   applies only by ticket label), and `loop-verify --check` passes for the current tree. A refusal lists what is
+   missing: fix that (never edit a verdict file, never skip the flags) — a missing report means that agent has not run
+   yet; a verdict that is not PASS was already handled by Step 4.5, so a refusal here with a non-PASS verdict is a
+   **PARK**.
    The output JSON gives `PR` (`number`), `PR_URL` (`url`) and `headSha`, which must equal `SHA`, otherwise
    PARK. Optionally confirm with `node scripts/gh-rest.mjs pr-get <PR>`.
 6. `node scripts/jira.mjs transition <KEY> in-review` and
@@ -345,23 +367,37 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
 
 ## Step 7 — Merge gate (docs/ci.md)
 
-1. Run the gate as **one background Bash command** (`run_in_background: true`) and wait for its
+1. First decide the route: run `node scripts/jira.mjs get <KEY>` again (labels may have changed) and
+   `git -C <WT> diff --name-only <BASE>...HEAD`. `OWNER_MERGE` = `ownerMergeRequired` is true **or** any
+   changed path starts with `supabase/`.
+   Run the gate as **one background Bash command** (`run_in_background: true`) and wait for its
    completion notification — do not poll or sleep in the foreground:
-   ```bash
-   cd <WT> && node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <PR> <SHA>
-   ```
+   - not `OWNER_MERGE` → `pr-land` waits for CI and merges in one command (it checks every `pr-merge` refusal
+     first, runs `wait-ci.sh`, and calls `pr-merge` only on `GATE: PASS sha=<SHA>` with exactly your `SHA`; it has no
+     override flag):
+     ```bash
+     cd <WT> && node scripts/gh-rest.mjs pr-land <PR> --sha <SHA> [--risk]
+     ```
+     It prints JSON; its `gate` field is the wait's last line, `merged` decides (7.3). After a CI re-run (7.4) the same
+     command takes `--ignore <failed check-run id>`. Every merge of this skill goes through `pr-land`.
+   - `OWNER_MERGE` → only wait; never merge:
+     ```bash
+     cd <WT> && node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <PR> <SHA>
+     ```
    It polls only the `ci` check-run of exactly `SHA` via REST (never `--required`, and an unrelated stuck
    check such as a preview deploy cannot hang it), fails if the PR head moves or more than one `ci` check-run
    exists, re-reads the same check-run by id as the cross-check, and gives up after `WAIT_CI_TIMEOUT_S`
    (default 1800 s) with `GATE: FAIL timeout …`.
 2. **Read the verdict strictly.** PASS means exit code 0 **and** a final line exactly
-   `GATE: PASS sha=<SHA> check-run=<id>` with your `SHA`. Anything else — `GATE: FAIL`, exit 2, a killed
+   `GATE: PASS sha=<SHA> check-run=<id>` with your `SHA` (for `pr-land`: `merged: true` with that `gate`; its
+   `ci gate not passed: …` reason carries the `GATE: FAIL` line and is a failed CI attempt). A `pr-land` refusal
+   **without** a `GATE:` line (it never waited) is **not** a CI attempt and never gets a `ci-rerun`: "owner-merge
+   required: …" → the owner path in 7.3; "PR head is … expected …", "PR is a draft" or "not open" → **PARK**. Anything else — `GATE: FAIL`, exit 2, a killed
    or timed-out command, a missing or truncated last line, another sha — is a **FAIL and counts as a CI
    attempt** (go to 7.4).
 3. PASS →
-   - **Owner-merge check first.** Run `node scripts/jira.mjs get <KEY>` again (labels may have changed) and
-     `git -C <WT> diff --name-only <BASE>...HEAD`. `OWNER_MERGE` = `ownerMergeRequired` is true **or** any
-     changed path starts with `supabase/`. If `OWNER_MERGE`: **do not run `pr-merge`.** Instead:
+   - **Owner-merge check first** (the `OWNER_MERGE` of 7.1; a `pr-land` refusal "owner-merge required: …" means it
+     changed since — take this path). If `OWNER_MERGE`: **do not run `pr-merge`.** Instead:
      - `node scripts/jira.mjs label <KEY> add owner-merge`
      - PR comment (best effort):
        ```bash
@@ -374,12 +410,8 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
      - The ticket stays In Review. Clean up as after a merge (plain run: `git checkout main`; lane: leave the
        worktree until the run ends, then `git worktree remove <WT>`; never delete the branch). Final report:
        result `awaiting owner merge`. This is **not** a PARK and not a failure.
-   - Otherwise merge with the head pinned (plain run: `git checkout main` first so nothing has to clean up the
-     branch you are standing on):
-     ```bash
-     node scripts/gh-rest.mjs pr-merge <PR> --sha <SHA> [--risk]
-     ```
-     Pass `--risk` when the Jira ticket carries `privacy`, `db` or `migration` (it never gets this far then,
+   - Otherwise the merge is what `pr-land <PR> --sha <SHA> [--risk]` (7.1) just did when it returned `merged: true`
+     — it is `pr-merge <PR> --sha <SHA>` pinned to the head after the gate. Pass `--risk` when the Jira ticket carries `privacy`, `db` or `migration` (it never gets this far then,
      see above; the flag is the mechanical backstop). `pr-merge` itself refuses, with no PUT and
      "owner-merge required: …", any PR touching `supabase/` or labelled `owner-merge`/`privacy`/`db`/`migration`.
      Treat that refusal as the owner-merge path above, not as a PARK. It prints JSON. **Its `merged` field decides** (the script re-reads the PR after the PUT):
@@ -388,6 +420,7 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
      - anything else → PARK ("merge failed: <reason / putError>"). Never retry, never merge another way.
    - Post-merge:
      ```bash
+     git checkout main                                                          # plain run: leave the merged branch first
      node scripts/gh-rest.mjs fetch-main && git merge --ff-only origin/main     # in the repo root
      git branch --list <BRANCH> | grep -q . && git branch -D <BRANCH>            # only after merged: true
      node scripts/gh-rest.mjs git ls-remote --heads origin <BRANCH>
@@ -416,8 +449,9 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
      run the gate again with the new `SHA`.
    - Infrastructure failure (conclusion `cancelled` / `timed_out` / `startup_failure`, runner lost, network,
      gate timeout with ci still queued) → `node scripts/gh-rest.mjs ci-rerun <SHA>` once, comment it, then run
-     the gate with the failed check-run id as the third argument, so the old result cannot be read as the new
-     one: `node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <PR> <SHA> <failed check-run id from the GATE: FAIL line>`.
+     the gate again with the failed check-run id, so the old result cannot be read as the new one (non-owner-merge:
+     `node scripts/gh-rest.mjs pr-land <PR> --sha <SHA> [--risk] --ignore <failed check-run id from the GATE: FAIL line>`,
+     which also merges on PASS; OWNER_MERGE: `node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <PR> <SHA> <that id>`).
      If `ci-rerun` is refused (exit ≠ 0 — the rerun endpoint is unverified from cloud sessions) → Jira
      comment with the error + `htmlUrl`, then PARK ("CI infra failure; re-run refused from this session").
    - Cause not readable (no logs, no useful annotations) → PARK with `htmlUrl` (do not guess).
@@ -508,6 +542,14 @@ Step 3.1 returning `"changed": false`, another ticket in flight, post-merge hous
 5. Report to the user (Thai) and end the run.
 
 ## Final report (Thai, short)
+
+When the ticket reaches Done (or awaiting owner), attach the card's cost to its Jira comment: run
+`node scripts/loop-metrics.mjs <your session transcript .jsonl> <KEY>` (the session's JSONL transcript in
+Claude Code's projects folder; skip silently if you cannot locate it) and add its compact JSON
+(`tokens`, `byRole`, `fixRounds`, `agents`) to the same Jira comment as a **separate line** `Metrics: <json>` below
+the `Outcome:` line (loop-epic parses the Outcome line, which must stay one line of `key=value` pairs). It counts
+subagent tokens only, not your own.
+
 
 ```
 ## MFW-<N> — <summary>

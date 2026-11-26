@@ -32,8 +32,10 @@ The brief, the spec, and every file the spec names before you edit it. Follow `C
 
 ## What to do
 
-Implement; write the tests the spec lists; run `pnpm typecheck`, `pnpm lint`, `pnpm test` (plus `pnpm build`
-and the e2e command when the spec touches pages or config); fix the cause of every failure until green.
+Implement; write the tests the spec lists; run `pnpm typecheck`, `pnpm lint`, `pnpm test`, and e2e **only for the
+spec files you touched or the lead's spec names** (`E2E_PORT=<port> CI=1 pnpm e2e tests/e2e/<name>.spec.ts`). Do not
+run the full e2e suite or `pnpm build` unless the spec says so: the loop runs all five commands once, on the final
+tree (`scripts/loop-verify.mjs`); fix the cause of every failure until green.
 
 ## Fix round
 
