@@ -9,26 +9,18 @@ import {
 } from "./fixtures/wishCopy";
 import { routeWishSwitchWorld } from "./fixtures/wishSwitchRoutes";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_PINNED_TIER_URL, installSceneProbe, locateKrathongById, waitForCameraRest } from "./helpers/sceneProbe";
 import { completeWishStep, type WishStepOptions } from "./helpers/wishStep";
 
-// MFW-63 (backlog 12.2): the owner's "เปิดให้ทุกคนเห็น" switch in My Creations and the inspect popup (3D and 2D).
+// MFW-63 (backlog 12.2): the owner's "เปิดให้ทุกคนเห็น" switch in My Creations and the inspect popup (3D).
 test.use({ hasTouch: true });
 
 const OPEN_WISH = "ขอให้ทุกคนมีความสุข e2e switch";
 const NAME = "น้องมะลิ";
 const FIND_MY_BUTTON = "ค้นหาของฉัน";
+const VIEWPORT = '[aria-label="Toy-like night river preview"]';
 const root = (page: Page) => page.locator("[data-flow-state]");
 const entries = (page: Page) => page.locator('[data-testid="my-creations-list"] li');
-
-async function webglOff(page: Page) {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-}
 
 /** LOW tier (same weak-device signal as device-profiler.spec.ts): a real 3D canvas that is cheap enough under SwiftShader on a loaded runner. */
 async function lowTier(page: Page) {
@@ -67,13 +59,15 @@ async function deviceStorage(page: Page): Promise<string> {
   return page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
 }
 
-test("FALLBACK_2D: create open with a name, switch to private and back; survives a reload; same popup", async ({ page }) => {
+test("3D (LOW tier): create open with a name, switch to private and back; survives a reload; same popup", async ({ page }) => {
   const watcher = watch(page);
-  await webglOff(page);
+  await lowTier(page);
+  await installSceneProbe(page);
   const world = await routeWishSwitchWorld(page);
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL); // pinned: the FPS watcher cannot step the tier down mid-test
   await walkToWorld(page, OPEN_WISH, { open: true, name: NAME });
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
+  await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
+  await expect(page.locator("canvas")).toHaveCount(1);
 
   // 2. The create body carries the open wish and the name.
   expect(world.creates).toHaveLength(1);
@@ -110,14 +104,15 @@ test("FALLBACK_2D: create open with a name, switch to private and back; survives
   await page.getByRole("button", { name: FIND_MY_BUTTON }).click();
   await expect(entries(page)).toHaveCount(2);
   await expect(entries(page).nth(1).getByRole("switch", { name: WISH_SWITCH_LABEL })).toHaveAttribute("aria-checked", "false");
-  await page.getByRole("button", { name: FIND_MY_BUTTON }).click();
-  await expect(page.locator('[data-testid="my-creations-list"]')).toHaveCount(0);
 
-  // 7. The 2D popup of the closed krathong shows only the krathong (plus the owner section on this device).
-  const hit = page.locator(`[data-input-target="krathong"][data-creation-id="${E2E_CREATION_ID}"]`);
-  await hit.scrollIntoViewIfNeeded();
-  const box = (await hit.boundingBox())!;
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  // 7. The popup of the closed krathong shows only the krathong (plus the owner section on this device). Find My flies the camera to
+  // it; the tap point is read from the scene once the camera rests and the proxy has stopped moving.
+  await entries(page).nth(1).locator("button").first().click();
+  await expect(page.locator(VIEWPORT)).toHaveAttribute("data-find-my", "following");
+  await expect(page.locator('[data-testid="my-creations-list"]')).toHaveCount(0); // choosing an entry closes the drawer
+  await waitForCameraRest(page);
+  const at = await locateKrathongById(page, E2E_CREATION_ID);
+  await page.touchscreen.tap(at.x, at.y);
   const dialog = page.getByRole("dialog", { name: INSPECT_DIALOG_TITLE });
   await expect(dialog).toBeVisible();
   await expect(dialog).not.toContainText(NAME);
@@ -133,7 +128,7 @@ test("FALLBACK_2D: create open with a name, switch to private and back; survives
   await expect(dialog).toContainText(OPEN_WISH);
   await expect(dialog.getByRole("button", { name: REPORT_LABEL, exact: true })).toBeVisible();
   expect(world.isOpen(E2E_CREATION_ID)).toBe(true);
-  await expect(page.locator("canvas")).toHaveCount(0);
+  await expect(page.locator("canvas")).toHaveCount(1);
   await watcher.verify();
 });
 
@@ -141,7 +136,7 @@ test("3D (LOW tier): create open, switch to private and switch back from My Crea
   const watcher = watch(page);
   await lowTier(page);
   const world = await routeWishSwitchWorld(page);
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL);
   await walkToWorld(page, OPEN_WISH, { open: true, name: NAME });
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1); // the 3D scene is mounted before the switch is used
@@ -160,11 +155,11 @@ test("3D (LOW tier): create open, switch to private and switch back from My Crea
   await watcher.verify();
 });
 
-test("FALLBACK_2D: a moderation rejection on open shows the reasons and the wish stays private", async ({ page }) => {
+test("3D (LOW tier): a moderation rejection on open shows the reasons and the wish stays private", async ({ page }) => {
   const watcher = watch(page);
-  await webglOff(page);
+  await lowTier(page);
   const world = await routeWishSwitchWorld(page);
-  await page.goto("/");
+  await page.goto(E2E_PINNED_TIER_URL);
   await walkToWorld(page, undefined, { name: NAME });
   await page.getByRole("button", { name: FIND_MY_BUTTON }).click();
   const entry = entries(page).first();

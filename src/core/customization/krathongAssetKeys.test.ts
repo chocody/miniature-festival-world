@@ -74,6 +74,5 @@ describe("krathong asset keys", () => {
     expect(krathongRiverLod("HIGH")).toBe(KRATHONG_RIVER_LOD_BY_TIER.HIGH);
     expect(krathongRiverLod("MEDIUM")).toBe("medium");
     expect(krathongRiverLod("LOW")).toBe("low");
-    expect(krathongRiverLod("FALLBACK_2D")).toBe("low");
   });
 });

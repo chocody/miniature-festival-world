@@ -14,6 +14,7 @@ import { CustomizerPanel } from "./CustomizerPanel";
 import { DayNightSwitch } from "./DayNightSwitch";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
+import { NoWebglNotice } from "./NoWebglNotice";
 import { OwnerWishControls } from "./OwnerWishControls";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { OverlaySlot, STAGE_LAYOUT_CLASSES } from "./StageLayout";
@@ -23,11 +24,6 @@ import { ZoneNavigator } from "./ZoneNavigator";
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
 const SceneViewport = lazy(() =>
   import("@/components/canvas3d").then((m) => ({ default: m.SceneViewport })),
-);
-
-/** The 2D fallback is its own async chunk, three-free (MFW-33). */
-const FlatViewport = lazy(() =>
-  import("@/components/canvas2d").then((m) => ({ default: m.FlatViewport })),
 );
 
 /** Event that advances each placeholder step; the terminal step has none. */
@@ -51,8 +47,9 @@ export function FlowRoot({ eventId }: FlowRootProps) {
   const ritual = useUIStore((s) => s.ritual);
   const ritualPhase = ritual.phase;
   const viewControlRef = useRef<CustomizeViewControl | null>(null);
-  const show3D = profiled && qualityTier !== "FALLBACK_2D";
-  const show2D = profiled && qualityTier === "FALLBACK_2D";
+  const webglAvailable = useDeviceStore((s) => s.webglAvailable);
+  const show3D = profiled && webglAvailable;
+  const noScene = profiled && !webglAvailable; // MFW-71: the stage shows a notice and the overlays stay away
   const nextEvent = NEXT_EVENT[flowState];
   const interactionMode = getInteractionMode(flowState);
 
@@ -75,6 +72,43 @@ export function FlowRoot({ eventId }: FlowRootProps) {
     void pagination.enterWorld(eventId);
     return () => pagination.leaveWorld();
   }, [inWorld, eventId]);
+
+  const overlays = (
+    <>
+      {/* Day/night switch (MFW-47): in the world view it heads the top card; in the other canvas modes the top-left corner is free. */}
+      {interactionMode !== null && flowState !== "SHARED_WORLD_EXPLORE" && (
+        <OverlaySlot slot="corner">
+          <DayNightSwitch />
+        </OverlaySlot>
+      )}
+      {flowState === "SHARED_WORLD_EXPLORE" && (
+        <OverlaySlot slot="top">
+          <DayNightSwitch />
+          <ZoneNavigator />
+          <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />
+        </OverlaySlot>
+      )}
+      {flowState === "CUSTOMIZE_OBJECT" ? (
+        <CustomizerPanel
+          eventId={eventId}
+          onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
+          viewControlRef={show3D ? viewControlRef : null}
+        />
+      ) : flowState === "WRITE_WISH" ? (
+        <OverlaySlot slot="dialog">
+          <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
+        </OverlaySlot>
+      ) : flowState === "RITUAL_RELEASE" ? (
+        <OverlaySlot slot="panel">
+          <RitualReleasePanel animateInScene={show3D} />
+        </OverlaySlot>
+      ) : (
+        <OverlaySlot slot="panel">
+          <FlowStepPlaceholder step={flowState} onNext={nextEvent ? () => dispatch(nextEvent) : undefined} />
+        </OverlaySlot>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -104,45 +138,10 @@ export function FlowRoot({ eventId }: FlowRootProps) {
             />
           </Suspense>
         )}
-        {show2D && interactionMode !== null && (
-          <Suspense fallback={null}>
-            <FlatViewport mode={interactionMode} />
-          </Suspense>
-        )}
+        {noScene && <NoWebglNotice />}
       </div>
       <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
-        {/* Day/night switch (MFW-47): in the world view it heads the top card; in the other canvas modes the top-left corner is free. */}
-        {interactionMode !== null && flowState !== "SHARED_WORLD_EXPLORE" && (
-          <OverlaySlot slot="corner">
-            <DayNightSwitch />
-          </OverlaySlot>
-        )}
-        {flowState === "SHARED_WORLD_EXPLORE" && (
-          <OverlaySlot slot="top">
-            <DayNightSwitch />
-            <ZoneNavigator />
-            <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />
-          </OverlaySlot>
-        )}
-        {flowState === "CUSTOMIZE_OBJECT" ? (
-          <CustomizerPanel
-            eventId={eventId}
-            onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
-            viewControlRef={show3D ? viewControlRef : null}
-          />
-        ) : flowState === "WRITE_WISH" ? (
-          <OverlaySlot slot="dialog">
-            <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
-          </OverlaySlot>
-        ) : flowState === "RITUAL_RELEASE" ? (
-          <OverlaySlot slot="panel">
-            <RitualReleasePanel animateInScene={show3D} />
-          </OverlaySlot>
-        ) : (
-          <OverlaySlot slot="panel">
-            <FlowStepPlaceholder step={flowState} onNext={nextEvent ? () => dispatch(nextEvent) : undefined} />
-          </OverlaySlot>
-        )}
+        {profiled && !noScene && overlays}
       </div>
     </div>
   );

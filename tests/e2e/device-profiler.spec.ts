@@ -2,18 +2,6 @@ import { expect, test } from "@playwright/test";
 
 const root = (page: import("@playwright/test").Page) => page.locator("[data-flow-state]");
 
-test("no WebGL falls back to FALLBACK_2D", async ({ page }) => {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-  await page.goto("/");
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-});
-
 test("strong hardware hints give HIGH", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });

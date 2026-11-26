@@ -1,4 +1,4 @@
-import type { QualityTier } from "@/config/performance.config";
+import { FLOOR_QUALITY_TIER, type QualityTier } from "@/config/performance.config";
 import { TIER_PIN_QUERY_PARAM, TIER_PIN_QUERY_VALUE } from "@/config/perfProbe.config";
 import {
   detectDeviceCapabilities,
@@ -11,6 +11,8 @@ import { createTierController } from "./tierController";
 
 export interface DeviceProfileSink {
   setFps(fps: number | null): void;
+  /** Called once, before setQualityTier. */
+  setWebglAvailable(available: boolean): void;
   setQualityTier(tier: QualityTier): void;
   setReducedMotion(reduced: boolean): void;
 }
@@ -25,7 +27,7 @@ export interface ProfilerEnv extends CapabilityEnv {
 }
 
 export interface DeviceProfilerOptions {
-  /** false = keep the initial tier: no FPS meter, no runtime step-down or 2D fallback (?pinTier=1). Default true. */
+  /** false = keep the initial tier: no FPS meter, no runtime step-down (?pinTier=1). Default true. */
   readonly watchFps?: boolean;
 }
 
@@ -63,9 +65,10 @@ export function startDeviceProfiler(
   sink.setReducedMotion(caps.reducedMotion);
   const unsubRM = subscribeReducedMotion(env.matchMedia, sink.setReducedMotion);
 
-  const tier = pickInitialTier(caps);
+  sink.setWebglAvailable(caps.webgl);
+  const tier = caps.webgl ? pickInitialTier(caps) : FLOOR_QUALITY_TIER;
   sink.setQualityTier(tier);
-  if (tier === "FALLBACK_2D" || !env.scheduler || options.watchFps === false) return () => unsubRM();
+  if (!caps.webgl || tier === FLOOR_QUALITY_TIER || !env.scheduler || options.watchFps === false) return () => unsubRM();
 
   const controller = createTierController(tier);
   const doc = env.document;
@@ -83,7 +86,7 @@ export function startDeviceProfiler(
     const d = controller.onSample(s);
     if (d) {
       sink.setQualityTier(d.to);
-      if (d.to === "FALLBACK_2D") {
+      if (d.to === FLOOR_QUALITY_TIER) {
         meter.stop();
         detachVisibility();
       }

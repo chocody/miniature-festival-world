@@ -12,9 +12,8 @@ import type { DeviceCapabilities } from "./deviceCapabilities";
  * and never proves LOW by itself, so the result is neutral (MEDIUM).
  */
 export function pickInitialTier(
-  caps: Pick<DeviceCapabilities, "webgl" | "deviceMemoryGb" | "hardwareConcurrency">,
+  caps: Pick<DeviceCapabilities, "deviceMemoryGb" | "hardwareConcurrency">,
 ): QualityTier {
-  if (!caps.webgl) return "FALLBACK_2D";
   const { deviceMemoryGb: mem, hardwareConcurrency: cores } = caps;
   if (
     mem !== null &&

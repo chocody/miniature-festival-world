@@ -59,7 +59,7 @@ async function tapWater(page: Page, times: number) {
 }
 
 test("HIGH tier: water taps record ripples without errors", async ({ page }) => {
-  const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL); // pinned: HIGH must not fall back to 2D mid-test
+  const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL); // pinned: HIGH must not step down mid-test
   const base = await gimmickBaseline(page);
   await tapWater(page, 1);
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");

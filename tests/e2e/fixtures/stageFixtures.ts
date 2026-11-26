@@ -15,8 +15,6 @@ export const E2E_LOW_MAX_RENDER_PIXELS = 390 * 844;
 export const E2E_BACKGROUND_CHANNEL_TOLERANCE = 2;
 /** Technical (MFW-68): keeps a corner sample on the canvas even with the 1-px box tolerance of expectFillsViewport. */
 export const E2E_COVERAGE_INSET_PX = 2;
-/** = FLAT_RIVER_VIEW_HEIGHT_PX: the 2D map height the Find My tolerance was set at. */
-export const E2E_FLAT_RIVER_PROBED_HEIGHT_PX = 256;
 /**
  * World point on the water, as a px offset from the viewport centre at E2E_PROBED_CAMERA_ZOOM (moved from scene-gimmicks.spec.ts).
  * Scaled to the MFW-68 framing it lands ≈ 17 px from the left edge at 360×640; same world point.
@@ -74,7 +72,7 @@ export function coverageSamplePoints(width: number, height: number): readonly Co
 /**
  * Viewport of the HIGH-tier functional specs (MFW-54): the smallest AC phone. The scene now fills the viewport, and SwiftShader
  * (software WebGL in e2e) cannot hold HIGH on a full-screen desktop canvas (1280×720 = 5× the old 704×256 box): the owner's FPS
- * thresholds would drop it to FALLBACK_2D mid-test. Same precedent as perf-audit.spec.ts. The desktop layout is covered by
+ * thresholds would step it down mid-test. Same precedent as perf-audit.spec.ts. The desktop layout is covered by
  * full-screen-stage.spec.ts.
  */
 export const E2E_SWIFTSHADER_3D_VIEWPORT = { width: 360, height: 640 } as const;

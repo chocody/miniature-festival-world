@@ -26,7 +26,6 @@ import {
   createRiverLaneSet,
   isPersistableCoord,
   locateOnLane,
-  splineCoordFromLocation,
   splineProgressToWorld,
   type RiverLaneSet,
   type RiverPlacementSource,
@@ -35,10 +34,8 @@ import {
   LATERAL_SAMPLES,
   PROGRESS_SAMPLES,
   TOLERANCE,
-  VIEWPORTS,
   circularDistance,
 } from "@/core/coordinates/__fixtures__/riverLanes";
-import { canvasToSplineLocation, createLaneSetProjection, splineCoordToCanvas } from "@/core/fallback2d";
 
 const TURN_SAMPLES = 2000;
 const EDGE_SAMPLES = 64;
@@ -111,25 +108,6 @@ describe("Loy Krathong river lane (open question 21)", () => {
         const back = locateOnLane(lane, w.position);
         expect(circularDistance(back.progress, progress)).toBeLessThanOrEqual(TOLERANCE.progress);
         expect(Math.abs(back.lateralOffset - lateral)).toBeLessThanOrEqual(TOLERANCE.lateral);
-      }
-    }
-  });
-
-  it("round-trips parametric -> 2D -> coord (invariant B)", () => {
-    const set = createRiverLaneSet(LOY_KRATHONG_RIVER_LANES);
-    const T0 = 1_700_000_000_000;
-    for (const viewport of VIEWPORTS) {
-      const projection = createLaneSetProjection(set, viewport);
-      for (const progress of PROGRESS_SAMPLES) {
-        for (const lateral of LATERAL_SAMPLES) {
-          const coord = splineCoordFromLocation({ progress, lateralOffset: lateral }, 1, 0.008, T0, T0);
-          const canvas = splineCoordToCanvas(coord, lane, T0, T0, projection);
-          const loc = canvasToSplineLocation(canvas, lane, projection);
-          const back = splineCoordFromLocation(loc, 1, 0.008, T0, T0);
-          expect(circularDistance(back.spawnProgress, coord.spawnProgress)).toBeLessThanOrEqual(TOLERANCE.progress);
-          expect(Math.abs(back.lateralOffset - lateral)).toBeLessThanOrEqual(TOLERANCE.lateral);
-          expect(isPersistableCoord(back)).toBe(true);
-        }
       }
     }
   });

@@ -13,7 +13,6 @@ const listDir = (dir: string) =>
 
 const SCAN = [
   ...listDir("src/components/ui"),
-  ...listDir("src/components/canvas2d"),
   "src/app/layout.tsx",
   "src/app/page.tsx",
 ];
@@ -31,7 +30,7 @@ const AC2_SCREENS = [
   "StageLayout.tsx", "CustomizerPanel.tsx", "WishModal.tsx", "WishVisibilitySwitch.tsx", "OwnershipNotice.tsx",
   "RitualReleasePanel.tsx", "FlowStepPlaceholder.tsx", "DayNightSwitch.tsx", "SceneTapHint.tsx", "ZoneNavigator.tsx",
   "MyCreationsDrawer.tsx", "InspectPopup.tsx", "OwnerWishControls.tsx", "PrivateWishReveal.tsx",
-  "NoActiveEventScreen.tsx",
+  "NoActiveEventScreen.tsx", "NoWebglNotice.tsx",
 ];
 const TOKEN_CLASS =
   /\b(?:bg|text|border)-(?:stage|paper|veil|ink|ink-muted|ink-veil|line|track|clay|clay-soft|clay-ink|danger|notice)\b/;

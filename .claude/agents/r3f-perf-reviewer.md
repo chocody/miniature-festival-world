@@ -1,6 +1,6 @@
 ---
 name: r3f-perf-reviewer
-description: React Three Fiber / three.js performance and architecture reviewer for Shared Miniature Festival World. Reviews a diff for per-frame allocations, canvas re-renders, missing dispose/instancing/pools, zone cap, texture sizes, quality tiers, reduced motion, and positions derived from parametric coords. Read-only. Add to review when a diff touches src/components/canvas3d/**, src/components/models/**, src/core/effects/**, src/core/world/**, src/core/fallback2d/**, or the ticket has label `perf` / `3d`.
+description: React Three Fiber / three.js performance and architecture reviewer for Shared Miniature Festival World. Reviews a diff for per-frame allocations, canvas re-renders, missing dispose/instancing/pools, zone cap, texture sizes, quality tiers, reduced motion, and positions derived from parametric coords. Read-only. Add to review when a diff touches src/components/canvas3d/**, src/components/models/**, src/core/effects/**, src/core/world/**, or the ticket has label `perf` / `3d`.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
@@ -46,15 +46,15 @@ Read `CLAUDE.md` (invariants A, B, E, F) and `docs/spec/04-coordinates.md` first
    specified — report the size and why it is risky, do not invent a hard limit), missing mipmaps on
    non-power-of-two textures, unnecessary alpha, real-time shadows or post-processing on LOW.
 8. **Quality tiers and reduced motion** — DPR, shadows, effect counts and pool caps scale with
-   `qualityTier` (`HIGH | MEDIUM | LOW | FALLBACK_2D`) from `useDeviceStore` / `performance.config.ts`;
+   `qualityTier` (`HIGH | MEDIUM | LOW`) from `useDeviceStore` / `performance.config.ts`;
    no inline magic thresholds (the spec does **not** define the FPS threshold or per-tier budgets — they
    belong in `performance.config.ts`). `prefers-reduced-motion` disables bounce/bobbing and turns camera
-   fly-to into an instant cut. FALLBACK_2D must not mount the WebGL canvas at all.
+   fly-to into an instant cut. Without WebGL (`webglAvailable` false) no WebGL canvas may mount.
 9. **Positions from parametric coords** — every rendered position comes from the stored coord via
    `src/core/coordinates/` converters (spline: `CurrentProgress(t) = (spawnProgress + (now − createdAt) ×
    speedFactor) % 1.0` on the lane's `CatmullRomCurve3` + perpendicular `lateralOffset`). Flag any world
-   position stored on a creation, sent to the API, or computed differently in 3D vs `src/core/fallback2d/`.
-   New converters need round-trip tests (parametric ↔ 3D ↔ 2D). Ornament world scale stays `[1, 1, 1]`
+   position stored on a creation, sent to the API, or computed differently in two places for the same creation.
+   New converters need round-trip tests (parametric ↔ 3D world). Ornament world scale stays `[1, 1, 1]`
    when a cylindrical tree grows.
 
 ## Concreteness rule
@@ -67,9 +67,9 @@ finding. Finding nothing is a valid result.
 ## Severity
 
 - **Critical** — unbounded growth (leak across zone switches, pool-less effects), raw world positions
-  persisted, 3D and 2D diverging for the same creation.
+  persisted, a position computed differently in two places for the same creation.
 - **High** — per-frame allocation or React render in a hot path at zone scale, missing instancing for a
-  part repeated per item, zone cap not enforced, reduced motion ignored, WebGL canvas mounted in FALLBACK_2D.
+  part repeated per item, zone cap not enforced, reduced motion ignored, WebGL canvas mounted without WebGL.
 - **Medium** — tier scaling missing for a new effect, oversized asset, missing converter round-trip test.
 
 Low-severity / style notes are out of scope — leave them to `reviewer`.

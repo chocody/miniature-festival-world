@@ -36,7 +36,7 @@ export interface CustomizerPanelProps {
   eventId: FestivalEventId | null;
   /** Dispatches FINISH_CUSTOMIZE. */
   onDone: () => void;
-  /** null = no 3D view mounted (FALLBACK_2D / not profiled): rotate/zoom buttons and the gesture hint are hidden. */
+  /** null = no 3D view mounted (not profiled): rotate/zoom buttons and the gesture hint are hidden. */
   viewControlRef: RefObject<CustomizeViewControl | null> | null;
 }
 

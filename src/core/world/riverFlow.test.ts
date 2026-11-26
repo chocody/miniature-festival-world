@@ -9,13 +9,6 @@ import {
   splineCoordToWorld,
   type SplinePathCoord,
 } from "@/core/coordinates";
-import { TOLERANCE } from "@/core/coordinates/__fixtures__/riverLanes";
-import {
-  canvasToSplineLocation,
-  createLaneSetProjection,
-  getRiverItemCanvasPositionAt,
-  worldToCanvas,
-} from "@/core/fallback2d";
 import { bobbingPhaseFromId, createBobbingOut, writeBobbingAt } from "./bobbing";
 import {
   RIVER_ITEM_EULER_ORDER,
@@ -92,18 +85,6 @@ describe("Find My query (AC4)", () => {
     expect(Object.keys(getRiverItemPositionAt(item("x"), lanes, T0)!).sort()).toEqual(
       ["laneId", "progress", "world", "yawRad"],
     );
-  });
-
-  it("agrees between 3D and 2D", () => {
-    const projection = createLaneSetProjection(lanes, { width: 390, height: 844, paddingPx: 16 });
-    const it1 = item("x", { spawnProgress: 0.6, lateralOffset: -0.3 });
-    const now = T0 + 20_000;
-    const pos = getRiverItemPositionAt(it1, lanes, now)!;
-    const canvas = getRiverItemCanvasPositionAt(it1, lanes, now, projection)!;
-    expect(canvas).toEqual(worldToCanvas(pos.world, projection));
-    const loc = canvasToSplineLocation(canvas, lanes.get(1)!, projection);
-    expect(Math.abs(loc.progress - pos.progress)).toBeLessThanOrEqual(TOLERANCE.progress);
-    expect(Math.abs(loc.lateralOffset - it1.coord.lateralOffset)).toBeLessThanOrEqual(TOLERANCE.lateral);
   });
 });
 

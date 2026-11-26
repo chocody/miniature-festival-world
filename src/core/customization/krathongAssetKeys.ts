@@ -76,7 +76,7 @@ function partShapeFor(key: KrathongGeometryKey): PartShapeSpec | undefined {
   return undefined;
 }
 
-/** v1 primitive: the river-footprint proxy (the 2D fallback draws outlines of `mesh` since MFW-51). */
+/** v1 primitive: the river-footprint proxy. */
 export function geometrySpecFor(key: KrathongGeometryKey): PrimitiveGeometrySpec {
   const shape = partShapeFor(key);
   if (shape === undefined) throw new Error(`unknown krathong geometry key: ${key}`);
@@ -90,9 +90,9 @@ export function meshSpecFor(key: KrathongGeometryKey, lod: KrathongLod = "full")
   return lod === "full" ? shape.mesh : shape.lod[lod];
 }
 
-/** River-batch LOD of a quality tier (MFW-69). FALLBACK_2D draws no 3D river; "low" keeps the function total. */
+/** River-batch LOD of a quality tier (MFW-69). */
 export function krathongRiverLod(tier: QualityTier): KrathongLod {
-  return tier === "FALLBACK_2D" ? "low" : KRATHONG_RIVER_LOD_BY_TIER[tier];
+  return KRATHONG_RIVER_LOD_BY_TIER[tier];
 }
 
 export function materialSpecFor(key: KrathongMaterialKey): MatteMaterialSpec {

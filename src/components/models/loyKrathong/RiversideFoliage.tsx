@@ -26,9 +26,8 @@ const performanceNow = () => performance.now();
  * unless reduced motion is on (invariant F).
  */
 export function RiversideFoliage({ foliage, shadows, now = performanceNow, nudges = null }: RiversideFoliageProps): JSX.Element {
-  const qualityTier = useDeviceStore((s) => s.qualityTier);
+  const tier = useDeviceStore((s) => s.qualityTier);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);
-  const tier = qualityTier === "FALLBACK_2D" ? "LOW" : qualityTier;
   const view = useMemo(() => foliageForTier(foliage, tier), [foliage, tier]);
   const swayOn = view.sway && !reducedMotion;
   return (

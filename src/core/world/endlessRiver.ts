@@ -10,7 +10,7 @@ import { alongOf, createEndlessRiverFrame, type EndlessRiverFrame } from "@/core
 
 let loyKrathongFrame: EndlessRiverFrame | null = null;
 
-/** The ONE stretch frame of the Loy Krathong river (from LOY_KRATHONG_RIVER_CHANNEL), shared by 3D and 2D (invariant B). */
+/** The ONE stretch frame of the Loy Krathong river (from LOY_KRATHONG_RIVER_CHANNEL), read by the 3D scene (invariant B). */
 export function getLoyKrathongEndlessRiverFrame(): EndlessRiverFrame {
   if (loyKrathongFrame === null) loyKrathongFrame = createEndlessRiverFrame(LOY_KRATHONG_RIVER_CHANNEL.controlPoints);
   return loyKrathongFrame;

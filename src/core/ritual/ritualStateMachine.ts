@@ -38,7 +38,7 @@ export interface RitualState {
   readonly landing: RiverSpot | null; // the spot sent to the server (client pre-check), null until LANDING_RESOLVED
   readonly collided: boolean; // the client pre-check moved the candidate
   readonly touchedDown: boolean; // lowering finished: ripple + candle
-  readonly instant: boolean; // no scene animates this ritual (FALLBACK_2D or the scene is gone)
+  readonly instant: boolean; // no scene animates this ritual (no scene is mounted or the scene is gone)
   readonly saved: SavedRelease | null;
   readonly error: RitualError | null;
   readonly hint: RitualHint | null;

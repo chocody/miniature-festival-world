@@ -37,9 +37,9 @@ describe("art-direction note (MFW-47 AC1)", () => {
     }
   });
 
-  it("documents the 2D fallback (MFW-51)", () => {
+  it("L1: records that the 2D fallback was removed (MFW-71)", () => {
     const doc = readFileSync(DOC, "utf8");
-    for (const term of ["flatSurfaceColor", "krathongOutlines", "screenshots/mfw-51/"]) expect(doc).toContain(term);
+    for (const term of ["## 15. 2D fallback v2 (MFW-51, backlog 9.5) — removed (MFW-71)", "owner, 2026-11-26"]) expect(doc).toContain(term);
   });
 
   it("documents the scene reactions (MFW-60, §16)", () => {

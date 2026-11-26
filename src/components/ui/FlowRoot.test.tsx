@@ -101,14 +101,6 @@ vi.mock("@/components/canvas3d", async () => {
   };
 });
 
-vi.mock("@/components/canvas2d", async () => {
-  const React = await import("react");
-  return {
-    FlatViewport: ({ mode }: { mode: string }) =>
-      React.createElement("div", { "data-testid": "flat-viewport", "data-mode": mode }),
-  };
-});
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -118,7 +110,8 @@ beforeEach(() => {
   window.localStorage.clear();
   stubCreationsApi();
   useUIStore.setState(useUIStore.getInitialState(), true);
-  useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  // Overlays wait for the profiler (MFW-71 fix round), so tests start profiled on a 3D tier; unprofiled cases reset it.
+  useDeviceStore.setState({ ...useDeviceStore.getInitialState(), profiled: true, qualityTier: "HIGH" }, true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
   viewSpies.rotate.mockClear();
@@ -181,14 +174,15 @@ describe("FlowRoot", () => {
     expect(viewSpies.zoom).toHaveBeenCalledWith(-1);
   });
 
-  it("FALLBACK_2D and unprofiled: bar without view buttons", async () => {
+  it("F3 unprofiled: no overlay, no notice and no scene until the profiler has decided", async () => {
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     render(<FlowRoot eventId="loy_krathong" />);
-    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
     await act(async () => {});
-    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
-    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-layer")).toBeEmptyDOMElement();
+    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByTestId("no-webgl-notice")).toBeNull();
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
   it("opens straight into the active event: no selector, festival list or Coming Soon", () => {
@@ -203,6 +197,7 @@ describe("FlowRoot", () => {
   });
 
   it("exposes quality tier and reduced motion from the device store", () => {
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     const root = container.querySelector("[data-flow-state]")!;
     expect(root).toHaveAttribute("data-quality-tier", "MEDIUM");
@@ -232,35 +227,45 @@ describe("FlowRoot", () => {
     expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
   });
 
-  it("never mounts the scene before profiling or on FALLBACK_2D", async () => {
+  it("never mounts the scene before profiling or without WebGL", async () => {
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     render(<FlowRoot eventId="loy_krathong" />);
     await act(async () => {});
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
 
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    act(() => {
+      useDeviceStore.getState().setWebglAvailable(false);
+      useDeviceStore.getState().setQualityTier("LOW");
+    });
     await act(async () => {});
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
-  it("FALLBACK_2D mounts the flat viewport per mode (MFW-33)", async () => {
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-    render(<FlowRoot eventId="loy_krathong" />);
-    expect(await screen.findByTestId("flat-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
-    expect(screen.queryByRole("button", { name: "ซูมเข้า" })).toBeNull();
+  it("F1 no WebGL: notice instead of the scene, no overlay", async () => {
+    act(() => {
+      useDeviceStore.getState().setWebglAvailable(false);
+      useDeviceStore.getState().setQualityTier("LOW");
+    });
+    const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    await act(async () => {});
+    expect(within(screen.getByTestId("stage-layer")).getByTestId("no-webgl-notice")).toBeInTheDocument();
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-    expect(screen.queryByTestId("flat-viewport")).toBeNull(); // WRITE_WISH
-    completeWish();
-    expect(await screen.findByTestId("flat-viewport")).toHaveAttribute("data-mode", "RITUAL_RELEASE");
+    expect(screen.getByTestId("overlay-layer")).toBeEmptyDOMElement();
+    expect(screen.queryByRole("button")).toBeNull();
+    const root = container.querySelector("[data-flow-state]")!;
+    expect(root).toHaveAttribute("data-quality-tier", "LOW");
+    expect(root).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
   });
 
-  it("a 3D tier or an unprofiled device never mounts the flat viewport", async () => {
+  it("F2 no notice while unprofiled nor once the scene can mount (customizer appears with the profile)", async () => {
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     render(<FlowRoot eventId="loy_krathong" />);
-    await act(async () => {});
-    expect(screen.queryByTestId("flat-viewport")).toBeNull();
+    expect(screen.queryByTestId("no-webgl-notice")).toBeNull();
+    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
-    await act(async () => {});
-    expect(screen.queryByTestId("flat-viewport")).toBeNull();
+    expect(await screen.findByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    expect(await screen.findByTestId("scene-viewport")).toBeInTheDocument();
+    expect(screen.queryByTestId("no-webgl-notice")).toBeNull();
   });
 
   it("enters the shared world once when the ritual starts and leaves on unmount", async () => {
@@ -311,8 +316,7 @@ describe("FlowRoot", () => {
     expect(useBuilderStore.getState().wishDisplayName).toBeNull();
   });
 
-  it("FALLBACK_2D: the wish modal works and no scene mounts", async () => {
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+  it("the wish modal shows no scene in WRITE_WISH", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
@@ -321,7 +325,6 @@ describe("FlowRoot", () => {
     completeWish();
     await act(async () => {});
     expect(stateOf(container)).toBe("RITUAL_RELEASE");
-    expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
   const walkToRitual = () => {
@@ -329,8 +332,7 @@ describe("FlowRoot", () => {
     completeWish();
   };
 
-  it("release finishes the ritual (FALLBACK_2D)", async () => {
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+  it("release finishes the ritual (no scene mounted)", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
@@ -478,13 +480,6 @@ describe("FlowRoot", () => {
       expect(inSlot(lightSwitch(), "top")).toBe(true);
     });
 
-    it("FALLBACK_2D shows the day/night switch in the corner: it drives the 2D view (MFW-51)", () => {
-      act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-      render(<FlowRoot eventId="loy_krathong" />);
-      const lightSwitch = screen.getByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel });
-      expect(inSlot(lightSwitch, "corner")).toBe(true);
-    });
-
     it("the scene element survives RITUAL → WORLD", async () => {
       act(() => useDeviceStore.getState().setQualityTier("HIGH"));
       const { container } = render(<FlowRoot eventId="loy_krathong" />);
@@ -494,31 +489,6 @@ describe("FlowRoot", () => {
       await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
       expect(screen.getByTestId("scene-viewport")).toBe(before);
     });
-
-    it("FALLBACK_2D: the flat view sits in the stage layer, controls in the overlay layer", async () => {
-      act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
-      const { container } = render(<FlowRoot eventId="loy_krathong" />);
-      expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-stage-layout", "fullscreen");
-      expect(stageLayer()).toContainElement(await screen.findByTestId("flat-viewport"));
-      expect(overlayLayer()).toContainElement(screen.getByRole("region", { name: "แต่งกระทง" }));
-      expect(within(stageLayer()).queryByRole("button")).toBeNull();
-
-      fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-      expect(inSlot(screen.getByRole("dialog", { name: WISH_COPY.title }), "dialog")).toBe(true);
-      completeWish();
-      expect(stageLayer()).toContainElement(await screen.findByTestId("flat-viewport"));
-      expect(inSlot(screen.getByTestId("ritual-release-panel"), "panel")).toBe(true);
-
-      act(() => {
-        useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
-      });
-      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
-      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
-      expect(stageLayer()).toContainElement(screen.getByTestId("flat-viewport"));
-      expect(inSlot(screen.getByTestId("zone-navigator"), "top")).toBe(true);
-      expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
-      expect(inSlot(screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title }), "panel")).toBe(true);
-    });
   });
 });
 
@@ -526,9 +496,8 @@ describe("minimal UI (MFW-55)", () => {
   const primaryCount = () => document.querySelectorAll('[data-ui-emphasis="primary"]').length;
   const RAW_STATE_ID = /CUSTOMIZE_OBJECT|WRITE_WISH|RITUAL_RELEASE|SHARED_WORLD_EXPLORE/;
 
-  /** Walks CUSTOMIZE → WISH → RITUAL → WORLD on FALLBACK_2D and calls `check` in each step. */
+  /** Walks CUSTOMIZE → WISH → RITUAL → WORLD without a scene and calls `check` in each step. */
   async function walkAllSteps(check: (step: string) => void) {
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
     check("CUSTOMIZE_OBJECT");

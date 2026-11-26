@@ -226,7 +226,7 @@ export function splineCoordToPoseInto(
 }
 
 /**
- * Single inverse shared by 3D and 2D: world (or canvas-derived world) xz → (progress, lateralOffset).
+ * Single inverse used by the 3D scene: world xz → (progress, lateralOffset).
  * Works in the horizontal plane; y is derived from the curve. Relies on width/2 being smaller than the lane's
  * turning radius and on lanes not passing close to themselves (otherwise a local minimum may be chosen).
  */

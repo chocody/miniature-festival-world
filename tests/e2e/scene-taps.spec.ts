@@ -7,7 +7,6 @@ import { expectTapHintUnoccluded } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
   E2E_INSPECT_DIALOG_TITLE,
-  E2E_MIN_TOUCH_TARGET_PX,
   E2E_PINNED_TIER_URL,
   E2E_TAP_HINT_SEEN_VALUE,
   E2E_TAP_HINT_STORAGE_KEY,
@@ -159,31 +158,6 @@ test.describe("mouse", () => {
 test.describe("touch", () => {
   test.use({ hasTouch: true, isMobile: true, viewport: TOUCH_VIEWPORT });
   defineTierTests("touch");
-});
-
-test.describe("FALLBACK_2D", () => {
-  test("a mouse click on a krathong opens the popup", async ({ page }) => {
-    await page.addInitScript(() => {
-      const original = HTMLCanvasElement.prototype.getContext;
-      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-        if (/webgl/i.test(type)) return null;
-        return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-      } as typeof original;
-    });
-    await routeZone(page);
-    await walkToWorld(page);
-    await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-    await expectTapHintUnoccluded(page);
-    const target = page.locator('[data-input-target="krathong"]').first();
-    // MFW-54: centred, so the click never lands on an overlay of the full-screen stage.
-    await target.evaluate((el) => el.scrollIntoView({ block: "center", inline: "center" }));
-    const box = (await target.boundingBox())!;
-    expect(box.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
-    expect(box.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await expect(page.getByRole("dialog", { name: E2E_INSPECT_DIALOG_TITLE })).toBeVisible();
-    await expect(hint(page)).toHaveCount(0);
-  });
 });
 
 test.describe("hint", () => {

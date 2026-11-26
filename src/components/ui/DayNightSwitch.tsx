@@ -30,7 +30,7 @@ function targetIndex(key: string, current: number, count: number): number | null
 
 /**
  * Day / night switch of the scene (open question 32, MFW-47): AUTO follows the device's local time, DAY / NIGHT
- * override it; the choice stays on this device. Hidden before profiling; on FALLBACK_2D it drives the 2D view (MFW-51).
+ * override it; the choice stays on this device. Hidden before profiling.
  * Keyboard: one tab stop (the checked radio); arrow keys, Home and End move the choice. Visual design DRAFT (MFW-55).
  */
 export function DayNightSwitch(): JSX.Element | null {

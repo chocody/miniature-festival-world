@@ -4,7 +4,7 @@ import { createRiverLaneSet, type RiverLaneSet } from "@/core/coordinates";
 let loyKrathongLanes: RiverLaneSet | null = null;
 
 /**
- * The ONE lane set of the Loy Krathong river, shared by 3D flow, 2D fallback, Find My, the release ritual and the server
+ * The ONE lane set of the Loy Krathong river, shared by 3D flow, Find My, the release ritual and the server
  * collision re-check (invariant B). Built on first call, then the same object every call.
  */
 export function getLoyKrathongRiverLanes(): RiverLaneSet {

@@ -40,8 +40,7 @@ const STATIC_TIME_MS = 0;
 const IDENTITY_SCALE = 1;
 
 function useRenderTier(): RenderTier {
-  const qualityTier = useDeviceStore((s) => s.qualityTier);
-  return qualityTier === "FALLBACK_2D" ? "LOW" : qualityTier; // FALLBACK_2D never renders 3D; treated as LOW
+  return useDeviceStore((s) => s.qualityTier);
 }
 
 /** Geometry + material + one InstancedMesh, all disposed when any of them is re-created and on unmount. */

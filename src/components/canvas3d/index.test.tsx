@@ -475,11 +475,14 @@ describe("toy-like night scene", () => {
     expect(snapshot(true)).toEqual(motion);
   });
 
-  it("does not create a WebGL canvas before profiling or on the 2D tier", () => {
+  it("does not create a WebGL canvas before profiling or without WebGL", () => {
     const { rerender } = render(<SceneViewport />);
     expect(screen.queryByTestId("r3f-canvas")).toBeNull();
 
-    useDeviceStore.getState().setQualityTier("FALLBACK_2D");
+    act(() => {
+      useDeviceStore.getState().setWebglAvailable(false);
+      useDeviceStore.getState().setQualityTier("LOW");
+    });
     rerender(<SceneViewport />);
     expect(screen.queryByTestId("r3f-canvas")).toBeNull();
   });
@@ -1456,7 +1459,10 @@ describe("river batch and perf probe (MFW-34)", () => {
     expect(panel).not.toBeNull();
     expect(viewport().contains(panel)).toBe(false);
     expect(probeHook()!.sample()).toMatchObject({ geometries: 3, calls: 12, programs: 2 });
-    act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
+    act(() => {
+      useDeviceStore.getState().setWebglAvailable(false);
+      useDeviceStore.getState().setQualityTier("LOW");
+    });
     rerender(<SceneViewport mode="WORLD_EXPLORE" />);
     expect(probe(container)).toBeNull();
     expect(screen.queryByTestId("r3f-canvas")).toBeNull();

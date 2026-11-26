@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { LOY_KRATHONG_RIVER_CHANNEL, LOY_KRATHONG_RIVER_LANES } from "@/config/events/loyKrathong.river.config";
-import { createFlatLane, createFlatPoseOut, flatProgressToPoseInto } from "@/core/fallback2d/flatLane";
 import { createEndlessRiverFrame } from "./endlessRiverFrame";
 import { endlessCoordToPoseInto, endlessProgressToPoseInto, locateOnEndlessLane } from "./endlessSpline";
 import { createRiverLane, createSplinePoseOut, splineProgressToPoseInto, type SplinePathCoord } from "./SplinePathCoord";
@@ -55,23 +54,6 @@ describe("endless lane poses (MFW-58, invariant B)", () => {
       expect(Math.abs(Math.atan2(Math.sin(end.yawRad - start.yawRad), Math.cos(end.yawRad - start.yawRad)))).toBeLessThan(
         SEAM_YAW_TOLERANCE_RAD,
       );
-    }
-  });
-
-  it("2D agreement: the three-free flat pose + s·T equals the 3D endless pose (bit-identical, as flatLane.test.ts pins)", () => {
-    const flat = createFlatLane(LANE_DEF);
-    const f = createFlatPoseOut();
-    const e = createSplinePoseOut();
-    for (const s of [-4, -1, 0, 2, 9]) {
-      for (const p of [0, 0.2, 0.5, 0.97]) {
-        for (const lat of [-0.4, 0, 0.5]) {
-          flatProgressToPoseInto(flat, p, lat, f);
-          endlessProgressToPoseInto(lane, frame, s, p, lat, e);
-          expect(f.x + s * frame.periodX).toBe(e.x);
-          expect(f.z + s * frame.periodZ).toBe(e.z);
-          expect(f.yawRad).toBe(e.yawRad);
-        }
-      }
     }
   });
 

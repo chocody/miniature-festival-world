@@ -110,26 +110,6 @@ test("switch on shows the helper and the public hint", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("FALLBACK_2D at 360 px: the modal works without a canvas", async ({ page }) => {
-  const errors: Error[] = [];
-  page.on("pageerror", (e) => errors.push(e));
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-  await page.goto("/");
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await toWishStep(page);
-  await expect(page.getByRole("dialog", { name: WISH_DIALOG_TITLE })).toBeVisible();
-  await expect(page.locator("canvas")).toHaveCount(0);
-  await completeWishStep(page);
-  await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
-  expect(errors).toEqual([]);
-});
-
 test("reduced motion: no transition classes in the modal", async ({ page }) => {
   const errors: Error[] = [];
   page.on("pageerror", (e) => errors.push(e));

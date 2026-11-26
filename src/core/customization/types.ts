@@ -32,7 +32,7 @@ export interface KrathongSocketDef {
   readonly accepts: SocketPartKind;
   /** "upright": world +Y always (candle). "outward": yaw faces away from the centre. */
   readonly orientation: "upright" | "outward";
-  /** Rim: index × 360 / RIM_SOCKET_COUNT. Center: null. Parametric — 3D and 2D derive positions from it. */
+  /** Rim: index × 360 / RIM_SOCKET_COUNT. Center: null. Parametric — the 3D scene derives positions from it. */
   readonly angleDeg: number | null;
   readonly rimIndex: number | null;
 }

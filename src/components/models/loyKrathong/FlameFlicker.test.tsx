@@ -84,13 +84,6 @@ describe("FlameFlicker (MFW-48)", () => {
     expect(r3f.invalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("FALLBACK_2D: no interval", () => {
-    useDeviceStore.getState().setQualityTier("FALLBACK_2D");
-    const spy = vi.spyOn(window, "setInterval");
-    render(<Scene />);
-    expect(spy).not.toHaveBeenCalled();
-  });
-
   it("clears the interval on unmount", () => {
     const set = vi.spyOn(window, "setInterval");
     const clear = vi.spyOn(window, "clearInterval");

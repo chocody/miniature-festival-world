@@ -1,5 +1,7 @@
 # 6.8 Loop 8: Flat Vector 2D Fallback & Mobile Performance Polish
 
+> Note (owner, 2026-11-26, MFW-71): "เอา 2d ออกไปเลย" — the 2D fallback is removed; only the 3D scene (HIGH | MEDIUM | LOW) remains. See open-questions row 46.
+
 ### Task 8.1: Flat Vector 2D Fallback Renderer
 
 - สร้างโหมดสำรอง 2D สำหรับเครื่องที่ไม่รองรับ 3D:

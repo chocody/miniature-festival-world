@@ -28,16 +28,6 @@ async function forceHighTier(page: Page) {
   });
 }
 
-async function disableWebGl(page: Page) {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-}
-
 async function toRitual(page: Page, startUrl = "/") {
   await page.goto(startUrl);
   await waitForActiveEvent(page);
@@ -46,7 +36,7 @@ async function toRitual(page: Page, startUrl = "/") {
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
 }
 
-/** `pinned`: the 3D-only tests keep the forced HIGH tier (no runtime 2D fallback on slow SwiftShader runners). */
+/** `pinned`: the 3D-only tests keep the forced HIGH tier (no runtime step-down on slow SwiftShader runners). */
 async function setup(page: Page, options?: MockCreateOptions, pinned = false) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -138,24 +128,6 @@ test("moderation-blocked returns to the wish", async ({ page }) => {
   await releaseButton(page).click();
   await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
   await expect(page.getByTestId("wish-moderation-warning")).toBeVisible();
-});
-
-test("FALLBACK_2D releases with the button", async ({ page }) => {
-  const bodies: Promise<string>[] = [];
-  page.on("response", (response) => {
-    const { pathname } = new URL(response.url());
-    if (pathname.startsWith("/_next/static/") && pathname.endsWith(".js")) bodies.push(response.text().catch(() => ""));
-  });
-  const mock = await mockCreateCreation(page);
-  await disableWebGl(page);
-  await toRitual(page);
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await releaseButton(page).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
-  expect(mock.requests).toHaveLength(1);
-  await expect(page.locator("canvas")).toHaveCount(0);
-  await page.waitForLoadState("networkidle");
-  expect((await Promise.all(bodies)).some((b) => b.includes("WebGLRenderer"))).toBe(false);
 });
 
 test("reduced motion", async ({ page }) => {

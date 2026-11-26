@@ -322,12 +322,6 @@ describe("river render budget (MFW-25)", () => {
       expect(node.position.z).toBe(p.world.z);
     }
   });
-
-  it("FALLBACK_2D renders nothing", () => {
-    useDeviceStore.getState().setQualityTier("FALLBACK_2D");
-    const { container } = render(ui({ items: many(5) }));
-    expect(container.querySelector('[name="river-flow"]')).toBeNull();
-  });
 });
 
 describe("river krathong batch (MFW-34)", () => {

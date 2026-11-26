@@ -14,23 +14,24 @@ describe("useDeviceStore", () => {
       qualityTier: DEFAULT_QUALITY_TIER,
       profiled: false,
       reducedMotion: false,
-      isFallback2D: false,
+      webglAvailable: true,
     });
   });
   it("marks the tier profiled when the client profiler chooses it", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     expect(useDeviceStore.getState().profiled).toBe(true);
   });
-  it("FALLBACK_2D <=> isFallback2D", () => {
-    useDeviceStore.getState().setQualityTier("FALLBACK_2D");
-    expect(useDeviceStore.getState().isFallback2D).toBe(true);
-    useDeviceStore.getState().setQualityTier("LOW");
-    expect(useDeviceStore.getState().isFallback2D).toBe(false);
+  it("S1: setWebglAvailable changes only webglAvailable", () => {
+    const before = useDeviceStore.getState();
+    useDeviceStore.getState().setWebglAvailable(false);
+    const after = useDeviceStore.getState();
+    expect(after.webglAvailable).toBe(false);
+    expect({ ...after, webglAvailable: true }).toEqual({ ...before, webglAvailable: true });
   });
-  it.each(["HIGH", "MEDIUM", "LOW"] as const)("%s is not a fallback", (tier) => {
+  it.each(["HIGH", "MEDIUM", "LOW"] as const)("setQualityTier(%s) sets the tier and nothing about WebGL", (tier) => {
     useDeviceStore.getState().setQualityTier(tier);
     expect(useDeviceStore.getState().qualityTier).toBe(tier);
-    expect(useDeviceStore.getState().isFallback2D).toBe(false);
+    expect(useDeviceStore.getState().webglAvailable).toBe(true);
   });
   it("light preset choice starts AUTO and only its setter changes it (MFW-47)", () => {
     expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");

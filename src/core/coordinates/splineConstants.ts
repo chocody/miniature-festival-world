@@ -1,4 +1,4 @@
-/** Three-free spline constants (moved from SplinePathCoord.ts in MFW-33 so the 2D fallback can use them without three). */
+/** Three-free spline constants (moved from SplinePathCoord.ts in MFW-33; three-free). */
 export const SPAWN_PROGRESS_RANGE = [0, 1] as const; // spec §4.1
 export const LATERAL_OFFSET_RANGE = [-0.5, 0.5] as const; // spec §4.1
 export const SPEED_FACTOR_MIN = 0; // MFW-8 decision: no upstream flow.

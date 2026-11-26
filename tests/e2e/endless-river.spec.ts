@@ -333,7 +333,7 @@ for (const tier of ["LOW", "HIGH"] as const) {
       expect(end.programs).toBe(base.programs);
       if (tier === "LOW") expect(end.programs).toBeLessThanOrEqual(E2E_MAX_SHADER_PROGRAMS);
       expect(heap1 - heap0).toBeLessThanOrEqual(E2E_MAX_HEAP_GROWTH_BYTES);
-      expect(tierNow).not.toBe("FALLBACK_2D");
+      expect(tierNow).toBe(tier);
       expect(errors).toEqual([]);
     });
   });

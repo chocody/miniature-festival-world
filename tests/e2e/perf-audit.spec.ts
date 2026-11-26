@@ -63,7 +63,7 @@ async function forceTier(page: Page, memory: number, cores: number) {
 /**
  * The two long LOW-tier tests render flat out for tens of seconds; on a shared 4-core runner that starves the other specs'
  * HIGH-tier tests (their FPS step-down is 45 FPS). This caps animation frames at a steady cadence (no delay is added to a frame
- * that already took longer). 30 ms admits every 2nd tick of a 60 Hz rAF (~30 FPS), well above the 20 FPS fallback threshold —
+ * that already took longer). 30 ms admits every 2nd tick of a 60 Hz rAF (~30 FPS), well above the 20 FPS drop-to-LOW threshold —
  * a gap above 33.3 ms would admit only every 3rd tick (20 FPS, exactly the threshold). Counters (draw calls, geometries, programs,
  * heap) do not depend on the frame rate.
  */
@@ -156,11 +156,17 @@ async function sample(page: Page): Promise<ProbeSample> {
   await page.evaluate(
     () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => r())))),
   );
-  const value = await page.evaluate(
-    (name) => (window as unknown as Record<string, { sample(): unknown } | undefined>)[name]?.sample() ?? null,
-    E2E_PERF_PROBE_GLOBAL,
-  );
-  expect(value).not.toBeNull();
+  // The probe global appears once the renderer has drawn its first frame, which a loaded runner can delay past the panel showing.
+  let value: unknown = null;
+  await expect
+    .poll(async () => {
+      value = await page.evaluate(
+        (name) => (window as unknown as Record<string, { sample(): unknown } | undefined>)[name]?.sample() ?? null,
+        E2E_PERF_PROBE_GLOBAL,
+      );
+      return value;
+    })
+    .not.toBeNull();
   return value as ProbeSample;
 }
 
@@ -193,11 +199,10 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
   // same batch draw calls per visible stretch) and the "one" zone's neighbours hold one krathong each, like the "full" zone's.
   await routeZones(page, 5, { 1: 1, 2: 80, 3: 1, 4: 1, 5: 1 });
   await mockCreateCreation(page, { zoneId: 5 }); // the release lands in zone 5, which the audit never measures
-  // pinned: the forced 3D tier cannot fall back to 2D mid-audit on a slow SwiftShader runner (FPS readings are then n/a)
+  // pinned: the forced 3D tier cannot step down mid-audit on a slow SwiftShader runner (FPS readings are then n/a)
   const { customize, fpsCustomize } = await walkToWorld(page, true);
   const tierNow = () => root(page).getAttribute("data-quality-tier");
-  // The FPS step-down may fire mid-run on a loaded runner (owner thresholds, never raised). Both samples must share one tier, so
-  // retake the pair until the tier is stable around them; the check holds at whatever tier both samples share.
+  // The run is pinned, so the tier must stay HIGH; the retake loop only guards against a tier change between the two samples.
   let pair: { tier: string | null; full: ProbeSample; one: ProbeSample; fpsFull: number | null; fpsOne: number | null } | null = null;
   for (let attempt = 0; attempt < 3 && pair === null; attempt++) {
     await goToZone(page, 2, 80);
@@ -228,7 +233,7 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
     fpsFull,
   });
   if (RECORD_ONLY) return;
-  expect(tier).not.toBe("FALLBACK_2D");
+  expect(tier).toBe("HIGH");
   expect(full.calls).toBe(one.calls);
   expect(full.triangles).toBeGreaterThan(one.triangles);
   expect(errors).toEqual([]);
@@ -283,7 +288,7 @@ test("LOW: memory stays flat across repeated zone switches", async ({ page }, te
   expect(end.calls).toBe(base.calls);
   expect(base.calls).toBe(one.calls);
   expect(heap1 - heap0).toBeLessThanOrEqual(E2E_MAX_HEAP_GROWTH_BYTES);
-  expect(tier).not.toBe("FALLBACK_2D"); // LOW has no step-down; the counters above are only valid on a 3D tier
+  expect(tier).toBe("LOW"); // LOW has no step-down
   expect(errors).toEqual([]);
 });
 

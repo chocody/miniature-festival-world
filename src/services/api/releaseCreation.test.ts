@@ -58,7 +58,8 @@ beforeEach(() => {
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
   useUIStore.setState({ flowState: "RITUAL_RELEASE", selectedEventId: "loy_krathong" });
   useBuilderStore.setState({ wish: { ...WISH } });
-  useDeviceStore.getState().setQualityTier("FALLBACK_2D");
+  useDeviceStore.getState().setWebglAvailable(false);
+  useDeviceStore.getState().setQualityTier("LOW");
 });
 
 describe("release", () => {
@@ -93,7 +94,7 @@ describe("release", () => {
     expect(await harness().releaser.release(PIER)).toBe("revise_wish");
   });
 
-  it("FALLBACK_2D and unprofiled never load the resolver", async () => {
+  it("no WebGL and unprofiled never load the resolver", async () => {
     const loadLandingResolver = vi.fn();
     await harness({ loadLandingResolver }).releaser.release(PIER);
     useUIStore.getState().dispatchRitual({ type: "RESET" });
@@ -104,6 +105,7 @@ describe("release", () => {
   });
 
   it("sends the free spot", async () => {
+    useDeviceStore.getState().setWebglAvailable(true);
     useDeviceStore.getState().setQualityTier("HIGH");
     const L = { laneId: 1, progress: 0.45, lateralOffset: -0.1 };
     const { releaser, bodies } = harness({ loadLandingResolver: async () => () => ({ landing: L, collided: true }) });
@@ -113,6 +115,7 @@ describe("release", () => {
   });
 
   it("resolver failure falls back to the candidate", async () => {
+    useDeviceStore.getState().setWebglAvailable(true);
     useDeviceStore.getState().setQualityTier("HIGH");
     const { releaser, bodies } = harness({ loadLandingResolver: async () => { throw new Error("chunk"); } });
     expect(await releaser.release(PIER)).toBe("saved");
