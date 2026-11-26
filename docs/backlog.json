@@ -819,14 +819,11 @@
       "stories": [
         {
           "id": "13.1",
-          "summary": "Generated-model pipeline (GLB) and krathong model from the reference",
-          "goal": "A repeatable way to bring generated 3D models into the scene within the mobile budget, proven on the krathong.",
+          "summary": "Owner-supplied krathong models — five designs, coloured and optimised (GLB pipeline)",
+          "goal": "Owner (2026-11-26): use the five krathong models the owner supplied (models_and_refs.zip: hy3d-model*.glb, one-piece, uncoloured, about 20,000 triangles each) instead of Higgsfield-generated ones. The loop colours them by script from the owner's colour reference images; non-commercial use (owner).",
           "ac": [
-            "Krathong part models are generated with Higgsfield (image/text-to-3D) from docs/spec/assets/loy-krathong-look-ref.png, exported as GLB, and optimised offline (decimated, compressed, textures ≤ the tier's max texture size); source prompts / job ids and the optimise steps are documented in docs/design/models.md so a model can be regenerated",
-            "A loader module loads GLB assets lazily after the tier is decided (never in the first-screen bundle, never on FALLBACK_2D), shares geometry / material / texture across instances and disposes them on unmount and zone switch",
-            "Every customizer option still maps to a model (appearance keys and stored data unchanged); river krathongs stay instanced; a full 80-item zone stays inside the tier budgets (draw calls, triangles and programs recorded like docs/perf/MFW-34.md)",
-            "LOW uses a lighter variant (fewer triangles / smaller textures) or keeps the procedural model; the choice is in performance.config.ts",
-            "Asset files are committed under public/ with a size budget enforced by a test; licences / generation terms are noted in docs/design/models.md"
+            "The five owner-supplied krathong models are decimated offline into per-LOD GLB files that fit KRATHONG_MAX_TRIANGLES_BY_LOD (a raised close-up budget is stated openly) and coloured by a committed script that assigns pastel vertex colours by region (base, leaves / petals, flowers, candle, flame) matching the owner's reference images; no textures, no new shader program; sources, commands and the owner's non-commercial licence note are in docs/design/models.md",
+            "A loader loads the GLB assets lazily after the tier is decided, shares geometry and material across instances, keeps river krathongs instanced per design and LOD, and disposes on unmount and zone switch; a full 80-item zone stays within the tier budgets (draw calls, triangles, programs recorded in docs/perf); committed asset files have a size budget enforced by a test; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -841,14 +838,10 @@
         },
         {
           "id": "13.2",
-          "summary": "Generated models for houses, lamps and fireworks; silhouette villagers",
-          "goal": "The riverside props look as rich as the reference instead of flat boxes.",
+          "summary": "Owner-supplied house model on the riverside",
+          "goal": "Owner (2026-11-26): use the house model the owner supplied (House by Poly by Google, about 1,300 triangles in 49 parts) on the riverside; the procedural trees stay (the supplied tree pack is too heavy for the mobile budget — loop assessment); lamps, fireworks and silhouette villagers were delivered by 11.4 and 9.4.",
           "ac": [
-            "Houses and riverside lamps use generated GLB models (13.1 pipeline) placed by the existing layout; repeated props are instanced; windows / lamp heads still light up in the night preset",
-            "Fireworks: a pooled burst effect (ObjectPoolManager, fixed cap) with a generated or stylised model / sprite, launched by the sky tap of 11.4; flashes stay within WCAG 2.3.1 and are static under reduced motion",
-            "Villagers are simple dark silhouettes (owner: \"คนอาจจะแค่เป็นเงาๆก็พอ\") walking the riverside paths of 9.4; no faces or detail",
-            "Tier budgets hold on HIGH / MEDIUM / LOW with before / after numbers; everything is disposed on zone switch; r3f-perf-reviewer PASS",
-            "Before / after screenshots at phone and desktop size, day and night, are attached to the PR"
+            "Riverside houses use the owner-supplied house model, merged into a few instanced parts and recoloured to the clay pastel palette (vertex colours, no textures), placed by the existing layout; windows still light up at night and on a house tap; environment budgets kept (any raise stated openly); licence / attribution noted in docs/design/models.md; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -858,9 +851,7 @@
             "dev-opus"
           ],
           "blockedBy": [
-            "13.1",
-            "9.3",
-            "9.4"
+            "13.1"
           ]
         },
         {
@@ -1023,22 +1014,21 @@
         },
         {
           "id": "14.4",
-          "summary": "Second flower type on the krathong, chosen in the customizer",
-          "goal": "Owner (2026-11-26): the bare areas of the krathong base should look full, with a choice of two flower types (split from 14.2).",
+          "summary": "Customizer — choose one of the five krathong designs",
+          "goal": "Owner (2026-11-26): the krathong is customised by choosing one of the five supplied designs (the models are one piece, so parts are not mixed). Replaces the earlier second-flower-type card.",
           "ac": [
-            "The krathong model gets a second flower type that fills the bare areas of the base, and the customizer lets the user choose between the two flower types; the server-side appearance parser accepts the new key",
-            "Krathongs saved before this card render exactly as before (fixture test); unit tests and e2e cover the flower choice; before / after screenshots DAY and NIGHT"
+            "The customizer lets the user choose one of the five krathong designs (thumbnails, no long text); the choice is stored as an appearance key the server-side appearance parser accepts, and the river shows each krathong in its chosen design",
+            "Krathongs saved before this card still render (mapped to a default design, fixture test); unit tests and e2e cover choosing a design and seeing it on the river; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
             "3d",
-            "art",
             "ui",
             "privacy",
             "dev-opus"
           ],
           "blockedBy": [
-            "11.6"
+            "13.1"
           ]
         },
         {
