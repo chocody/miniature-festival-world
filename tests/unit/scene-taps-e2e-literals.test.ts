@@ -32,5 +32,8 @@ describe("scene-taps e2e literals", () => {
     expect(probe.E2E_WINDOW_GLOW_NAME).toBe(SCENE_OBJECT_NAMES.windowGlows);
     expect(probe.E2E_SKY_LANTERN_NAME).toBe(SCENE_OBJECT_NAMES.skyLanterns);
     expect(probe.E2E_DRAG_START_DISTANCE_PX).toBe(DRAG_START_DISTANCE_PX);
+    // MFW-72 scene reactions part 2
+    expect(probe.E2E_CHIMNEY_SMOKE_NAME).toBe(SCENE_OBJECT_NAMES.chimneySmoke);
+    expect(probe.E2E_FALLING_LEAVES_NAME).toBe(SCENE_OBJECT_NAMES.fallingLeaves);
   });
 });

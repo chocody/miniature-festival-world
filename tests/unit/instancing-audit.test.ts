@@ -234,4 +234,17 @@ describe("instancing audit (backlog 8.2)", () => {
       expect(source, file).not.toMatch(CONSOLE);
     }
   });
+
+  it("IA3: the MFW-72 smoke and falling-leaf writers allocate nothing", () => {
+    const source = read("src/components/canvas3d/effects/effectMeshes.ts");
+    for (const name of ["writeChimneySmokeInstances", "writeFallingLeafInstances"]) {
+      expect(functionSource(source, name), name).not.toMatch(ALLOCATION);
+      expect(functionSource(source, name), name).not.toMatch(RANGE_ALLOCATION);
+    }
+    const curves = read("src/core/effects/reactionCurves.ts");
+    for (const name of ["writeSmokePuffAt", "writeFallingLeafAt", "chimneySmokeDurationMs", "fallingLeavesDurationMs"]) {
+      expect(functionSource(curves, name), name).not.toMatch(ALLOCATION);
+    }
+    expect(curves).not.toMatch(/buildHouseSmokeOrigins|buildTreeLeafAnchors/); // anchors are built once, outside the curves
+  });
 });

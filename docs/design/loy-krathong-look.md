@@ -731,7 +731,7 @@ Config: `src/config/gimmicks.config.ts` (`SCENE_TAP_REACTIONS`, looks and timing
 wins over this note. Owner decisions (2026-11-25, open questions 35 and 41): "อยาก interact อะไรก็ได้เลย" (anything in the
 scene can be interacted with) and "กดท้องฟ้าแล้วมีการจุดพลุ" (tapping the sky launches a firework); natural feedback, no rings,
 halos or yellow discs (MFW-67). Everything else below is a loop decision, not yet reviewed by the owner. This PR is slice 1;
-chimney smoke, a few falling leaves and a villager wave are slice 2 (MFW-72, backlog 11.6).
+chimney smoke, a few falling leaves and a villager wave are slice 2 (MFW-72, backlog 11.6). Slice 2 shipped in §18.
 
 ### 16.1 Registry: one reaction per object type
 
@@ -887,3 +887,99 @@ NIGHT, the navigator after a jump, Find My after travelling two stretches (deskt
 | Seam, phone, day | ![seam phone day](screenshots/mfw-58/phone-360x640-seam-day.png) |
 | Navigator next, phone, night | ![navigator phone night](screenshots/mfw-58/phone-360x640-navigator-next-night.png) |
 | Find My after travel, phone, night | ![find my phone night](screenshots/mfw-58/phone-360x640-findmy-after-travel-night.png) |
+
+## 18. Scene reactions part 2 (MFW-72, backlog 11.6)
+
+Config: `CHIMNEY_SMOKE_LOOK` and `FALLING_LEAF_LOOK` in `src/config/gimmicks.config.ts`; `EFFECT_POOL_CAPS` (columns `chimneySmoke`,
+`fallingLeaves`), `CHIMNEY_SMOKE_PUFFS_PER_TAP`, `FALLING_LEAVES_PER_TAP` and `FALLING_LEAF_SLOTS` in `performance.config.ts`. Curves:
+`writeSmokePuffAt`, `writeSmokeDriftInto` and `writeFallingLeafAt` in `src/core/effects/reactionCurves.ts`; anchors (built once from the
+layout): `src/components/canvas3d/effects/sceneEffectAnchors.ts`. Config wins over this note. Owner decision (open question 35,
+2026-11-25, quoted from the row): "house lights + chimney smoke, tree shake, villager wave, sky lantern (โคมลอย), and tapping the sky
+launches fireworks". Keeping the MFW-60 hop instead of a wave is a loop decision (D2, AC3 lets the lead decide), not an owner one.
+Everything below is a loop decision, not yet reviewed by the owner; every number is DRAFT (docs/follow-ups.md, MFW-72).
+
+### 18.1 Registry rows added in slice 2
+
+| Type | `data-last-gimmick` | Normal | Reduced motion | LOW |
+|---|---|---|---|---|
+| house | `house-lights` (unchanged) | the §16 window light-up **plus** a smoke plume: 6 soft round puffs leave the roof top one every 140 ms, billow 2.2 world units along a drift chosen at tap time (toward the middle of the screen, D11), rise 0.25, wobble, grow from radius 0.16 to 0.38 and shrink to nothing over the last 30 % of their 1.8 s life (2.5 s in all) | the window light-up only (the instant state); no smoke | 3 puffs, 1 smoke at a time |
+| tree | `tree-shake` (unchanged) | the §16 shake **plus** 8 orange-gold / russet leaves (the MFW-69 leaf shell, 0.4 world units long) drop from under the crown one every 140 ms, flutter down for 1.6 s pitched up 1.35 rad (± 0.3) so the face shows, spinning, swaying and drifting downwind, lie flat on the bank 1.2 s and shrink away in 0.5 s | the 1.12× size-up only; no leaves | 3 leaves, 1 fall at a time |
+| villager | `villager-hop` (unchanged) | keeps the MFW-60 hop (D2) | 1.1× size-up | as HIGH |
+
+A re-tap on the same house / tree (same stretch) while its smoke is still emitting / its leaves are still in the air is absorbed (no
+stacked identical paths); later taps start a new smoke / fall up to the pool cap (a full pool recycles the oldest).
+
+### 18.2 Pools and per-tap counts (DRAFT)
+
+| | HIGH | MEDIUM | LOW |
+|---|---|---|---|
+| `EFFECT_POOL_CAPS.chimneySmoke` (concurrent smokes) | 3 | 2 | 1 |
+| `EFFECT_POOL_CAPS.fallingLeaves` (concurrent leaf falls) | 3 | 2 | 1 |
+| `CHIMNEY_SMOKE_PUFFS_PER_TAP` | 6 | 5 | 3 |
+| `FALLING_LEAVES_PER_TAP` | 8 | 6 | 3 |
+
+One InstancedMesh per kind and canvas (capacity = cap × per-tap count), created per cap, disposed on a cap change and on unmount,
+invisible (no draw call) while idle. The entries carry the house / tree layout index, the tapped stretch and (smoke) the tap-time drift;
+the writer adds s·T (the MFW-58 path of the window glow), so hidden stretch slots write nothing. Both meshes use the one effect material
+setup with NormalBlending (no new shader program, no ring, no halo; they fade by shrinking). Puff = icosahedron detail 1 (80 triangles,
+a round outline); leaf = `buildLeafShellMeshData(FALLING_LEAF_LOOK.shell)` (24 triangles). Same geometry on every tier; LOW is cheaper
+by count and cap. The demand frameloop is kept alive only while a smoke or a fall runs.
+
+### 18.3 Decisions
+
+- **D1 No chimney.** The smoke leaves the roof top centre (pyramid apex / gable ridge middle) + 0.04; AC1 allows "from the roof".
+  No house-model change, no extra draw call or triangle, `ENVIRONMENT_RENDER_BUDGETS` untouched. A chimney box is a follow-up option.
+- **D2 Villager keeps the hop** (loop decision). `VILLAGER_PARTS` (body / head / hat) has no arm. Estimate, not measured: at 390×844 a
+  villager is ≈ 25 px tall, so an arm in proportion would be ≈ 9 × 2 px, below what MFW-60 QA found readable; a body tilt reads as the
+  walking waddle. A wave would need a new instanced part, a mesh per slot and MFW-50 writer / budget changes.
+- **D6 Reduced motion** (invariant F): neither effect starts and running ones are released; the instant state is MFW-60's (window
+  glow, size-up cue). **D7** a re-tap while emitting is absorbed. **D8** leaf landing heights come from the bank profile (the farthest
+  tree stands on the bank slope; no leaf lands in the river).
+- **D11 Drift toward the middle of the screen** (fix round, QA): at the default framing after release the house nearest the top card
+  has its roof under the card, so a column rising straight up was hidden. At tap time the smoke origin is projected with the scene
+  camera and the drift points from it toward the screen centre (`writeSmokeDriftInto`; its toward-viewer part is divided by
+  sin(camera elevation), so equal drift reads as equal screen distance). A house high on the screen puffs toward the viewer (down the
+  screen), one at a side edge puffs inward. The plume is low and wide: rise 0.25 instead of a 1.8 column. Computed once per tap from one
+  reused scratch vector; no per-frame or per-tap allocation; no camera (tests) → `TAP_SHAKE_WIND`.
+- **Leaves** (fix round, QA): a flat 0.26 leaf read as 8–12 px flecks. The leaf is now 0.4 long and pitched up while it falls, so its
+  face shows. It lies flat once it lands.
+- Colours per light preset (the effect program is unlit): smoke DAY #F5F2EA / #E3DED3, NIGHT #AEB5CB / #959DB6; leaves DAY #E39A2C /
+  #C2582A, NIGHT #D2A24E / #C07A45 (contrast with the DAY grass).
+
+### 18.4 Measured (production build, SwiftShader, default framing after release, no pan)
+
+Frames are taken with the page clock paused at tap + t, every 100 ms. The card is the `[data-overlay-slot="top"]` bounding box.
+
+- **Smoke, 390×844.** The only tappable house is the one nearest the top card: its proxy pokes out under the card, and the smoke origin
+  is at y 137 against a card bottom of 184. At peak area (t = 1.2 s) 89 % of the plume's area is outside the card, DAY and NIGHT. The
+  first pass measured 0 %. The largest puff is 52 px across and the plume spans 72 × 101 px.
+- **Smoke, 360×640.** No house is tappable at this default framing.
+- **Smoke, 1440×900.** Every tappable house reaches 100 % outside the top card at peak. The two houses near the top edge are partly
+  under the right-hand panel (67–100 % outside both the card and the panel). The largest puff is 102 px across.
+- **Leaves.** The projected silhouette length (largest distance between projected leaf vertices) while all leaves are in the air:
+  - 390×844: median 24.6 px, p25 20.1 px, max 28.8 px (the first pass's 18.8 px was a max).
+  - 360×640: median 22.4 px, p25 18.7 px.
+  - 8 leaves per fall on HIGH. DAY and NIGHT give the same lengths.
+
+Draw calls, single samples (calls vary by a few between samples with the stretch culling and the krathongs in view; read the
+same-sample deltas):
+
+| | calls | triangles | programs |
+|---|---|---|---|
+| HIGH 360×640 pinned, idle → during smoke | 100 → 102 | 19 896 → 20 240 | 9 → 9 |
+| HIGH, idle → during leaves | 100 → 101 | 19 896 → 20 016 | 9 → 9 |
+| LOW 390×844, idle → during smoke (single sample) | 62 → 64 | 9 758 → 10 022 | 5 → 5 |
+
+The smoke adds 1 call (+ the window glow's 1), the leaves 1. No program is added: HIGH also compiles the shadow programs, and LOW
+stays ≤ `E2E_MAX_SHADER_PROGRAMS` 8.
+
+Screenshots (`screenshots/mfw-72/`, default framing after release, no pan):
+
+| | |
+|---|---|
+| House smoke, phone 390×844, day (1.2 s) | ![house smoke day](screenshots/mfw-72/day-house-smoke.png) |
+| House smoke, phone 390×844, night (1.2 s) | ![house smoke night](screenshots/mfw-72/night-house-smoke.png) |
+| House smoke, desktop 1440×900, day (0.9 s) | ![house smoke desktop day](screenshots/mfw-72/desktop-day-house-smoke.png) |
+| Falling leaves, phone, day (0.9 s) | ![falling leaves day](screenshots/mfw-72/day-falling-leaves.png) |
+| Falling leaves, phone, night (0.9 s) | ![falling leaves night](screenshots/mfw-72/night-falling-leaves.png) |
+| Reduced motion house tap, phone, night (windows lit, no smoke) | ![reduced motion house night](screenshots/mfw-72/night-reduced-motion-house.png) |

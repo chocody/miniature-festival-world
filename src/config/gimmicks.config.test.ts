@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BOUNCE_SETTLE_EPSILON,
+  CHIMNEY_SMOKE_LOOK,
+  FALLING_LEAF_LOOK,
   GIMMICK_BOUNCE,
   KRATHONG_MARK_CUE,
   LAMP_GLOW_LOOK,
@@ -40,6 +42,8 @@ import {
   RIVER_MIN_CENTER_SPACING,
 } from "./riverFlow.config";
 import { writeBounceAt } from "@/core/effects/gimmickCurves";
+import { buildLeafShellMeshData } from "@/core/customization/krathongMeshData";
+import { LIGHT_PRESET_IDS } from "./look.config";
 
 describe("gimmick config", () => {
   it("ripple look is sane", () => {
@@ -118,6 +122,10 @@ describe("scene reactions (MFW-60)", () => {
     expect(Object.isFrozen(SCENE_TAP_REACTIONS)).toBe(true);
     expect(SCENE_TAP_REACTIONS.lamp.effects).toEqual(["lampGlow", "skyLantern"]);
     expect(SCENE_TAP_REACTIONS.sky.effects).toEqual(["firework"]);
+    // MFW-72 (slice 2): smoke with the house lights, falling leaves with the tree shake; the villager keeps the hop.
+    expect(SCENE_TAP_REACTIONS.house.effects).toEqual(["windowGlow", "chimneySmoke"]);
+    expect(SCENE_TAP_REACTIONS.tree.effects).toEqual(["nudge", "fallingLeaves"]);
+    expect(SCENE_TAP_REACTIONS.villager.effects).toEqual(["nudge"]);
   });
 
   it("GC2: 'nudge' is an effect exactly for the NUDGE_TARGET_KINDS, and NUDGE_STYLE covers them", () => {
@@ -179,5 +187,36 @@ describe("scene reactions (MFW-60)", () => {
 
   it("the MFW-60 hint copy says anything in the 3D scene can be tapped (Thai, DRAFT)", () => {
     expect(SCENE_TAP_HINT_COPY.scene3d).toBe("แตะอะไรก็ได้ในฉาก เพื่อเล่นได้เลย");
+  });
+});
+
+describe("scene reactions part 2 (MFW-72)", () => {
+  const positive = (o: object, label: string) => {
+    for (const [k, v] of Object.entries(o)) if (typeof v === "number") expect(Number.isFinite(v) && v > 0, `${label}.${k}`).toBe(true);
+  };
+
+  it("GC5: smoke and leaf looks are finite and > 0, the smoke grows then fades, palettes are #rrggbb per light preset", () => {
+    positive(CHIMNEY_SMOKE_LOOK, "smoke");
+    positive(CHIMNEY_SMOKE_LOOK.geometry, "smoke geometry");
+    expect(CHIMNEY_SMOKE_LOOK.fadeStartRatio).toBeLessThan(1);
+    expect(CHIMNEY_SMOKE_LOOK.endRadius).toBeGreaterThan(CHIMNEY_SMOKE_LOOK.startRadius);
+    expect(CHIMNEY_SMOKE_LOOK.geometry.kind).toBe("icosahedron");
+    expect(CHIMNEY_SMOKE_LOOK.geometry.detail).toBeGreaterThanOrEqual(1); // a round blob, not a faceted 20-face shape
+    positive(FALLING_LEAF_LOOK, "leaf");
+    for (const look of [CHIMNEY_SMOKE_LOOK, FALLING_LEAF_LOOK]) {
+      expect(Object.isFrozen(look)).toBe(true);
+      expect(Object.keys(look.palette).sort()).toEqual([...LIGHT_PRESET_IDS].sort());
+      for (const id of LIGHT_PRESET_IDS) {
+        expect(look.palette[id].length).toBeGreaterThan(0);
+        for (const hex of look.palette[id]) expect(hex).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+    }
+    expect(FALLING_LEAF_LOOK.flightPitchRad).toBeGreaterThan(FALLING_LEAF_LOOK.tiltAmplitudeRad); // pitched up all the way down
+    expect(FALLING_LEAF_LOOK.flightPitchRad).toBeLessThan(Math.PI / 2);
+    expect(CHIMNEY_SMOKE_LOOK.minElevationSin).toBeLessThan(1);
+    expect(FALLING_LEAF_LOOK.shell.length).toBe(1); // unit length: the instance scale is FALLING_LEAF_LOOK.length
+    const data = buildLeafShellMeshData(FALLING_LEAF_LOOK.shell);
+    expect(data.triangleCount).toBeGreaterThan(0);
+    expect(data.indices.length).toBe(3 * data.triangleCount);
   });
 });

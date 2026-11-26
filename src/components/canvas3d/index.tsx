@@ -24,6 +24,7 @@ import {
 } from "@/config/camera.config";
 import type { EffectPoolCaps, RenderTier } from "@/config/performance.config";
 import { EFFECT_POOL_CAPS, FIREWORK_SPARKS_PER_BURST, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { CHIMNEY_SMOKE_PUFFS_PER_TAP, FALLING_LEAVES_PER_TAP } from "@/config/performance.config";
 import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
@@ -74,6 +75,7 @@ import {
   WORLD_VIEW_ROTATE_STEP_RADIANS,
 } from "@/config/interaction.config";
 import { FlameFlicker, KrathongAssetsProvider, LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
+import { LOY_KRATHONG_HOUSE_SMOKE_ORIGINS, LOY_KRATHONG_TREE_LEAF_ANCHORS } from "@/components/models/loyKrathong";
 import {
   buildRiverStretchSlots,
   findFocusedRiverItem,
@@ -212,6 +214,9 @@ interface ToyNightSceneProps {
   livingWorldIdleRedraw: boolean;
   /** MFW-60: FIREWORK_SPARKS_PER_BURST[tier]. */
   fireworkSparks: number;
+  /** MFW-72: CHIMNEY_SMOKE_PUFFS_PER_TAP[tier] and FALLING_LEAVES_PER_TAP[tier] (primitives keep the memo effective). */
+  smokePuffs: number;
+  leavesPerFall: number;
   /** MFW-60: a prop / land tap (WORLD_EXPLORE only; absent = no prop proxies and no land / pier handlers). Stable callback. */
   onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex: number) => void;
 }
@@ -251,6 +256,8 @@ const ToyNightScene = memo(function ToyNightScene({
   ownMarked,
   livingWorldIdleRedraw,
   fireworkSparks,
+  smokePuffs,
+  leavesPerFall,
   onPropTapped,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
@@ -329,6 +336,11 @@ const ToyNightScene = memo(function ToyNightScene({
           windowPart={RIVER_ENVIRONMENT_PARTS.houseWindow}
           fireworkBaseY={LOY_KRATHONG_RIVER_LAYOUT.bankTopY}
           fireworkSparks={fireworkSparks}
+          lightPreset={lightPreset}
+          houseSmokeOrigins={LOY_KRATHONG_HOUSE_SMOKE_ORIGINS}
+          smokePuffs={smokePuffs}
+          treeLeafAnchors={LOY_KRATHONG_TREE_LEAF_ANCHORS}
+          leavesPerFall={leavesPerFall}
           frame={ENDLESS}
         />
       </group>
@@ -945,6 +957,8 @@ export function SceneViewport({
             ownMarked={ownMarked}
             livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
             fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier]}
+            smokePuffs={CHIMNEY_SMOKE_PUFFS_PER_TAP[qualityTier]}
+            leavesPerFall={FALLING_LEAVES_PER_TAP[qualityTier]}
             onPropTapped={mode === "WORLD_EXPLORE" ? onPropTapped : undefined}
           />
           <CameraRig

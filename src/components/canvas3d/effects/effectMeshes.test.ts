@@ -3,6 +3,8 @@ import { AdditiveBlending, NormalBlending, BufferGeometry, Color, IcosahedronGeo
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import {
+  CHIMNEY_SMOKE_LOOK,
+  FALLING_LEAF_LOOK,
   FIREWORK_LOOK,
   LAMP_GLOW_LOOK,
   NO_BOUNCE,
@@ -11,6 +13,12 @@ import {
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
 import {
+  chimneySmokeDurationMs,
+  createFallingLeafFrame,
+  createSmokePuffFrame,
+  fallingLeavesDurationMs,
+  writeFallingLeafAt,
+  writeSmokePuffAt,
   createObjectPoolManager,
   createBounceFrame,
   createLampGlowFrame,
@@ -26,6 +34,10 @@ import { getLoyKrathongEndlessRiverFrame } from "@/core/world/endlessRiver";
 import { composeInstanceMatrix } from "../instancing";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
 import {
+  createChimneySmokeMesh,
+  createFallingLeafMesh,
+  writeChimneySmokeInstances,
+  writeFallingLeafInstances,
   createEffectFrameScratch,
   createFireworkMesh,
   createLampGlowMesh,
@@ -42,10 +54,13 @@ import {
   type EffectMesh,
 } from "./effectMeshes";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
+import { LOY_KRATHONG_HOUSE_SMOKE_ORIGINS, LOY_KRATHONG_TREE_LEAF_ANCHORS } from "@/components/models/loyKrathong";
+import { TREE_LEAF_PATH_STRIDE } from "./sceneEffectAnchors";
 
 afterEach(() => vi.restoreAllMocks());
 
-const caps = { ripple: 4, glow: 2, nudge: 2, windowGlow: 2, firework: 2, skyLantern: 2 }; // MFW-60: every EffectKind needs a cap
+// MFW-60 / MFW-72: every EffectKind needs a cap
+const caps = { ripple: 4, glow: 2, nudge: 2, windowGlow: 2, firework: 2, skyLantern: 2, chimneySmoke: 2, fallingLeaves: 2 };
 const decompose = (mesh: InstancedMesh, i: number) => {
   const m = new Matrix4();
   mesh.getMatrixAt(i, m);
@@ -275,10 +290,17 @@ describe("MFW-60 reaction meshes", () => {
     managers.windowGlow.acquire(0).state.houseIndex = 0;
     managers.firework.acquire(0);
     managers.skyLantern.acquire(0);
+    managers.chimneySmoke.acquire(0);
+    managers.fallingLeaves.acquire(0);
+    const smoke = createChimneySmokeMesh(2, 5);
+    const leaves = createFallingLeafMesh(2, 6);
     for (const t of [0, 100, 700, 1_500, 5_000]) {
       writeWindowGlowInstances(createWindowGlowMesh(1, W, windowPart.geometry), managers.windowGlow, houseWindows, W, windowPart, t, false, scratch);
       writeFireworkInstances(createFireworkMesh(2, 8), managers.firework, t, false, scratch);
       writeSkyLanternInstances(createSkyLanternMesh(2), managers.skyLantern, t, false, scratch);
+      // MFW-72
+      writeChimneySmokeInstances(smoke, managers.chimneySmoke, LOY_KRATHONG_HOUSE_SMOKE_ORIGINS, t, false, "DAY", scratch);
+      writeFallingLeafInstances(leaves, managers.fallingLeaves, LOY_KRATHONG_TREE_LEAF_ANCHORS, t, false, "NIGHT", scratch);
     }
     for (const key of Object.keys(before) as (keyof typeof before)[]) expect(scratch[key]).toBe(before[key]);
   });
@@ -358,5 +380,162 @@ describe("MFW-58 stretch offsets of the glow writers", () => {
       e.mesh.getMatrixAt(w, got);
       got.elements.forEach((v, k) => expect(v).toBeCloseTo(want.elements[k], 4));
     }
+  });
+});
+
+describe("MFW-72 smoke and falling-leaf meshes", () => {
+  const frame = getLoyKrathongEndlessRiverFrame();
+  const origins = LOY_KRATHONG_HOUSE_SMOKE_ORIGINS;
+  const anchors = LOY_KRATHONG_TREE_LEAF_ANCHORS;
+  const PUFFS = 5;
+  const LEAVES = 6;
+  const slot = (treeIndex: number, k: number) => {
+    const p = anchors[treeIndex].paths;
+    const o = k * TREE_LEAF_PATH_STRIDE;
+    return { spawn: new Vector3(p[o], p[o + 1], p[o + 2]), landing: new Vector3(p[o + 3], p[o + 4], p[o + 5]) };
+  };
+
+  it("EM7: a smoke starts as one puff at the origin + s·T (scale startRadius) and is released at its duration", () => {
+    const e = createChimneySmokeMesh(2, PUFFS);
+    expect(e.capacity).toBe(2 * PUFFS);
+    expect(e.mesh.name).toBe(SCENE_OBJECT_NAMES.chimneySmoke);
+    const pool = createObjectPoolManager(caps).chimneySmoke;
+    const st = pool.acquire(0).state;
+    st.houseIndex = 2;
+    st.stretchIndex = 1;
+    const scratch = createEffectFrameScratch();
+    expect(writeChimneySmokeInstances(e, pool, origins, 0, false, "DAY", scratch, frame)).toBe(1);
+    expect(e.mesh.count).toBe(1);
+    const { p, s } = decompose(e.mesh, 0);
+    expect(p.x).toBeCloseTo(origins[2].x + frame.periodX, 5);
+    expect(p.y).toBeCloseTo(origins[2].y, 5);
+    expect(p.z).toBeCloseTo(origins[2].z + frame.periodZ, 5);
+    expect(s.x).toBeCloseTo(CHIMNEY_SMOKE_LOOK.startRadius, 5);
+    const mid = (PUFFS - 1) * CHIMNEY_SMOKE_LOOK.staggerMs;
+    expect(writeChimneySmokeInstances(e, pool, origins, mid, false, "DAY", scratch, frame)).toBe(1);
+    expect(e.mesh.count).toBe(PUFFS);
+    const want = writeSmokePuffAt(mid, 0, 1, 0, createSmokePuffFrame());
+    expect(decompose(e.mesh, 0).p.y).toBeCloseTo(origins[2].y + want.dy, 5);
+    const life = chimneySmokeDurationMs(PUFFS);
+    expect(writeChimneySmokeInstances(e, pool, origins, life - 1, false, "DAY", scratch, frame)).toBe(1);
+    expect(writeChimneySmokeInstances(e, pool, origins, life, false, "DAY", scratch, frame)).toBe(0);
+    expect(pool.activeCount).toBe(0);
+    expect(e.mesh.visible).toBe(false);
+    // A bad house index or stretch is released.
+    pool.acquire(0).state.houseIndex = origins.length;
+    expect(writeChimneySmokeInstances(e, pool, origins, 10, false, "DAY", scratch, frame)).toBe(0);
+    expect(pool.activeCount).toBe(0);
+    const bad = pool.acquire(0).state;
+    bad.houseIndex = 0;
+    bad.stretchIndex = 0.5;
+    expect(writeChimneySmokeInstances(e, pool, origins, 10, false, "DAY", scratch, frame)).toBe(0);
+    expect(pool.activeCount).toBe(0);
+  });
+
+  it("EM8: leaves start at their spawn + s·T (scale = length), land after k·stagger + fallMs and are released at the duration", () => {
+    const e = createFallingLeafMesh(2, LEAVES);
+    expect(e.capacity).toBe(2 * LEAVES);
+    expect(e.mesh.name).toBe(SCENE_OBJECT_NAMES.fallingLeaves);
+    const pool = createObjectPoolManager(caps).fallingLeaves;
+    const st = pool.acquire(0).state;
+    st.treeIndex = 1;
+    st.stretchIndex = -1;
+    const scratch = createEffectFrameScratch();
+    expect(writeFallingLeafInstances(e, pool, anchors, 0, false, "DAY", scratch, frame)).toBe(1);
+    expect(e.mesh.count).toBe(1);
+    const { p, s } = decompose(e.mesh, 0);
+    const T = new Vector3(frame.periodX, 0, frame.periodZ);
+    const s0 = slot(1, 0);
+    expect(p.distanceTo(s0.spawn.clone().sub(T))).toBeLessThan(1e-4);
+    expect(s.x).toBeCloseTo(FALLING_LEAF_LOOK.length, 5);
+    const k = 3;
+    const landedAt = k * FALLING_LEAF_LOOK.staggerMs + FALLING_LEAF_LOOK.fallMs;
+    expect(writeFallingLeafInstances(e, pool, anchors, landedAt, false, "DAY", scratch, frame)).toBe(1);
+    expect(e.mesh.count).toBe(LEAVES);
+    expect(decompose(e.mesh, k).p.distanceTo(slot(1, k).landing.clone().sub(T))).toBeLessThan(1e-4);
+    const f = writeFallingLeafAt(landedAt, 0, createFallingLeafFrame());
+    expect(f.fall).toBe(1);
+    const life = fallingLeavesDurationMs(LEAVES);
+    expect(writeFallingLeafInstances(e, pool, anchors, life - 1, false, "DAY", scratch, frame)).toBe(1);
+    expect(writeFallingLeafInstances(e, pool, anchors, life, false, "DAY", scratch, frame)).toBe(0);
+    expect(pool.activeCount).toBe(0);
+    expect(e.mesh.visible).toBe(false);
+    pool.acquire(0).state.treeIndex = anchors.length;
+    expect(writeFallingLeafInstances(e, pool, anchors, 10, false, "DAY", scratch, frame)).toBe(0);
+    expect(pool.activeCount).toBe(0);
+  });
+
+  it("EM9: colours follow the light preset palette (k mod 2)", () => {
+    const smoke = createChimneySmokeMesh(1, PUFFS);
+    const leaves = createFallingLeafMesh(1, LEAVES);
+    const managers = createObjectPoolManager(caps);
+    managers.chimneySmoke.acquire(0);
+    managers.fallingLeaves.acquire(0);
+    const scratch = createEffectFrameScratch();
+    const c = new Color();
+    for (const preset of ["DAY", "NIGHT"] as const) {
+      writeChimneySmokeInstances(smoke, managers.chimneySmoke, origins, (PUFFS - 1) * CHIMNEY_SMOKE_LOOK.staggerMs, false, preset, scratch);
+      writeFallingLeafInstances(leaves, managers.fallingLeaves, anchors, (LEAVES - 1) * FALLING_LEAF_LOOK.staggerMs, false, preset, scratch);
+      for (const [e, palette] of [
+        [smoke, CHIMNEY_SMOKE_LOOK.palette[preset]],
+        [leaves, FALLING_LEAF_LOOK.palette[preset]],
+      ] as const) {
+        expect(e.mesh.count).toBeGreaterThan(2);
+        for (let k = 0; k < e.mesh.count; k++) {
+          e.mesh.getColorAt(k, c);
+          const want = new Color(palette[k % 2]);
+          for (const ch of ["r", "g", "b"] as const) expect(c[ch], `${preset} ${e.mesh.name} ${k}`).toBeCloseTo(want[ch], 5);
+        }
+      }
+    }
+  });
+
+  it("EM10: both meshes are the one effect program setup with NormalBlending; round puffs, an indexed leaf without vertex colours", () => {
+    const smoke = createChimneySmokeMesh(2, PUFFS);
+    const leaves = createFallingLeafMesh(2, LEAVES);
+    for (const e of [smoke, leaves]) {
+      const m = e.mesh.material as MeshBasicMaterial;
+      expect(m).toBeInstanceOf(MeshBasicMaterial);
+      expect(m.transparent).toBe(true);
+      expect(m.depthWrite).toBe(false);
+      expect(m.toneMapped).toBe(false);
+      expect(m.vertexColors).toBe(false);
+      expect(m.map).toBeNull();
+      expect(m.blending).toBe(NormalBlending);
+      expect(e.mesh.instanceColor).not.toBeNull();
+      expect(e.mesh.visible).toBe(false);
+      expect(e.mesh.frustumCulled).toBe(false);
+      expect(e.mesh.geometry.type).not.toBe("RingGeometry");
+      expect(e.mesh.geometry.getAttribute("color")).toBeUndefined();
+      const hits: Intersection[] = [];
+      e.mesh.raycast(new Raycaster(), hits);
+      expect(hits).toHaveLength(0);
+    }
+    expect(smoke.mesh.geometry).toBeInstanceOf(IcosahedronGeometry);
+    expect(smoke.mesh.geometry.getAttribute("position").count / 3).toBe(80); // detail 1: 80 faces, a round outline
+    expect(leaves.mesh.geometry.index).not.toBeNull();
+    expect(leaves.mesh.geometry.getAttribute("normal")).toBeDefined();
+    expect(() => createChimneySmokeMesh(0, PUFFS)).toThrow(RangeError);
+    expect(() => createFallingLeafMesh(1, 0)).toThrow(RangeError);
+  });
+
+  it("EM11: reduced motion releases a running smoke / fall on the first write and draws nothing", () => {
+    const smoke = createChimneySmokeMesh(2, PUFFS);
+    const leaves = createFallingLeafMesh(2, LEAVES);
+    const managers = createObjectPoolManager(caps);
+    managers.chimneySmoke.acquire(0);
+    managers.fallingLeaves.acquire(0);
+    const scratch = createEffectFrameScratch();
+    writeChimneySmokeInstances(smoke, managers.chimneySmoke, origins, 500, false, "DAY", scratch);
+    writeFallingLeafInstances(leaves, managers.fallingLeaves, anchors, 500, false, "DAY", scratch);
+    expect(smoke.mesh.visible && leaves.mesh.visible).toBe(true);
+    expect(writeChimneySmokeInstances(smoke, managers.chimneySmoke, origins, 520, true, "DAY", scratch)).toBe(0);
+    expect(writeFallingLeafInstances(leaves, managers.fallingLeaves, anchors, 520, true, "DAY", scratch)).toBe(0);
+    for (const e of [smoke, leaves]) {
+      expect(e.mesh.count).toBe(0);
+      expect(e.mesh.visible).toBe(false);
+    }
+    expect(managers.chimneySmoke.activeCount).toBe(0);
+    expect(managers.fallingLeaves.activeCount).toBe(0);
   });
 });

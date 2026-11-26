@@ -47,4 +47,7 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   fireworks: "scene-fireworks",
   skyLanterns: "scene-sky-lanterns",
   propTapPrefix: "scene-prop-tap-",
+  // MFW-72 scene reactions part 2
+  chimneySmoke: "scene-chimney-smoke",
+  fallingLeaves: "scene-falling-leaves",
 });

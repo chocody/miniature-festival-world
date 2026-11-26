@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  CHIMNEY_SMOKE_LOOK,
+  FALLING_LEAF_LOOK,
+  TAP_SHAKE_WIND,
   FIREWORK_LOOK,
   LAMP_GLOW_LOOK,
   NO_BOUNCE,
@@ -15,6 +18,15 @@ import {
 } from "@/config/gimmicks.config";
 import { createBounceFrame, createLampGlowFrame, writeBounceAt, writeLampGlowFrameAt } from "./gimmickCurves";
 import {
+  chimneySmokeDurationMs,
+  chimneySmokeEmitMs,
+  createFallingLeafFrame,
+  createSmokePuffFrame,
+  fallingLeavesDurationMs,
+  fallingLeavesEmitMs,
+  writeFallingLeafAt,
+  writeSmokePuffAt,
+  writeSmokeDriftInto,
   createLanternFrame,
   createNudgeFrame,
   createShellFrame,
@@ -246,5 +258,201 @@ describe("RC8 WCAG 2.3.1 flash counter", () => {
     }
     expect(maxFlashesPerSecond(a, 1)).toBeLessThanOrEqual(WCAG_MAX_FLASHES_PER_SECOND);
     expect(maxFlashesPerSecond(b, 1)).toBeLessThanOrEqual(WCAG_MAX_FLASHES_PER_SECOND);
+  });
+});
+
+describe("chimney smoke curve (MFW-72)", () => {
+  const L = CHIMNEY_SMOKE_LOOK;
+
+  it("RC9: puffs are staggered, rise and drift from the origin, grow then shrink to 0; done after the puff life", () => {
+    const f = createSmokePuffFrame();
+    for (const k of [1, 3]) {
+      writeSmokePuffAt(k * L.staggerMs - 1, k, 1, 0, f);
+      expect(f.visible, `puff ${k}`).toBe(false);
+      expect(f.done).toBe(false);
+      writeSmokePuffAt(k * L.staggerMs, k, 1, 0, f);
+      expect(f.visible).toBe(true);
+    }
+    writeSmokePuffAt(0, 0, 1, 0, f);
+    expect([f.dx, f.dy, f.dz]).toEqual([0, 0, 0]);
+    expect(f.radius).toBe(L.startRadius);
+    writeSmokePuffAt(0.5 * L.puffLifeMs, 0, 1, 0, f);
+    expect(f.dy).toBeCloseTo(0.75 * L.riseHeight, 9);
+    let prev = -Infinity;
+    let a = 0;
+    for (; a < L.fadeStartRatio * L.puffLifeMs; a += 10) {
+      writeSmokePuffAt(a, 0, 1, 0, f);
+      expect(f.radius).toBeGreaterThan(prev);
+      prev = f.radius;
+    }
+    writeSmokePuffAt(a, 0, 1, 0, f); // u = fadeStartRatio: the peak (continuous with the growth)
+    expect(f.radius).toBeGreaterThanOrEqual(prev);
+    prev = f.radius;
+    for (a += 10; a < L.puffLifeMs; a += 10) {
+      writeSmokePuffAt(a, 0, 1, 0, f);
+      expect(f.radius).toBeLessThan(prev);
+      prev = f.radius;
+    }
+    expect(prev).toBeLessThan(0.01);
+    const k = 2;
+    writeSmokePuffAt(k * L.staggerMs + L.puffLifeMs - 1, k, 1, 0, f);
+    expect(f.done).toBe(false);
+    writeSmokePuffAt(k * L.staggerMs + L.puffLifeMs, k, 1, 0, f);
+    expect(f.done).toBe(true);
+    expect(f.visible).toBe(false);
+    expect(f.radius).toBe(0);
+    // Fix round: stagger 220 → 140 ms (denser plume), 6 puffs on HIGH.
+    expect(chimneySmokeDurationMs(5)).toBe(4 * 140 + 1_800);
+    expect(chimneySmokeDurationMs(6)).toBe(2_500);
+    expect(chimneySmokeEmitMs(6)).toBe(700);
+  });
+
+  it("RC9: the drift follows the wind and stays within driftDistance + wobble; the rise is monotonic", () => {
+    const f = createSmokePuffFrame();
+    let prevY = -Infinity;
+    for (let a = 0; a < L.puffLifeMs; a += 25) {
+      writeSmokePuffAt(a + L.staggerMs, 1, 1, 0, f);
+      expect(f.dy).toBeGreaterThanOrEqual(prevY);
+      prevY = f.dy;
+      expect(Math.hypot(f.dx, f.dz)).toBeLessThanOrEqual(L.driftDistance + L.wobbleAmplitude + 1e-9);
+    }
+  });
+});
+
+describe("falling leaf curve (MFW-72)", () => {
+  const L = FALLING_LEAF_LOOK;
+
+  it("RC10: leaves are staggered, land at fallMs, rest still at full size, shrink to 0 over fadeMs, then are done", () => {
+    const f = createFallingLeafFrame();
+    for (const k of [1, 4]) {
+      writeFallingLeafAt(k * L.staggerMs - 1, k, f);
+      expect(f.visible, `leaf ${k}`).toBe(false);
+      expect(f.size).toBe(0);
+      expect(f.done).toBe(false);
+    }
+    const k = 2;
+    const t0 = k * L.staggerMs;
+    writeFallingLeafAt(t0 + L.fallMs, k, f);
+    expect(f.fall).toBe(1);
+    expect(f.sway).toBe(0);
+    expect(f.tiltRad).toBe(0);
+    const landed = { ...f };
+    for (let a = L.fallMs; a < L.fallMs + L.restMs; a += 50) {
+      writeFallingLeafAt(t0 + a, k, f);
+      expect(f).toEqual(landed);
+      expect(f.size).toBe(1);
+    }
+    writeFallingLeafAt(t0 + L.fallMs + L.restMs + L.fadeMs / 2, k, f);
+    expect(f.size).toBeCloseTo(0.5, 9);
+    expect(f.visible).toBe(true);
+    writeFallingLeafAt(t0 + L.fallMs + L.restMs + L.fadeMs, k, f);
+    expect(f.done).toBe(true);
+    expect(f.visible).toBe(false);
+    expect(fallingLeavesDurationMs(6)).toBe(5 * 140 + 1_600 + 1_200 + 500);
+    expect(fallingLeavesDurationMs(6)).toBe(4_000);
+    expect(fallingLeavesEmitMs(6)).toBe(2_300);
+  });
+
+  it("RC10: the fall is monotonic non-decreasing, size 1 in the air; sway and tilt are bounded", () => {
+    const f = createFallingLeafFrame();
+    let prev = -Infinity;
+    for (let a = 0; a <= L.fallMs + L.restMs; a += 5) {
+      writeFallingLeafAt(a, 0, f);
+      expect(f.fall).toBeGreaterThanOrEqual(prev);
+      prev = f.fall;
+      expect(f.size).toBe(1);
+      expect(Math.abs(f.sway)).toBeLessThanOrEqual(L.swayAmplitude);
+      expect(Math.abs(f.tiltRad)).toBeLessThanOrEqual(L.flightPitchRad + L.tiltAmplitudeRad);
+      if (f.fall < 0.5) expect(f.tiltRad).toBeLessThan(0); // pitched up while it falls: the face shows (fix round)
+    }
+    writeFallingLeafAt(0, 0, f);
+    expect(f.fall).toBe(0);
+  });
+});
+
+describe("MFW-72 curve robustness", () => {
+  it("RC11: negative and NaN ages count as 0; the out object is returned", () => {
+    const s = createSmokePuffFrame();
+    expect(writeSmokePuffAt(-50, 0, 1, 0, s)).toBe(s);
+    expect(s.radius).toBe(CHIMNEY_SMOKE_LOOK.startRadius);
+    writeSmokePuffAt(Number.NaN, 0, 1, 0, s);
+    expect(s.radius).toBe(CHIMNEY_SMOKE_LOOK.startRadius);
+    expect(s.dy).toBe(0);
+    const l = createFallingLeafFrame();
+    expect(writeFallingLeafAt(-50, 0, l)).toBe(l);
+    expect(l.fall).toBe(0);
+    expect(l.visible).toBe(true);
+    writeFallingLeafAt(Number.NaN, 0, l);
+    expect(l.fall).toBe(0);
+  });
+
+  it("RC12 (WCAG 2.3.1): sampled every 1 ms, a puff's radius and a leaf's size rise / fall at most once", () => {
+    const changes = (values: number[]) => {
+      let turns = 0;
+      let dir = 0;
+      for (let i = 1; i < values.length; i++) {
+        const d = Math.sign(values[i] - values[i - 1]);
+        if (d !== 0 && d !== dir) {
+          if (dir !== 0) turns++;
+          dir = d;
+        }
+      }
+      return turns;
+    };
+    const s = createSmokePuffFrame();
+    const radii: number[] = [];
+    for (let t = 0; t <= chimneySmokeDurationMs(1); t++) radii.push(writeSmokePuffAt(t, 0, 1, 0, s).radius);
+    expect(changes(radii)).toBeLessThanOrEqual(1);
+    const l = createFallingLeafFrame();
+    const sizes: number[] = [];
+    for (let t = 0; t <= fallingLeavesDurationMs(1); t++) sizes.push(writeFallingLeafAt(t, 0, l).size);
+    expect(changes(sizes)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("smoke drift toward the middle of the screen (MFW-72 fix round)", () => {
+  const e = (33.46 * Math.PI) / 180; // the MFW-68 camera elevation
+  const back = { x: 0, y: Math.sin(e), z: Math.cos(e) }; // yaw 0: the viewer is at +z
+  /** Screen motion (right, up) per unit of a horizontal world move, for this camera. */
+  const screenOf = (d: { x: number; z: number }) => ({ right: d.x, up: -d.z * Math.sin(e) });
+
+  it("RC13: a smoke near the top right drifts toward the viewer and left: its screen motion points at the centre", () => {
+    const d = writeSmokeDriftInto(0.55, 0.68, 390 / 844, 1, 0, back.x, back.y, back.z, { x: 0, z: 0 });
+    expect(d.z).toBeGreaterThan(0); // toward the viewer = down the screen
+    expect(d.x).toBeLessThan(0); // toward the middle horizontally
+    const s = screenOf(d);
+    const want = { right: -0.55 * (390 / 844), up: -0.68 };
+    const cross = s.right * want.up - s.up * want.right;
+    expect(Math.abs(cross) / (Math.hypot(s.right, s.up) * Math.hypot(want.right, want.up))).toBeLessThan(1e-9); // parallel
+    expect(s.right * want.right + s.up * want.up).toBeGreaterThan(0); // same direction
+    expect(Math.hypot(s.right, s.up)).toBeCloseTo(1, 9); // one screen unit per unit of drift
+  });
+
+  it("RC13: a smoke low on the screen drifts away from the viewer (up the screen); rotated cameras keep the screen rule", () => {
+    const d = writeSmokeDriftInto(0, -0.7, 1, 1, 0, back.x, back.y, back.z, { x: 0, z: 0 });
+    expect(d.z).toBeLessThan(0);
+    expect(d.x).toBeCloseTo(0, 9);
+    const yaw = 0.9; // camera yawed: right = (cos, −sin), back = (sin, ·, cos)
+    const r = writeSmokeDriftInto(0.6, 0, 1, Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw) * back.z, back.y, Math.cos(yaw) * back.z, { x: 0, z: 0 });
+    expect(r.x).toBeCloseTo(-Math.cos(yaw), 9); // straight screen-left
+    expect(r.z).toBeCloseTo(Math.sin(yaw), 9);
+  });
+
+  it("RC13: the centre, a degenerate camera or non-finite input fall back to TAP_SHAKE_WIND; the out object is returned", () => {
+    const out = { x: 9, z: 9 };
+    expect(writeSmokeDriftInto(0.01, 0.01, 1, 1, 0, 0, 0.5, 0.8, out)).toBe(out);
+    expect(out).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
+    expect(writeSmokeDriftInto(0.5, 0.5, 1, 0, 0, 0, 0.5, 0.8, out)).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
+    expect(writeSmokeDriftInto(Number.NaN, 0.5, 1, 1, 0, 0, 0.5, 0.8, out)).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
+    // A near-horizontal camera never explodes the toward-viewer part.
+    const flat = writeSmokeDriftInto(0, 0.9, 1, 1, 0, 0, 0.01, 1, out);
+    expect(Math.abs(flat.z)).toBeCloseTo(1 / CHIMNEY_SMOKE_LOOK.minElevationSin, 9);
+  });
+
+  it("RC13: the puff follows the drift and wobbles across it", () => {
+    const f = createSmokePuffFrame();
+    writeSmokePuffAt(CHIMNEY_SMOKE_LOOK.puffLifeMs / 2, 0, 0, 2, f);
+    expect(f.dz).toBeCloseTo(2 * CHIMNEY_SMOKE_LOOK.driftDistance * (1 - 0.5 ** CHIMNEY_SMOKE_LOOK.driftEaseExponent), 9);
+    expect(Math.abs(f.dx)).toBeLessThanOrEqual(CHIMNEY_SMOKE_LOOK.wobbleAmplitude + 1e-12);
   });
 });

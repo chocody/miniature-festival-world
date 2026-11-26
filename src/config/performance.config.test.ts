@@ -3,6 +3,9 @@ import {
   DEFAULT_QUALITY_TIER,
   EFFECT_KINDS,
   EFFECT_POOL_CAPS,
+  CHIMNEY_SMOKE_PUFFS_PER_TAP,
+  FALLING_LEAF_SLOTS,
+  FALLING_LEAVES_PER_TAP,
   FIREWORK_SPARKS_PER_BURST,
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
@@ -107,6 +110,20 @@ describe("performance.config (owner numbers, open question #5)", () => {
     }
     expect(FIREWORK_SPARKS_PER_BURST.HIGH).toBeGreaterThanOrEqual(FIREWORK_SPARKS_PER_BURST.MEDIUM);
     expect(FIREWORK_SPARKS_PER_BURST.MEDIUM).toBeGreaterThanOrEqual(FIREWORK_SPARKS_PER_BURST.LOW);
+  });
+  it("PC3: smoke puffs / falling leaves per tap are positive integers, HIGH ≥ MEDIUM ≥ LOW, frozen; slots = the max (MFW-72 DRAFT)", () => {
+    for (const table of [CHIMNEY_SMOKE_PUFFS_PER_TAP, FALLING_LEAVES_PER_TAP]) {
+      expect(Object.isFrozen(table)).toBe(true);
+      expect(Object.keys(table).sort()).toEqual(["HIGH", "LOW", "MEDIUM"]);
+      for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) expect(Number.isInteger(table[tier]) && table[tier] > 0).toBe(true);
+      expect(table.HIGH).toBeGreaterThanOrEqual(table.MEDIUM);
+      expect(table.MEDIUM).toBeGreaterThanOrEqual(table.LOW);
+    }
+    expect(FALLING_LEAF_SLOTS).toBe(Math.max(FALLING_LEAVES_PER_TAP.HIGH, FALLING_LEAVES_PER_TAP.MEDIUM, FALLING_LEAVES_PER_TAP.LOW));
+    for (const kind of ["chimneySmoke", "fallingLeaves"] as const) {
+      expect(EFFECT_KINDS).toContain(kind);
+      expect(EFFECT_POOL_CAPS.LOW[kind]).toBeGreaterThan(0);
+    }
   });
 });
 

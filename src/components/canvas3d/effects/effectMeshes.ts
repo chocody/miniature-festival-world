@@ -1,24 +1,44 @@
 import {
   AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
   Color,
+  Euler,
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
   NormalBlending,
+  Quaternion,
   RingGeometry,
-  type BufferGeometry,
+  Vector3,
 } from "three";
 import {
+  CHIMNEY_SMOKE_LOOK,
+  FALLING_LEAF_LOOK,
   FIREWORK_LOOK,
   FIREWORK_SPARK_GEOMETRY,
   LAMP_GLOW_LOOK,
   NO_BOUNCE,
   RIPPLE_LOOK,
   SKY_LANTERN_LOOK,
+  TAP_SHAKE_WIND,
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
+import { LIGHT_PRESET_IDS, type LightPresetId } from "@/config/look.config";
 import type { PartGeometrySpec, ScenePartSpec } from "@/config/scene.config";
+import type { WorldVec3 } from "@/core/coordinates";
+import { buildLeafShellMeshData } from "@/core/customization/krathongMeshData";
 import {
+  chimneySmokeDurationMs,
+  createFallingLeafFrame,
+  createSmokePuffFrame,
+  fallingLeavesDurationMs,
+  writeFallingLeafAt,
+  writeSmokePuffAt,
+  type ChimneySmokeState,
+  type FallingLeafFrame,
+  type FallingLeavesState,
+  type SmokePuffFrame,
   createLampGlowFrame,
   createLanternFrame,
   createRippleFrame,
@@ -48,6 +68,7 @@ import type { InstanceTransform } from "@/core/world";
 import { createPartGeometry } from "../geometry";
 import { composeInstanceMatrix } from "../instancing";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
+import { TREE_LEAF_PATH_STRIDE, type TreeLeafAnchor } from "./sceneEffectAnchors";
 
 /** One pooled effect kind = one InstancedMesh sized to the pool cap + its colour at intensity 1. */
 export interface EffectMesh {
@@ -66,6 +87,12 @@ export interface EffectFrameScratch {
   readonly shell: ShellFrame;
   readonly spark: SparkFrame;
   readonly lantern: LanternFrame;
+  readonly smoke: SmokePuffFrame; // MFW-72
+  readonly leaf: FallingLeafFrame;
+  readonly position: Vector3;
+  readonly quaternion: Quaternion;
+  readonly euler: Euler;
+  readonly scale: Vector3;
 }
 
 export function createEffectFrameScratch(): EffectFrameScratch {
@@ -78,6 +105,12 @@ export function createEffectFrameScratch(): EffectFrameScratch {
     shell: createShellFrame(),
     spark: createSparkFrame(),
     lantern: createLanternFrame(),
+    smoke: createSmokePuffFrame(),
+    leaf: createFallingLeafFrame(),
+    position: new Vector3(),
+    quaternion: new Quaternion(),
+    euler: new Euler(),
+    scale: new Vector3(),
   };
 }
 
@@ -436,6 +469,176 @@ export function writeSkyLanternInstances(
     n++;
   }
   return finishWrite(target, n);
+}
+
+/** Per light preset, the palette as three Colors (made once per mesh; the effect program is unlit, so NIGHT gets its own tones). */
+function presetPalettes(palette: Readonly<Record<LightPresetId, readonly string[]>>): Readonly<Record<LightPresetId, readonly Color[]>> {
+  const out = {} as Record<LightPresetId, readonly Color[]>;
+  for (const id of LIGHT_PRESET_IDS) out[id] = Object.freeze(palette[id].map((hex) => new Color(hex)));
+  return Object.freeze(out);
+}
+
+/** Chimney smoke (MFW-72): `puffsPerSmoke` soft round puffs per smoke, NormalBlending (fades by shrinking: no halo, MFW-67). */
+export interface ChimneySmokeMesh extends EffectMesh {
+  readonly puffsPerSmoke: number;
+  readonly palettes: Readonly<Record<LightPresetId, readonly Color[]>>;
+}
+
+export function createChimneySmokeMesh(smokeCapacity: number, puffsPerSmoke: number): ChimneySmokeMesh {
+  assertCapacity(smokeCapacity);
+  assertCapacity(puffsPerSmoke);
+  const base = setupEffectMesh(
+    createPartGeometry(CHIMNEY_SMOKE_LOOK.geometry),
+    CHIMNEY_SMOKE_LOOK.palette.DAY[0],
+    smokeCapacity * puffsPerSmoke,
+    SCENE_OBJECT_NAMES.chimneySmoke,
+    "normal",
+  );
+  return { ...base, puffsPerSmoke, palettes: presetPalettes(CHIMNEY_SMOKE_LOOK.palette) };
+}
+
+/**
+ * Reduced motion: every running smoke is released and nothing is drawn (the instant state is MFW-60's window glow). Else per active
+ * entry: a missing origin, a non-safe-integer stretch or an age ≥ chimneySmokeDurationMs releases it; per puff k a uniform scale
+ * S(radius) at origin + s·T + (dx, dy, dz) (writeSmokePuffAt along the entry's tap-time drift), colour palettes[lightPreset][k mod len]. Returns the number of active
+ * smokes. Allocation-free.
+ */
+export function writeChimneySmokeInstances(
+  target: ChimneySmokeMesh,
+  pool: ObjectPool<ChimneySmokeState>,
+  origins: readonly WorldVec3[],
+  nowMs: number,
+  reducedMotion: boolean,
+  lightPreset: LightPresetId,
+  scratch: EffectFrameScratch,
+  frame: EndlessRiverFrame | null = null,
+): number {
+  if (reducedMotion) {
+    if (pool.activeCount > 0) pool.releaseAll();
+    finishWrite(target, 0);
+    return 0;
+  }
+  let n = 0;
+  let smokes = 0;
+  const palette = target.palettes[lightPreset];
+  const life = chimneySmokeDurationMs(target.puffsPerSmoke);
+  for (let s = 0; s < pool.capacity; s++) {
+    const e = pool.entryAt(s);
+    if (!e.active) continue;
+    const origin = origins[e.state.houseIndex];
+    const age = nowMs - e.startedAtMs;
+    if (origin === undefined || !writeStretchOffset(frame, e.state.stretchIndex) || age >= life) {
+      pool.release(e);
+      continue;
+    }
+    smokes++;
+    for (let k = 0; k < target.puffsPerSmoke && n < target.capacity; k++) {
+      const f = writeSmokePuffAt(age, k, e.state.driftX, e.state.driftZ, scratch.smoke);
+      if (!f.visible) continue;
+      scratch.matrix
+        .makeScale(f.radius, f.radius, f.radius)
+        .setPosition(origin.x + scratchOffset.x + f.dx, origin.y + f.dy, origin.z + scratchOffset.z + f.dz);
+      target.mesh.setMatrixAt(n, scratch.matrix);
+      target.mesh.setColorAt(n, palette[k % palette.length]);
+      n++;
+    }
+  }
+  finishWrite(target, n);
+  return smokes;
+}
+
+/** Falling leaves (MFW-72): `leavesPerFall` MFW-69 leaf shells per fall, NormalBlending (they fade by shrinking). */
+export interface FallingLeafMesh extends EffectMesh {
+  readonly leavesPerFall: number;
+  readonly palettes: Readonly<Record<LightPresetId, readonly Color[]>>;
+}
+
+const VECTOR3_ITEM_SIZE = 3;
+const INDEX_ITEM_SIZE = 1;
+
+/** The unit leaf shell (FALLING_LEAF_LOOK.shell): indexed position + computed normals, centred on its box; no vertex colours. */
+function createFallingLeafGeometry(): BufferGeometry {
+  const data = buildLeafShellMeshData(FALLING_LEAF_LOOK.shell);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(data.positions, VECTOR3_ITEM_SIZE));
+  geometry.setIndex(new BufferAttribute(data.indices, INDEX_ITEM_SIZE));
+  geometry.computeVertexNormals();
+  geometry.center();
+  return geometry;
+}
+
+export function createFallingLeafMesh(fallCapacity: number, leavesPerFall: number): FallingLeafMesh {
+  assertCapacity(fallCapacity);
+  assertCapacity(leavesPerFall);
+  const base = setupEffectMesh(
+    createFallingLeafGeometry(),
+    FALLING_LEAF_LOOK.palette.DAY[0],
+    fallCapacity * leavesPerFall,
+    SCENE_OBJECT_NAMES.fallingLeaves,
+    "normal",
+  );
+  return { ...base, leavesPerFall, palettes: presetPalettes(FALLING_LEAF_LOOK.palette) };
+}
+
+/**
+ * Same release rules as the smoke (reduced motion, missing anchor, bad stretch, age ≥ fallingLeavesDurationMs). Per leaf slot
+ * k < min(leavesPerFall, anchor.slots): position = lerp(spawn, landing, fall) + (−windZ, 0, windX)·sway + s·T; rotation
+ * Euler(tilt, yaw, 0, "YXZ"); scale = length·size; colour palettes[lightPreset][k mod len]. Returns the number of active falls.
+ * Allocation-free.
+ */
+export function writeFallingLeafInstances(
+  target: FallingLeafMesh,
+  pool: ObjectPool<FallingLeavesState>,
+  anchors: readonly TreeLeafAnchor[],
+  nowMs: number,
+  reducedMotion: boolean,
+  lightPreset: LightPresetId,
+  scratch: EffectFrameScratch,
+  frame: EndlessRiverFrame | null = null,
+): number {
+  if (reducedMotion) {
+    if (pool.activeCount > 0) pool.releaseAll();
+    finishWrite(target, 0);
+    return 0;
+  }
+  let n = 0;
+  let falls = 0;
+  const palette = target.palettes[lightPreset];
+  const life = fallingLeavesDurationMs(target.leavesPerFall);
+  const wx = TAP_SHAKE_WIND.windDirX;
+  const wz = TAP_SHAKE_WIND.windDirZ;
+  for (let s = 0; s < pool.capacity; s++) {
+    const e = pool.entryAt(s);
+    if (!e.active) continue;
+    const anchor = anchors[e.state.treeIndex];
+    const age = nowMs - e.startedAtMs;
+    if (anchor === undefined || !writeStretchOffset(frame, e.state.stretchIndex) || age >= life) {
+      pool.release(e);
+      continue;
+    }
+    falls++;
+    const leaves = Math.min(target.leavesPerFall, anchor.slots);
+    const p = anchor.paths;
+    for (let k = 0; k < leaves && n < target.capacity; k++) {
+      const f = writeFallingLeafAt(age, k, scratch.leaf);
+      if (!f.visible) continue;
+      const o = k * TREE_LEAF_PATH_STRIDE;
+      scratch.position.set(
+        p[o] + (p[o + 3] - p[o]) * f.fall - wz * f.sway + scratchOffset.x,
+        p[o + 1] + (p[o + 4] - p[o + 1]) * f.fall,
+        p[o + 2] + (p[o + 5] - p[o + 2]) * f.fall + wx * f.sway + scratchOffset.z,
+      );
+      scratch.quaternion.setFromEuler(scratch.euler.set(f.tiltRad, f.yawRad, 0, "YXZ"));
+      const size = FALLING_LEAF_LOOK.length * f.size;
+      scratch.scale.set(size, size, size);
+      scratch.matrix.compose(scratch.position, scratch.quaternion, scratch.scale);
+      target.mesh.setMatrixAt(n, scratch.matrix);
+      target.mesh.setColorAt(n, palette[k % palette.length]);
+      n++;
+    }
+  }
+  finishWrite(target, n);
+  return falls;
 }
 
 /** Disposes geometry, material and the mesh (instance buffers). R3F never disposes a <primitive>. */

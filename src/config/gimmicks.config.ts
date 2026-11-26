@@ -1,5 +1,7 @@
 import { SCENE_CAMERA_ZOOM } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
+import type { LeafShellSpec } from "./krathongModel.config";
+import type { LightPresetId } from "./look.config";
 import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
 /** Scene tap gimmicks (spec §6.6 Task 6.2). Looks and timings are PLACEHOLDER (spec silent) unless marked. */
@@ -119,19 +121,29 @@ export const SCENE_GIMMICK_KINDS = [
 export type SceneGimmickKind = (typeof SCENE_GIMMICK_KINDS)[number];
 
 /** Pooled effects a reaction can start (SceneEffectsHandle.react). markCue is the existing krathong inspect cue (RiverFlow / OwnKrathong). */
-export type SceneEffectId = "ripple" | "lampGlow" | "skyLantern" | "windowGlow" | "nudge" | "firework" | "markCue";
+export type SceneEffectId =
+  | "ripple"
+  | "lampGlow"
+  | "skyLantern"
+  | "windowGlow"
+  | "nudge"
+  | "firework"
+  | "markCue"
+  | "chimneySmoke"
+  | "fallingLeaves";
 export interface SceneTapReaction {
   readonly gimmick: SceneGimmickKind;
   readonly effects: readonly SceneEffectId[]; // non-empty
 }
 /**
  * THE registry: one reaction per object type (open question 35, owner 2026-11-25; slice 1 of MFW-60). The krathong entry is served
- * by RiverFlow / OwnKrathong and the inspect popup; SceneEffectsHandle.react() never handles it. Slice 2 (MFW-72) adds chimney smoke
- * and falling leaves.
+ * by RiverFlow / OwnKrathong and the inspect popup; SceneEffectsHandle.react() never handles it. Slice 2 shipped in MFW-72: a house
+ * tap also puffs chimney smoke and a tree tap also drops a few leaves; the villager keeps the hop (no arm part for a wave; loop
+ * decision, not yet reviewed by the owner). The gimmick names are unchanged.
  */
 export const SCENE_TAP_REACTIONS: Readonly<Record<SceneTargetKind, SceneTapReaction>> = Object.freeze({
-  house: Object.freeze({ gimmick: "house-lights", effects: Object.freeze(["windowGlow"] as const) }),
-  tree: Object.freeze({ gimmick: "tree-shake", effects: Object.freeze(["nudge"] as const) }),
+  house: Object.freeze({ gimmick: "house-lights", effects: Object.freeze(["windowGlow", "chimneySmoke"] as const) }),
+  tree: Object.freeze({ gimmick: "tree-shake", effects: Object.freeze(["nudge", "fallingLeaves"] as const) }),
   bush: Object.freeze({ gimmick: "bush-shake", effects: Object.freeze(["nudge"] as const) }),
   reed: Object.freeze({ gimmick: "reed-shake", effects: Object.freeze(["nudge"] as const) }),
   rock: Object.freeze({ gimmick: "rock-bounce", effects: Object.freeze(["nudge"] as const) }),
@@ -245,4 +257,85 @@ export const SKY_LANTERN_LOOK = Object.freeze({
   fadeStartRatio: 0.7, // the size shrinks to 0 over the last 30 %
   reducedMotionOffsetY: 0.8, // static lantern this high above the lamp head
   reducedMotionHoldMs: 1_600,
+});
+
+/*
+ * MFW-72 (backlog 11.6, slice 2 of open question 35): chimney smoke and falling leaves. Owner decision (open question 35, 2026-11-25):
+ * house tap → windows light up with a puff of chimney smoke; tree tap → leaves shake and a few fall. How they are built and every
+ * number below is a loop decision, not yet reviewed by the owner (DRAFT, listed in docs/follow-ups.md, MFW-72). No chimney model: the
+ * smoke rises from the roof top. Both fade by shrinking (NormalBlending, the existing effect program: no ring, no halo, MFW-67).
+ */
+
+/**
+ * Smoke puff from a tapped house's roof top: `puffs` (CHIMNEY_SMOKE_PUFFS_PER_TAP[tier]) soft round blobs leave one after the other
+ * (staggerMs), billow out (ease-out) along a drift chosen at tap time, rise a little, wobble across the drift, grow, then shrink to
+ * nothing over the last (1 − fadeStartRatio) of their life. World units / ms.
+ * Fix round (QA, MFW-72): at the default framing the house nearest the top card has its roof UNDER the card, so a column that rose
+ * straight up was hidden. The drift now leans toward the middle of the screen (`writeSmokeDriftInto`, computed once per tap from the
+ * camera): a house near the top of the screen puffs toward the viewer (down the screen), one near an edge puffs inward; with no camera
+ * (tests) it follows TAP_SHAKE_WIND. The plume is low, wide and dense instead of a tall thin column.
+ * NIGHT tones are grey-blue because the effect program is unlit. DRAFT (MFW-72).
+ */
+export const CHIMNEY_SMOKE_LOOK = Object.freeze({
+  originLiftY: 0.04, // above the roof top
+  staggerMs: 140,
+  puffLifeMs: 1_800,
+  riseHeight: 0.25, // a low plume (fix round; was a 1.8 column)
+  driftDistance: 2.2, // world units along the tap-time drift (× 1 / sin(camera elevation) for its toward-viewer part)
+  driftEaseExponent: 1.5, // drift progress 1 − (1 − u)^k: slower than the rise's ease-out, so the plume stays joined to the roof
+  wobbleAmplitude: 0.06,
+  wobblePeriodMs: 900,
+  startRadius: 0.16, // large first puffs near the roof
+  endRadius: 0.38,
+  fadeStartRatio: 0.7,
+  /** Technical: floor of sin(camera elevation) in the toward-viewer compensation (a near-horizontal camera never explodes the drift). */
+  minElevationSin: 0.3,
+  /** Technical: below this screen distance from the centre (NDC units) the drift falls back to TAP_SHAKE_WIND. */
+  centreFallbackNdc: 0.05,
+  geometry: Object.freeze({ kind: "icosahedron", radius: 1, detail: 1 } as const), // detail 1 = a round outline
+  palette: Object.freeze({
+    DAY: Object.freeze(["#F5F2EA", "#E3DED3"]),
+    NIGHT: Object.freeze(["#AEB5CB", "#959DB6"]),
+  } satisfies Record<LightPresetId, readonly string[]>) as Readonly<Record<LightPresetId, readonly string[]>>,
+});
+
+/**
+ * A few leaves (FALLING_LEAVES_PER_TAP[tier]) drop from a tapped tree's crown one after the other, fall (smoothstep) with a downwind
+ * drift, flutter (pitched up by `flightPitchRad` so the face shows, ± tiltAmplitudeRad, spinning), settle flat on the bank (restMs) and
+ * shrink away (fadeMs). The leaf is the MFW-69 leaf shell at unit length, scaled to `length` (toy-scale for visibility).
+ * Fix round (QA, MFW-72): a flat 0.26 leaf read as 8–12 px flecks; it is now longer, pitched up while it falls, and orange / russet so
+ * it stands out on the DAY grass. DRAFT (MFW-72).
+ */
+export const FALLING_LEAF_LOOK = Object.freeze({
+  shell: Object.freeze({
+    length: 1,
+    width: 0.55,
+    widestAt: 0.45,
+    fullness: 0.9,
+    baseTiltRad: Math.PI / 2,
+    bendRad: 0.3,
+    fold: 0.12,
+    cup: 0.05,
+    thickness: 0.05,
+    rows: 3,
+    columns: 3,
+  } satisfies LeafShellSpec) as LeafShellSpec,
+  length: 0.4, // world units (was 0.26)
+  spawnRadiusRatio: 0.75, // × crown radius, horizontal
+  spawnDropRatio: 0.45, // × crown radius, below the crown centre
+  staggerMs: 140,
+  fallMs: 1_600,
+  restMs: 1_200,
+  fadeMs: 500,
+  driftDistance: 0.4, // along TAP_SHAKE_WIND
+  swayAmplitude: 0.12,
+  swayPeriodMs: 800,
+  spinTurns: 1.25,
+  flightPitchRad: 1.35, // spine pitched up in flight (the face shows); 0 = lying flat on landing
+  tiltAmplitudeRad: 0.3,
+  restLiftY: 0.015, // above the bank surface
+  palette: Object.freeze({
+    DAY: Object.freeze(["#E39A2C", "#C2582A"]), // orange-gold, russet (were #D8B24A / #B5BF55: too close to the DAY grass)
+    NIGHT: Object.freeze(["#D2A24E", "#C07A45"]), // were #C2A253 / #A3AE5C (themselves brightened from #8E7C47 / #6F7E46)
+  } satisfies Record<LightPresetId, readonly string[]>) as Readonly<Record<LightPresetId, readonly string[]>>,
 });

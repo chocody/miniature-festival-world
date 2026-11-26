@@ -44,6 +44,8 @@ const NOT_AN_OBJECT: readonly NameKey[] = [
   "windowGlows",
   "fireworks",
   "skyLanterns",
+  "chimneySmoke", // MFW-72 effects
+  "fallingLeaves",
   "riverBatchMeshPrefix",
   "lampTapPrefix",
   "riverHitPrefix",

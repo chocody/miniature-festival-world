@@ -28,6 +28,8 @@ export const E2E_LAND_NAMES = ["scene-ground", "scene-bank-left", "scene-bank-ri
 export const E2E_FIREWORK_NAME = "scene-fireworks"; // = SCENE_OBJECT_NAMES.fireworks
 export const E2E_WINDOW_GLOW_NAME = "scene-window-glows"; // = SCENE_OBJECT_NAMES.windowGlows
 export const E2E_SKY_LANTERN_NAME = "scene-sky-lanterns"; // = SCENE_OBJECT_NAMES.skyLanterns
+export const E2E_CHIMNEY_SMOKE_NAME = "scene-chimney-smoke"; // = SCENE_OBJECT_NAMES.chimneySmoke (MFW-72)
+export const E2E_FALLING_LEAVES_NAME = "scene-falling-leaves"; // = SCENE_OBJECT_NAMES.fallingLeaves (MFW-72)
 export const E2E_DRAG_START_DISTANCE_PX = 8; // = DRAG_START_DISTANCE_PX
 
 const WATER_GRID_X_FROM = 0.1;
