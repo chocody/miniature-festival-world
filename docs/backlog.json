@@ -955,6 +955,62 @@
       ]
     },
     {
+      "id": "L14",
+      "summary": "Loop 14 — Owner Review 3: Minimal Krathong UI & Scene Polish",
+      "description": "Owner request 2026-11-26 (third review, with a screenshot of the world view): make the UI minimal — a Find My button that opens a compact krathong picker with short dates, a fading speech bubble over another person's krathong instead of a text panel, a day/night toggle shown as a coloured sun / moon symbol, and the camera-rotate button at the top left; and polish the scene — a fuller village, a lamp tap that simply turns the lamp on, a tap on empty ground that randomly launches a firework or a sky lantern, a second flower type on the krathong so it looks full, and water waves with more depth.",
+      "labels": [
+        "loop-14",
+        "loy-krathong",
+        "owner-review",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "14.1",
+          "summary": "Minimal UI — krathong picker, fading wish bubble, day/night toggle, camera button top left",
+          "goal": "Owner (2026-11-26): the UI shows less text and fewer panels; the scene and the krathongs carry the experience.",
+          "ac": [
+            "Find My is one round icon button; tapping it opens a compact picker of the user's own krathongs (small krathong thumbnail plus a short Thai date such as \"26 พ.ย. 69\" and the time — no weekday names such as MON / TUE, no explanatory text); choosing one brings that krathong into view (reduced motion: instant cut) and closes the picker; with one krathong the button goes straight to it (the picker layout and the one-krathong shortcut are loop decisions recorded for the owner)",
+            "Tapping another person's krathong shows only a speech bubble with its public wish text floating above that krathong in the scene, following it as it drifts, and fading out after a few seconds (duration DRAFT); the old text panel is removed; private wish text never appears (invariant C); the bubble position is derived from the stored coord (invariant A)",
+            "The day / night control is one toggle button showing a coloured sun or moon symbol and no text; tapping it switches DAY ↔ NIGHT; until the user touches it the scene keeps following the real time of day (owner decision, open question 32); how the user returns to the real-time default is a loop decision recorded for the owner; the button has an accessible Thai label",
+            "The camera-rotate button moves to the top left with the other round buttons; behaviour unchanged; every button keeps MIN_TOUCH_TARGET_PX and does not cover the river at 390×844, 360×640 and 1440×900",
+            "e2e covers the picker (choose a krathong → it comes into view), the bubble (appears, follows, fades, no panel), the toggle (DAY ↔ NIGHT) and the rotate button position; before / after screenshots at phone and desktop sizes, DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui",
+            "interaction"
+          ],
+          "blockedBy": [
+            "11.2"
+          ]
+        },
+        {
+          "id": "14.2",
+          "summary": "Scene polish — fuller village, lamp lights up, random firework or sky lantern, second flower type, deeper waves",
+          "goal": "Owner (2026-11-26): the world should look full and alive, and every tap should feel natural. The lead may split this card if it is too large for one reviewable PR (each slice shippable on its own).",
+          "ac": [
+            "More houses (and matching props) along both banks so the scene looks full at the default framing on phone and desktop, DAY and NIGHT; scenery repeats per stretch as in 11.2; per-tier render budgets are kept (any raise is stated openly with the reason); repeated parts stay instanced (invariant E)",
+            "Tapping a lamp turns its light on (the lamp head glows and warm light falls on the ground around it, no ring or halo) and nothing rises from it — the sky lantern is no longer launched from a lamp; reduced motion: the light switches on instantly",
+            "Tapping empty ground / bank (the \"sky\" tap of 11.4) launches either a firework or a sky lantern at random (both pooled with fixed caps; the random choice is seeded so tests are deterministic; the split between the two is DRAFT)",
+            "The krathong model gets a second flower type so the bare areas of the base look full, and the customizer lets the user choose between the two flower types; krathongs saved before this card still render exactly as before (stored appearance stays compatible) and any server-side appearance allowlist accepts the new key",
+            "The river water shows more depth (e.g. gentle wave shading and highlights that move with the flow), within the tier budgets and without a new shader program on LOW (E2E_MAX_SHADER_PROGRAMS); unit tests and e2e cover the lamp, the random sky tap and the flower choice; before / after screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "interaction",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "11.6"
+          ]
+        }
+      ]
+    },
+    {
       "id": "LS",
       "summary": "Festival Config Stubs (Roadmap 2026–2027)",
       "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",
