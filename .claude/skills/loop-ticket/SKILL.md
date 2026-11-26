@@ -133,15 +133,27 @@ Start from `sizeHint` in the `get` output (AC count → S ≤2, M 3–4, L ≥5;
 | Role | Model |
 |---|---|
 | lead | `opus` always |
-| dev | `sizeHint.devModel`: `opus` when the ticket carries the label `dev-opus` (owner rule 2026-11-25: how models and scenes look, scene design, key features), else `sonnet` for every size — the lead's spec is file-level (owner rule); also `opus` if the lead's spec is still not file-level after one revision (Step 4.2) |
+| dev | `sizeHint.devModel`: `opus` when the ticket carries the label `dev-opus` (owner rule 2026-11-25: how models and scenes look, scene design, key features), else `sonnet` for every size — the lead's spec is file-level (owner rule); route `brief-only` stays on `sonnet` too (the card is S and label-gated: no `dev-opus`, `3d`, `art`, `perf`, risk label); also `opus` if the lead's spec is still not file-level after one revision (Step 4.2) |
 | reviewer, qa | `sonnet` |
 | privacy-auditor, r3f-perf-reviewer | as defined in `.claude/agents/*.md` (pass no `model`) |
+
+**Route** (owner decisions 2026-11-26; decide it now, record it below, and 4.2 acts on it). The route only changes who
+writes the spec: every route keeps reviewer, qa, the auditors that apply, `loop-verify` and the CI gate.
+1. **plan-file** — `docs/plans/<KEY>.md` exists on `main` and
+   `node scripts/spec-lint.mjs docs/plans/<KEY>.md --ac <n> --size <S|M|L>` exits 0 → **skip the lead**; the dev
+   uses that file as the spec. If the linter fails → route **lead**, with that file given to the lead as input.
+   (Step 4.1 re-runs this lint on the file inside `WT`; a different result sends the card to the lead.)
+2. **brief-only** — else, when `sizeHint.skipLead` is true (AC ≤ 2, none of the labels `privacy`, `db`, `migration`,
+   `dev-opus`, `3d`, `art`, `perf`) **and** your judgment above leaves `SIZE` at S (no new subsystem; the data cannot
+   show that, so only the labels and your judgment cover it) → **skip the lead**; the dev works from the brief directly.
+3. **lead** — otherwise (Step 4.2, as before).
 
 Record it on the ticket:
 ```bash
 node scripts/jira.mjs comment <KEY> - <<'EOF'
 Estimate: <S|M|L> — <reasons: AC count, risk labels, areas>
-Models: lead opus · dev <sonnet|opus> · reviewer sonnet · qa sonnet<· privacy-auditor / r3f-perf-reviewer if expected>
+Route: <plan-file|brief-only|lead> — <why: plan file + spec-lint result / skipLead / default>
+Models: lead <opus|skipped> · dev <sonnet|opus> · reviewer sonnet · qa sonnet<· privacy-auditor / r3f-perf-reviewer if expected>
 Merge: owner (labels <…>) — the loop opens a green PR but does not merge.      <- only when OWNER_MERGE
 EOF
 ```
@@ -178,10 +190,16 @@ of each reviewing role (reviewer, qa, auditors) is also the file without a round
 
 ### 4.1 The brief
 
+First, on route `plan-file`, **confirm it inside `WT`** (Step 3 created the branch; the repo-root checkout may be stale):
+run `cd <WT> && node scripts/spec-lint.mjs docs/plans/<KEY>.md --ac <n> --size <S|M|L>` again. If the file is missing
+there or the result differs from Step 2's, switch to route `lead` (lead gets the file as input if it exists) and
+correct the `Route:` line with a one-line Jira comment.
+
 Generate it with the script (never write it by hand, never paste `CLAUDE.md`'s invariants into it — the agents
-read `CLAUDE.md` themselves):
+read `CLAUDE.md` themselves). Add `--spec docs/plans/<KEY>.md` on route `plan-file` and `--spec none` on route
+`brief-only` (route `lead`: no flag, the default is `<SCRATCH>/<KEY>-spec.md`):
 ```bash
-cd <WT> && node scripts/loop-brief.mjs <KEY> --wt <WT> --base <BASE> --port <PORT> --qa-port <QA_PORT> --scratch <SCRATCH> --context-file docs/loop/context.md
+cd <WT> && node scripts/loop-brief.mjs <KEY> --wt <WT> --base <BASE> --port <PORT> --qa-port <QA_PORT> --scratch <SCRATCH> --context-file docs/loop/context.md [--spec <path|none>]
 ```
 It runs `node scripts/jira.mjs get <KEY>` itself (add `--get-file <json>` to reuse the output you already have),
 writes `<SCRATCH>/<KEY>-brief.md` and prints the path. The brief holds: `WT`, branch, ticket key/URL/summary/type/labels,
@@ -198,7 +216,14 @@ with who decided and when; the dev records them as `— Decided in MFW-<N>: <dec
 Plan, and append `— Decided in MFW-<N>: <decision>` to that row's "Decide in" cell" (that exact marker closes a row;
 do not reword or delete other rows).
 
-### 4.2 Lead (`lead`, opus)
+### 4.2 Lead (`lead`, opus) — only on route `lead`
+
+Route `plan-file`: no lead; the spec is `docs/plans/<KEY>.md` (in `WT`) and the dev gets it as the spec; technical
+open questions the file does not settle are decided by the dev and recorded in the dev report (`## Decisions`). Route
+`brief-only`: no lead and **no spec at all** (the brief says "no spec: the brief's AC are the spec"); the dev, reviewer and
+qa work from the brief's AC, and the dev decides technical open questions and records each in the dev report
+(`## Decisions`). On both routes a product decision still → **PARK** (Step 1.8), and the rest of this step is skipped. On route `lead` whose
+plan file failed `spec-lint`, add "the plan file `docs/plans/<KEY>.md` is your starting point" to the prompt.
 
 Prompt: "Read the brief at <path>; write the spec to <spec path>." The lead first replies with its **sizing** (S/M/L,
 shared files it will touch, a card split proposal if L): if it proposes a split for an L card, treat that as a
@@ -221,7 +246,8 @@ review — every ticket gets the full gate.
 
 ### 4.3 Dev (`dev`, sonnet)
 
-Prompt: "Brief <path>, spec <path>; implement in <WT>; write your report to <devreport path>."
+Prompt: "Brief <path>, spec <path>; implement in <WT>; write your report to <devreport path>." Route `brief-only`: "Brief <path>, no spec; implement
+the brief's acceptance criteria in <WT> …" (the dev report's `## AC → tests` is then the plan record).
 
 ### 4.4 Review — one message, in parallel
 
@@ -230,8 +256,15 @@ paths (`git -C <WT> status --porcelain --untracked-files=all` — nothing is com
 `CLAUDE.md`: `privacy-auditor` for `src/services/**`, `supabase/**`, `src/app/api/**`, wish text, owner token /
 ownership, moderation, reporting, or label `privacy`; `r3f-perf-reviewer` for `src/components/canvas3d/**`,
 `src/components/models/**`, `src/core/effects/**`, `src/core/world/**`, or labels
-`perf` / `3d`. Each gets the brief, spec and dev-report paths, `WT`, and `BASE` ("the diff is the uncommitted
-working tree of <WT> against <BASE>"); qa also gets `QA_PORT` and `SCRATCH`.
+`perf` / `3d`. Reviews are **diff-first**: every agent gets the brief path, `WT`, and `BASE` ("the diff is the
+uncommitted working tree of <WT> against <BASE>"). The `reviewer` also gets the dev-report path and, when there is a
+spec (routes `lead`, `plan-file`), only its `## Acceptance criteria → checks` and `## Decisions` sections (tell it the
+spec path and those two headings; it reads other parts only where the diff does not match the spec); on route
+`brief-only` it works from the brief's AC. `r3f-perf-reviewer` gets the brief, the diff and the dev-report path, not
+the spec. `privacy-auditor` gets the same plus, when a spec exists, its `## Decisions` and `## Out of scope` sections
+(ownership and encryption decisions matter to it). Both get the dev-report path because it lists the dev's
+deviations. `qa` gets the spec path (if any), the dev-report path, `QA_PORT` and `SCRATCH`. Nothing here removes a
+check: it changes what each agent reads first. The reviewer runs on every route, and so do qa and the CI gate.
 
 ### 4.5 Decision
 
@@ -250,8 +283,8 @@ working tree of <WT> against <BASE>"); qa also gets `QA_PORT` and `SCRATCH`.
 
 ### 4.6 Fix round
 
-Resume the **same** dev agent (SendMessage if available; otherwise a new `dev` call with the brief, spec,
-dev report and findings) with: reviewer Critical/High, qa HIGH/MEDIUM, auditor Critical/High findings. Then
+Resume the **same** dev agent (SendMessage if available; otherwise a new `dev` call with the brief, spec
+(or the brief alone when there is no spec), dev report and findings) with: reviewer Critical/High, qa HIGH/MEDIUM, auditor Critical/High findings. Then
 re-run reviewer ∥ qa ∥ the same auditors (add an auditor if the fix now touches its paths), telling each the
 previous findings to re-check.
 
@@ -278,7 +311,7 @@ must not add `.skip(`, `.only(`, `.todo(`, `test.fixme`, `xit(`/`xdescribe(` or 
 `vitest.config.mts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `eslint.config.mjs` and
 `tsconfig.json` must not be weakened. Any of that → PARK.
 
-If a command fails: one repair attempt — send dev the spec + the exact failing output ("fix the cause;
+If a command fails: one repair attempt — send dev the spec (or the brief when there is no spec) + the exact failing output ("fix the cause;
 never skip, loosen or delete tests"), then have `reviewer` review only that repair, then re-run the full
 `loop-verify`. Still red, or the reviewer finds Critical/High in the repair → **PARK**.
 
@@ -346,7 +379,7 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
    - [Medium] … (or "None")
 
    ## Out of scope
-   - … (from the lead's spec)
+   - … (from the lead's spec; on route `brief-only`, from the brief and the dev report)
 
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
    EOF
@@ -355,7 +388,7 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
    `<SCRATCH>/<KEY>-reviewer.md` and `<KEY>-qa.md` exist with the first line `VERDICT: PASS`, the auditor reports the diff
    `origin/main...HEAD` calls for exist and say `VERDICT: PASS` (`privacy-auditor` for `src/services/`, `supabase/`,
    `src/app/api/`; `r3f-perf-reviewer` for `src/components/canvas3d/`, `src/components/models/`, `src/core/effects/`,
-   `src/core/world/`, `src/core/fallback2d/`; pass `--auditors privacy-auditor,r3f-perf-reviewer` for an auditor that
+   `src/core/world/`; pass `--auditors privacy-auditor,r3f-perf-reviewer` for an auditor that
    applies only by ticket label), and `loop-verify --check` passes for the current tree. A refusal lists what is
    missing: fix that (never edit a verdict file, never skip the flags) — a missing report means that agent has not run
    yet; a verdict that is not PASS was already handled by Step 4.5, so a refusal here with a non-PASS verdict is a

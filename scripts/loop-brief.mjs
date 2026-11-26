@@ -3,7 +3,9 @@
 // same shape every time and never copies CLAUDE.md's invariants (agents read CLAUDE.md themselves).
 //
 //   node scripts/loop-brief.mjs <KEY> --wt <path> --base <sha|ref> --port <n> --qa-port <n> --scratch <dir>
-//        [--branch <name>] [--context-file <path>] [--get-file <json>]
+//        [--branch <name>] [--context-file <path>] [--get-file <json>] [--spec <path|none>]
+//
+// --spec: the spec path the agents are told about (default <scratch>/<KEY>-spec.md); `none` = no spec, the AC are the spec.
 //
 // Writes <scratch>/<KEY>-brief.md and prints its path. The ticket JSON comes from `node scripts/jira.mjs get <KEY>`
 // unless --get-file points at a saved copy. Exit: 0 ok · 2 usage / environment.
@@ -20,7 +22,7 @@ const PRIVACY_RE = /privacy|token|wish|owner|ownership|moderation|report|\bdb\b|
  * @typedef {{ key: string, url?: string, summary: string, type?: string, labels?: string[],
  *   acceptanceCriteria?: string[], spec?: { epicId?: string, goal?: string } | null,
  *   openQuestions?: { number: string, question: string, resolved: boolean, decideIn?: string }[], description?: string }} JiraGet
- * @typedef {{ wt: string, branch: string, base: string, port: number, qaPort: number, scratch: string, contextText?: string }} BriefOpts
+ * @typedef {{ wt: string, branch: string, base: string, port: number, qaPort: number, scratch: string, contextText?: string, spec?: string }} BriefOpts
  */
 
 /** Spec files an agent should read for this ticket. @param {JiraGet} t */
@@ -65,10 +67,11 @@ export function buildBrief(t, o) {
   if (open.length === 0) L.push("None open for this ticket.");
   else {
     for (const q of open) L.push(`- #${q.number} ${q.question}`);
+    const marker = `\`— Decided in ${t.key}: <decision>\``;
     L.push(
-      "Technical ones: the lead decides, records it in the spec's Plan and the dev appends `— Decided in " +
-        `${t.key}: <decision>` +
-        "` to that row's \"Decide in\" cell in `docs/spec/open-questions.md` (do not reword other rows).",
+      o.spec === "none" || /(^|\/)docs\/plans\//.test(String(o.spec ?? ""))
+        ? `Technical ones: the DEV decides and records each in the dev report (\`## Decisions\`), and appends ${marker} to that row's "Decide in" cell in \`docs/spec/open-questions.md\` (do not reword other rows). Product decisions are never decided here: PARK.`
+        : `Technical ones: the lead decides, records it in the spec's Plan and the dev appends ${marker} to that row's "Decide in" cell in \`docs/spec/open-questions.md\` (do not reword other rows).`,
     );
   }
   L.push("");
@@ -83,7 +86,11 @@ export function buildBrief(t, o) {
   L.push("## Run values");
   L.push(`- E2E_PORT=${o.port} (e2e: \`E2E_PORT=${o.port} CI=1 pnpm e2e\`) · QA_PORT=${o.qaPort}`);
   L.push(`- SCRATCH: ${o.scratch}`);
-  L.push(`- Spec: ${join(o.scratch, `${t.key}-spec.md`)}`);
+  L.push(
+    o.spec === "none"
+      ? "- Spec: none — no spec: the brief's AC are the spec"
+      : `- Spec: ${o.spec ?? join(o.scratch, `${t.key}-spec.md`)}`,
+  );
   L.push(`- Dev report: ${join(o.scratch, `${t.key}-devreport.md`)}`);
   if (o.contextText?.trim()) L.push("", "## Shared context", o.contextText.trim());
   return L.join("\n") + "\n";
@@ -102,6 +109,7 @@ function main(argv) {
       branch: { type: "string" },
       "context-file": { type: "string" },
       "get-file": { type: "string" },
+      spec: { type: "string" },
     },
   });
   const key = positionals[0];
@@ -130,7 +138,7 @@ function main(argv) {
   const scratch = resolve(values.scratch);
   mkdirSync(scratch, { recursive: true });
   const out = join(scratch, `${key}-brief.md`);
-  writeFileSync(out, buildBrief(ticket, { wt, branch, base: values.base, port, qaPort, scratch, contextText }), "utf8");
+  writeFileSync(out, buildBrief(ticket, { wt, branch, base: values.base, port, qaPort, scratch, contextText, spec: values.spec }), "utf8");
   process.stdout.write(out + "\n");
 }
 

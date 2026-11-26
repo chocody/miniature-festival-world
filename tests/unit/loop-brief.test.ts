@@ -78,6 +78,17 @@ describe("buildBrief", () => {
     expect(withCtx).toContain("## Shared context\nSHARED FACT");
   });
 
+  it("names the given spec path, or says there is none and who decides technical questions", () => {
+    expect(buildBrief(ticket, { ...opts, spec: "docs/plans/MFW-70.md" })).toContain("- Spec: docs/plans/MFW-70.md");
+    const none = buildBrief(ticket, { ...opts, spec: "none" });
+    expect(none).toContain("no spec: the brief's AC are the spec");
+    expect(none).not.toContain("/scratch/MFW-70-spec.md");
+    expect(none).toContain("the DEV decides");
+    expect(none).toContain("`## Decisions`");
+    expect(none).toContain("PARK");
+    expect(brief).toContain("the lead decides");
+  });
+
   it("picks the privacy spec for privacy tickets and no loop file for L0", () => {
     const files = specFilesFor({ key: "MFW-1", summary: "x", labels: ["privacy"], acceptanceCriteria: ["y"], spec: { epicId: "L0" } });
     expect(files).toContain("docs/spec/05-privacy-db.md");

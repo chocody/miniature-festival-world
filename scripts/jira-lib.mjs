@@ -36,6 +36,8 @@ export const BOT_PREFIX = "[mfw-loop]";
 export const RISK_LABELS = ["privacy", "db", "migration"];
 /** Owner rule 2026-11-25: a card with this label runs its dev agent on opus (looks, scene design, key features). */
 export const DEV_OPUS_LABEL = "dev-opus";
+/** Any of these labels keeps the lead in the pipeline (`sizeHint.skipLead` is false). */
+export const SKIP_LEAD_BLOCKING_LABELS = ["privacy", "db", "migration", "dev-opus", "3d", "art", "perf"];
 
 const KEY_RE = /^MFW-\d+$/;
 
@@ -545,6 +547,25 @@ export function adfToText(doc) {
   return blockLines(doc, "").join("\n");
 }
 
+/**
+ * Top-level attachment nodes (images / files added in Jira) of an ADF description, in order. Media nested inside a
+ * list, quote or table cell is not carried over (Jira's image upload adds a top-level mediaSingle).
+ * @param {AdfNode | string | null | undefined} doc
+ * @returns {AdfNode[]}
+ */
+export function attachmentNodes(doc) {
+  if (!doc || typeof doc === "string") return [];
+  return (doc.content ?? []).filter((n) => n.type === "mediaSingle" || n.type === "mediaGroup" || n.type === "media");
+}
+
+/** The text of a description without the "[attachment]" placeholder lines. @param {string} text */
+export function withoutAttachmentLines(text) {
+  return text
+    .split("\n")
+    .filter((l) => l.trim() !== "[attachment]")
+    .join("\n");
+}
+
 /** Whitespace-insensitive form used to compare descriptions. @param {string} text */
 export function normalizeText(text) {
   return text
@@ -890,7 +911,11 @@ export function suggestSize({ acCount, labels }) {
   }
   const devModel = labels.includes(DEV_OPUS_LABEL) ? "opus" : "sonnet";
   if (devModel === "opus") reasons.push(`label ${DEV_OPUS_LABEL} → dev on opus`);
-  return { size, floor, reasons, devModel };
+  // Lead-less route (owner decision 2026-11-26): small, low-risk cards only. "New subsystem" cannot be detected
+  // from the AC count and labels, so it is covered only through the labels below; the loop's judgment (Step 2) re-checks it.
+  const skipLead = acCount <= 2 && !labels.some((l) => SKIP_LEAD_BLOCKING_LABELS.includes(l));
+  if (skipLead) reasons.push("≤ 2 acceptance criteria and no risk label → lead may be skipped");
+  return { size, floor, reasons, devModel, skipLead };
 }
 
 /** The only marker that closes an open question: `Decided in MFW-<n>` (optionally followed by `: <decision>`). */
@@ -1203,11 +1228,16 @@ export function planSync({ backlog, issues, keys = {} }) {
     const change = { specId: d.specId, key };
     const summary = String(f.summary ?? "").trim();
     if (summary !== d.summary) change.summary = { from: summary, to: d.summary };
-    const have = normalizeText(adfToText(f.description));
+    // Attachments (images) someone added in Jira are kept: they are left out of the comparison and carried over
+    // in front of the generated text when the description is rewritten, so a sync never deletes them.
+    const media = attachmentNodes(f.description);
+    const have = normalizeText(withoutAttachmentLines(adfToText(f.description)));
     const want = normalizeText(adfToText(d.description));
     if (have !== want) {
       change.description = firstDifference(have, want);
-      change.descriptionAdf = d.description;
+      change.descriptionAdf = media.length
+        ? { ...d.description, content: [...media, ...(d.description.content ?? [])] }
+        : d.description;
     }
     const existingLabels = new Set((f.labels ?? []).map(String));
     const labelsAdd = d.labels.filter((l) => !existingLabels.has(l));

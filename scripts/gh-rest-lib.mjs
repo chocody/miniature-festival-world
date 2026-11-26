@@ -154,7 +154,6 @@ export const PERF_REVIEWER_PATHS = [
   "src/components/models/",
   "src/core/effects/",
   "src/core/world/",
-  "src/core/fallback2d/",
 ];
 
 /**

@@ -340,6 +340,18 @@ describe("size estimate", () => {
     expect(suggestSize({ acCount: 1, labels: ["privacy"] })).toMatchObject({ size: "M", floor: "M" });
     expect(suggestSize({ acCount: 6, labels: ["db"] })).toMatchObject({ size: "L", floor: "M" });
   });
+
+  it("allows skipping the lead only for ≤ 2 AC with no blocking label", () => {
+    expect(suggestSize({ acCount: 2, labels: ["ui"] }).skipLead).toBe(true);
+    expect(suggestSize({ acCount: 1, labels: [] }).skipLead).toBe(true);
+    expect(suggestSize({ acCount: 2, labels: ["privacy"] }).skipLead).toBe(false);
+    expect(suggestSize({ acCount: 3, labels: [] }).skipLead).toBe(false);
+    expect(suggestSize({ acCount: 3, labels: ["ui"] }).skipLead).toBe(false);
+    expect(suggestSize({ acCount: 2, labels: ["dev-opus"] }).skipLead).toBe(false);
+    for (const l of ["db", "migration", "3d", "art", "perf"]) {
+      expect(suggestSize({ acCount: 1, labels: ["ui", l] }).skipLead).toBe(false);
+    }
+  });
 });
 
 describe("epic outcomes", () => {
@@ -504,6 +516,26 @@ describe("planSync", () => {
     const text = adfToText(s.fields.description as Parameters<typeof adfToText>[0]);
     s.fields.description = textToAdf(text.replace(/\n/g, "\n\n  ")); // re-flowed, extra blank lines/indent
     expect(planSync({ backlog, issues, keys }).updates).toEqual([]);
+  });
+
+  it("keeps attachments added in Jira: ignored when comparing, carried over when the description is rewritten", () => {
+    const image = { type: "mediaSingle", attrs: { layout: "center" }, content: [{ type: "media", attrs: { id: "abc", type: "file", collection: "jira" } }] };
+    const issues = inSyncIssues();
+    const s = issues.find((i) => i.key === keys["0.1"])!;
+    const doc = s.fields.description as { type: string; content: unknown[] };
+    s.fields.description = { ...doc, content: [image, ...doc.content] };
+    expect(planSync({ backlog, issues, keys }).updates).toEqual([]);
+
+    const changed = inSyncIssues();
+    const c = changed.find((i) => i.key === keys["0.1"])!;
+    const cdoc = textToAdf("an older description") as { type: string; content: unknown[] };
+    c.fields.description = { ...cdoc, content: [image, ...cdoc.content] };
+    const update = planSync({ backlog, issues: changed, keys }).updates.find((u) => u.key === keys["0.1"])!;
+    const written = update.descriptionAdf as { content: unknown[] };
+    expect(written.content[0]).toEqual(image);
+    expect(adfToText(written as Parameters<typeof adfToText>[0])).toContain("[attachment]");
+    c.fields.description = written; // the next sync after the rewrite has nothing to do
+    expect(planSync({ backlog, issues: changed, keys }).updates.find((u) => u.key === keys["0.1"])).toBeUndefined();
   });
 
   it("creates only the missing link, in blocker → blocked direction", () => {

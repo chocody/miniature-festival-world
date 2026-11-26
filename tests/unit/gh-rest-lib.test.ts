@@ -294,7 +294,7 @@ describe("verdict gate (pr-create --verdicts)", () => {
   it("always requires reviewer and qa; auditors follow the changed paths", () => {
     expect(requiredVerdictRoles(["README.md"])).toEqual(["reviewer", "qa"]);
     expect(requiredVerdictRoles(["src/components/canvas3d/Scene.tsx"])).toEqual(["reviewer", "qa", "r3f-perf-reviewer"]);
-    expect(requiredVerdictRoles(["src/core/fallback2d/x.ts", "supabase/migrations/1.sql"]).sort()).toEqual(
+    expect(requiredVerdictRoles(["src/core/world/x.ts", "supabase/migrations/1.sql"]).sort()).toEqual(
       ["privacy-auditor", "qa", "r3f-perf-reviewer", "reviewer"].sort(),
     );
     expect(requiredVerdictRoles(["src/app/api/creations/route.ts"])).toContain("privacy-auditor");
