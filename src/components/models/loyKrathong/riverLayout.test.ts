@@ -5,8 +5,16 @@ import { createPartGeometry, countTriangles } from "@/components/canvas3d/geomet
 import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import {
   HOUSE_FACADE,
+  LOY_KRATHONG_BUSH_CLUMPS,
   LOY_KRATHONG_RIVER_ENVIRONMENT,
+  LOY_KRATHONG_RIVER_LANE_WIDTH,
   LOY_KRATHONG_RIVER_LANES,
+  LOY_KRATHONG_RIVERSIDE_PLANTS,
+  LOY_KRATHONG_TREE_SHAPES,
+  LOY_KRATHONG_TREES,
+  RIVER_BANK_PROFILE,
+  RIVER_FOLIAGE_PARTS,
+  RIVER_FOLIAGE_SWAY,
   PIER_DECK_MATERIAL,
   PIER_PILE_MATERIAL,
   RIVER_BANK_MATERIAL,
@@ -33,13 +41,25 @@ import {
 import { createRiverLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { getFramedCameraZoom } from "@/core/camera";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
-import { bankSurfaceY, estimateLitLuminance, type InstanceTransform, type Vec3Tuple } from "@/core/world";
-import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "./riverLayout";
+import { FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
+import {
+  TREE_SHAPE_IDS,
+  bankSurfaceY,
+  bladeTuftExtent,
+  estimateLitLuminance,
+  foliageClumpsExtent,
+  type InstanceTransform,
+  type Vec3Tuple,
+} from "@/core/world";
+import { LOY_KRATHONG_RIVER_FOLIAGE as foliage, LOY_KRATHONG_RIVER_LAYOUT as layout, foliageForTier } from "./riverLayout";
 
 const parts = RIVER_ENVIRONMENT_PARTS;
 const lanes = LOY_KRATHONG_RIVER_LANES.map((def) => createRiverLane(def));
 const HALF = 0.5;
 const SAMPLES = 64;
+/** Leaf clump lump amplitude: a clump instance reaches scale × (1 + A) from its centre (MFW-70). */
+const A = parts.leafClump.geometry.lumpAmplitude;
+const tuft = bladeTuftExtent(parts.riversidePlant.geometry.blades);
 
 function footprintRadius(g: PartGeometrySpec): number {
   switch (g.kind) {
@@ -49,12 +69,20 @@ function footprintRadius(g: PartGeometrySpec): number {
     case "cylinder": return Math.max(g.radiusTop, g.radiusBottom);
     case "icosahedron": return g.radius;
     case "gable": return Math.hypot(g.width, g.depth) / 2;
+    case "leafClump": return 1 + g.lumpAmplitude;
+    case "trunk": return g.radiusBottom;
+    case "bladeTuft": return bladeTuftExtent(g.blades).footprintRadius;
   }
 }
 function topY(part: ScenePartSpec): number {
   const g = part.geometry;
-  if (g.kind === "icosahedron") return part.yOffset + g.radius * (g.scaleY ?? 1);
-  return part.yOffset + g.height / 2;
+  switch (g.kind) {
+    case "icosahedron": return part.yOffset + g.radius * (g.scaleY ?? 1);
+    case "leafClump": return part.yOffset + 1 + g.lumpAmplitude;
+    case "trunk": return part.yOffset + g.height;
+    case "bladeTuft": return part.yOffset + bladeTuftExtent(g.blades).topY;
+    default: return part.yOffset + g.height / 2;
+  }
 }
 const at = (t: InstanceTransform, height: number): WorldVec3 => ({
   x: t.position.x,
@@ -125,8 +153,6 @@ describe("river layout", () => {
     const groups = [
       { list: layout.houses, part: parts.houseBody },
       { list: layout.housesByRoof.gable, part: parts.houseRoofGable },
-      { list: layout.trees, part: parts.treeCanopy },
-      { list: layout.bushes, part: parts.bush },
       { list: layout.rocks, part: parts.rock },
       { list: layout.lamps, part: parts.lampPost },
     ];
@@ -135,6 +161,16 @@ describe("river layout", () => {
         const lat = Math.abs(locateOnLane(layout.channel, t.position).lateralOffset) * layout.channel.width;
         expect(lat).toBeGreaterThanOrEqual(layout.channel.width / 2 + footprintRadius(part.geometry) * t.scale);
       }
+    }
+    // MFW-70: every leaf clump (tree crowns and bushes) stays over the bank.
+    for (const c of foliage.clumps) {
+      const lat = Math.abs(locateOnLane(layout.channel, c.position).lateralOffset) * layout.channel.width;
+      expect(lat - c.scale * (1 + A)).toBeGreaterThanOrEqual(layout.channel.width / 2);
+    }
+    // Reeds may lean over the water edge, but never over the krathong lane.
+    for (const p of foliage.plants) {
+      const lat = Math.abs(locateOnLane(layout.channel, p.position).lateralOffset) * layout.channel.width;
+      expect(lat - tuft.footprintRadius * p.scale).toBeGreaterThanOrEqual(LOY_KRATHONG_RIVER_LANE_WIDTH / 2);
     }
   });
 
@@ -147,8 +183,9 @@ describe("river layout", () => {
         top: topY(parts.houseRoofGable),
         r: footprintRadius(parts.houseRoofGable.geometry),
       })),
-      ...layout.trees.map((t) => ({ t, top: topY(parts.treeCanopy), r: footprintRadius(parts.treeCanopy.geometry) })),
-      ...layout.bushes.map((t) => ({ t, top: topY(parts.bush), r: footprintRadius(parts.bush.geometry) })),
+      // MFW-70: each leaf clump (top = centre + scale·(1 + A)) and each reed / grass tuft.
+      ...foliage.clumps.map((t) => ({ t, top: 1 + A, r: 1 + A })),
+      ...foliage.plants.map((t) => ({ t, top: topY(parts.riversidePlant), r: tuft.footprintRadius })),
       ...layout.rocks.map((t) => ({ t, top: topY(parts.rock), r: footprintRadius(parts.rock.geometry) })),
     ];
     for (const { t, top, r } of solids) {
@@ -167,7 +204,8 @@ describe("river layout", () => {
     const visible = (list: readonly InstanceTransform[], part: ScenePartSpec) =>
       list.some((t) => onScreen(ndc(camera, at(t, part.yOffset))));
     expect(visible(layout.houses, parts.houseBody)).toBe(true);
-    expect(visible(layout.trees, parts.treeCanopy)).toBe(true);
+    expect(foliage.clumps.some((c) => onScreen(ndc(camera, c.position)))).toBe(true); // MFW-70: trees = leaf clumps
+    expect(foliage.plants.some((p) => onScreen(ndc(camera, p.position)))).toBe(true);
     expect(visible(layout.lamps, parts.lampHead)).toBe(true);
     expect(onScreen(ndc(camera, layout.pier.tip))).toBe(true);
   });
@@ -179,12 +217,12 @@ describe("river layout", () => {
         const points: WorldVec3[] = [layout.pier.tip, layout.pier.deckCenter, layout.pier.releasePoint];
         const groups: [readonly InstanceTransform[], ScenePartSpec][] = [
           [layout.houses, parts.houseRoof],
-          [layout.trees, parts.treeCanopy],
           [layout.lamps, parts.lampHead],
         ];
         for (const [list, part] of groups) {
           for (const t of list) points.push(at(t, 0), at(t, topY(part)));
         }
+        for (const c of foliage.clumps) points.push(at(c, -(1 + A)), at(c, 1 + A)); // MFW-70 tree crowns
         for (const p of points) {
           const v = ndc(camera, p);
           if (onScreen(v)) {
@@ -268,7 +306,13 @@ describe("river layout", () => {
     const all: ScenePartSpec[] = Object.values(parts);
     for (const part of all) {
       const g = part.geometry;
-      const curved = g.kind === "cylinder" || g.kind === "roundedBox" || (g.kind === "icosahedron" && (g.detail ?? 0) >= 1);
+      const curved =
+        g.kind === "cylinder" ||
+        g.kind === "roundedBox" ||
+        g.kind === "leafClump" ||
+        g.kind === "trunk" ||
+        g.kind === "bladeTuft" ||
+        (g.kind === "icosahedron" && (g.detail ?? 0) >= 1);
       if (curved) expect(part.material.flatShading, JSON.stringify(g)).toBe(false);
     }
   });
@@ -385,8 +429,12 @@ describe("river layout", () => {
     const lampR = lampHead.kind === "icosahedron" ? lampHead.radius : 0;
     const props: { readonly side: number; readonly setback: number; readonly r: number }[] = [
       ...def.houses.map((p) => ({ ...p, r: footprintRadius(parts.houseBody.geometry) * p.scale })),
-      ...def.trees.map((p) => ({ ...p, r: footprintRadius(parts.treeCanopy.geometry) * p.scale })),
-      ...def.bushes.map((p) => ({ ...p, r: footprintRadius(parts.bush.geometry) * p.scale })),
+      ...LOY_KRATHONG_TREES.map((p) => ({
+        ...p,
+        r: foliageClumpsExtent(LOY_KRATHONG_TREE_SHAPES[p.shape].clumps, A).footprintRadius * p.scale,
+      })),
+      ...def.bushes.map((p) => ({ ...p, r: foliageClumpsExtent(LOY_KRATHONG_BUSH_CLUMPS, A).footprintRadius * p.scale })),
+      ...LOY_KRATHONG_RIVERSIDE_PLANTS.map((p) => ({ ...p, r: tuft.footprintRadius * p.scale })), // FULL blades
       ...def.rocks.map((p) => ({ ...p, r: footprintRadius(parts.rock.geometry) * p.scale })),
       ...def.lamps.map((p) => ({ ...p, r: lampR * p.scale })),
     ];
@@ -403,15 +451,51 @@ describe("river layout", () => {
     }
   });
 
-  it("R7: bushes and rocks are present; tree canopies are rounded (detail ≥ 1)", () => {
+  it("R7: canopies are leaf-clump clusters on bent, tapered, branched trunks (MFW-70 AC1)", () => {
+    expect(new Set(LOY_KRATHONG_TREES.map((t) => t.shape))).toEqual(new Set(TREE_SHAPE_IDS));
+    expect(LOY_KRATHONG_RIVER_ENVIRONMENT.trees).toBe(LOY_KRATHONG_TREES);
+    for (const id of TREE_SHAPE_IDS) {
+      const { clumps } = LOY_KRATHONG_TREE_SHAPES[id];
+      expect(clumps.length, id).toBeGreaterThanOrEqual(3);
+      expect(new Set(clumps.map((c) => c.radius)).size, id).toBeGreaterThanOrEqual(2);
+      expect(clumps.some((c) => Math.hypot(c.x, c.z) > 0), id).toBe(true); // broken silhouette
+      clumps.forEach((c, i) => {
+        const overlaps = clumps.some(
+          (o, j) => j !== i && Math.hypot(c.x - o.x, c.y - o.y, c.z - o.z) < c.radius + o.radius,
+        );
+        expect(overlaps, `${id} clump ${i}`).toBe(true);
+      });
+    }
+    const ratio = (id: "round" | "tall") => {
+      const e = foliageClumpsExtent(LOY_KRATHONG_TREE_SHAPES[id].clumps, A);
+      return e.topY / e.footprintRadius;
+    };
+    expect(ratio("tall")).toBeGreaterThan(ratio("round"));
+    const full = RIVER_FOLIAGE_PARTS.FULL.treeTrunk.geometry;
+    const light = RIVER_FOLIAGE_PARTS.LIGHT.treeTrunk.geometry;
+    if (full.kind !== "trunk" || light.kind !== "trunk") throw new Error("tree trunks are expected to be trunk geometry");
+    expect(full.radiusTop).toBeLessThan(full.radiusBottom);
+    expect(full.bend).toBeGreaterThan(0);
+    expect(full.branches.length).toBeGreaterThanOrEqual(1);
+    expect(full.branches.length).toBeLessThanOrEqual(2);
+    expect(light.branches.length).toBeGreaterThanOrEqual(1);
+    expect(foliage.clumpsLow.length).toBeLessThan(foliage.clumps.length);
+    for (const id of TREE_SHAPE_IDS) expect(LOY_KRATHONG_TREE_SHAPES[id].clumps.some((c) => c.keepOnLow), id).toBe(true);
+    expect(LOY_KRATHONG_BUSH_CLUMPS.some((c) => c.keepOnLow)).toBe(true);
     expect(layout.bushes.length).toBeGreaterThan(0);
     expect(layout.rocks.length).toBeGreaterThan(0);
-    const canopy = parts.treeCanopy.geometry;
-    expect(canopy.kind === "icosahedron" && (canopy.detail ?? 0) >= 1).toBe(true);
   });
 
   it("R8: every new part is low-poly", () => {
-    for (const part of [parts.houseRoofGable, parts.houseDoor, parts.houseWindow, parts.bush, parts.rock]) {
+    for (const part of [
+      parts.houseRoofGable,
+      parts.houseDoor,
+      parts.houseWindow,
+      parts.leafClump,
+      parts.riversidePlant,
+      parts.treeTrunk,
+      parts.rock,
+    ]) {
       expect(countTriangles(createPartGeometry(part.geometry))).toBeLessThanOrEqual(ENVIRONMENT_PART_MAX_TRIANGLES);
     }
   });
@@ -420,5 +504,57 @@ describe("river layout", () => {
     expect(VILLAGE_LIGHTS.DAY).toEqual({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0 });
     expect(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity).toBeGreaterThan(0);
     expect(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity).toBeGreaterThan(0);
+  });
+
+  it("R10: riverside plants sit at the water edge, off the lane and off the pier (MFW-70 AC2)", () => {
+    for (const side of [-1, 1]) {
+      expect(
+        LOY_KRATHONG_RIVERSIDE_PLANTS.some((p) => p.side === side && p.setback < RIVER_BANK_PROFILE[2].offset),
+        `side ${side}`,
+      ).toBe(true);
+    }
+    const { deckCenter, yawRad, width, length } = layout.pier;
+    foliage.plants.forEach((p, i) => {
+      const r = tuft.footprintRadius * p.scale;
+      const dx = p.position.x - deckCenter.x;
+      const dz = p.position.z - deckCenter.z;
+      const lz = dx * Math.sin(yawRad) + dz * Math.cos(yawRad);
+      const lx = dx * Math.cos(yawRad) - dz * Math.sin(yawRad);
+      expect(Math.abs(lx) >= width / 2 + r || Math.abs(lz) >= length / 2 + r, `plant ${i}`).toBe(true);
+    });
+  });
+
+  it("R11: the foliage sway parameters are sane (MFW-70 AC4)", () => {
+    for (const sway of [RIVER_FOLIAGE_SWAY.leafClump, RIVER_FOLIAGE_SWAY.riversidePlant]) {
+      expect(Number.isFinite(sway.shear)).toBe(true);
+      expect(sway.shear).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(sway.periodMs)).toBe(true);
+      expect(sway.periodMs).toBeGreaterThan(0);
+      expect(Math.hypot(sway.windDirX, sway.windDirZ)).toBeCloseTo(1, 9);
+    }
+    expect(Number.isFinite(RIVER_FOLIAGE_SWAY.phaseStepRad)).toBe(true);
+  });
+});
+
+describe("MFW-70 foliage", () => {
+  const TIERS: readonly RenderTier[] = ["HIGH", "MEDIUM", "LOW"];
+
+  it.each(TIERS)("%s: foliageForTier picks the tier's variant, clumps and sway", (tier) => {
+    const view = foliageForTier(foliage, tier);
+    const { variant, sway } = FOLIAGE_TIERS[tier];
+    expect(view.parts).toBe(RIVER_FOLIAGE_PARTS[variant]);
+    expect(view.clumps).toBe(variant === "FULL" ? foliage.clumps : foliage.clumpsLow);
+    expect(view.trunks).toBe(foliage.trunks);
+    expect(view.plants).toBe(foliage.plants);
+    expect(view.sway).toBe(sway);
+  });
+
+  it("HIGH and MEDIUM draw the FULL variant and sway; LOW draws the LIGHT variant, static", () => {
+    expect(foliageForTier(foliage, "HIGH").parts).toBe(RIVER_FOLIAGE_PARTS.FULL);
+    expect(foliageForTier(foliage, "MEDIUM").clumps).toBe(foliage.clumps);
+    expect(foliageForTier(foliage, "LOW").parts).toBe(RIVER_FOLIAGE_PARTS.LIGHT);
+    expect(foliageForTier(foliage, "LOW").clumps).toBe(foliage.clumpsLow);
+    expect(foliageForTier(foliage, "LOW").sway).toBe(false);
+    expect(foliageForTier(foliage, "HIGH").sway).toBe(true);
   });
 });

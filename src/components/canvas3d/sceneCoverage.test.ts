@@ -2,11 +2,17 @@
 import { describe, expect, it } from "vitest";
 import { OrthographicCamera, Vector3 } from "three";
 import { CAMERA_PAN_MAX_OVERSHOOT, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR } from "@/config/camera.config";
-import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
+import {
+  LOY_KRATHONG_BUSH_CLUMPS,
+  LOY_KRATHONG_RIVER_ENVIRONMENT,
+  LOY_KRATHONG_TREE_SHAPES,
+  RIVER_ENVIRONMENT_PARTS,
+} from "@/config/events/loyKrathong.river.config";
 import { PINCH_ZOOM_MAX, PINCH_ZOOM_MIN } from "@/config/interaction.config";
 import type { ScenePartSpec } from "@/config/scene.config";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 import { applyCameraRigPose, createCameraRigState, getFramedCameraZoom, getRiverPanBounds } from "@/core/camera";
+import { TREE_SHAPE_IDS, bladeTuftExtent, foliageClumpsExtent } from "@/core/world";
 import { countTriangles, createGroundGeometry } from "./geometry";
 import { getLoyKrathongRitualSite } from "./ritualSite";
 
@@ -67,11 +73,18 @@ const RAYS = [
   [0, 0],
 ] as const;
 
-/** Copied from riverLayout.test.ts (topY): the top of a part above its placement origin, at scale 1. */
+/** MFW-70: crowns and bushes are clusters of leaf-clump instances; their tops come from the clump layouts. */
+const CROWN_CLUMPS = [...TREE_SHAPE_IDS.map((id) => LOY_KRATHONG_TREE_SHAPES[id].clumps), LOY_KRATHONG_BUSH_CLUMPS];
+/** After riverLayout.test.ts (topY): the top of a part (or of the tallest crown built from it) above its placement origin, at scale 1. */
 function topY(part: ScenePartSpec): number {
   const g = part.geometry;
-  if (g.kind === "icosahedron") return part.yOffset + g.radius * (g.scaleY ?? 1);
-  return part.yOffset + g.height / 2;
+  switch (g.kind) {
+    case "icosahedron": return part.yOffset + g.radius * (g.scaleY ?? 1);
+    case "leafClump": return Math.max(...CROWN_CLUMPS.map((clumps) => foliageClumpsExtent(clumps, g.lumpAmplitude).topY));
+    case "trunk": return part.yOffset + g.height;
+    case "bladeTuft": return part.yOffset + bladeTuftExtent(g.blades).topY;
+    default: return part.yOffset + g.height / 2;
+  }
 }
 const MAX_PLACEMENT_SCALE = Math.max(
   ...[def.houses, def.trees, def.bushes, def.rocks, def.lamps].flatMap((list) => list.map((p) => p.scale)),

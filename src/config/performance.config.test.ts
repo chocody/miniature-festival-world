@@ -6,6 +6,7 @@ import {
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
   FALLBACK_FPS_THRESHOLD,
+  FOLIAGE_TIERS,
   FPS_SAMPLE_WINDOW_MS,
   FPS_STALL_GAP_MS,
   FPS_SUSTAIN_MS,
@@ -111,5 +112,15 @@ describe("water effects and environment budgets (lead decision, MFW-49)", () => 
     expect(Object.isFrozen(WATER_EFFECT_TIERS)).toBe(true);
     expect(Object.isFrozen(ENVIRONMENT_RENDER_BUDGETS)).toBe(true);
     expect(KRATHONG_RIPPLE_MAX_TRIANGLES).toBeGreaterThan(0);
+  });
+});
+
+describe("foliage per tier (lead decision, MFW-70)", () => {
+  it("FOLIAGE_TIERS: HIGH and MEDIUM draw FULL and sway; LOW draws LIGHT and is static; frozen", () => {
+    expect(FOLIAGE_TIERS.HIGH).toEqual({ variant: "FULL", sway: true });
+    expect(FOLIAGE_TIERS.MEDIUM).toEqual({ variant: "FULL", sway: true });
+    expect(FOLIAGE_TIERS.LOW).toEqual({ variant: "LIGHT", sway: false });
+    expect(Object.isFrozen(FOLIAGE_TIERS)).toBe(true);
+    for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) expect(Object.isFrozen(FOLIAGE_TIERS[tier])).toBe(true);
   });
 });

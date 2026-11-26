@@ -39,6 +39,24 @@ export const MOON_SHADOW_MAP_SIZE_PX = 1024;
  */
 export const ENVIRONMENT_PART_MAX_TRIANGLES = 128;
 
+/** One branch stub of a "trunk" part (MFW-70): an open cone (tip radius 0) leaving the bent spine. */
+export interface TrunkBranchSpec {
+  readonly atHeight: number; // attach height on the trunk, (0, height)
+  readonly yawRad: number; // direction about +Y, three's rotateY convention: 0 = local +X, π/2 = local −Z
+  readonly tiltRad: number; // from vertical, (0, π/2)
+  readonly length: number; // > 0
+  readonly radius: number; // base radius, > 0
+  readonly radialSegments: number; // integer ≥ 3
+}
+/** One blade of a "bladeTuft" part (MFW-70): a flattened three-sided open cone, base at y = 0. */
+export interface FoliageBladeSpec {
+  readonly angleRad: number; // position and lean direction about +Y (rotateY convention, 0 = local +X)
+  readonly distance: number; // ≥ 0, base distance from the tuft centre
+  readonly height: number; // > 0, before the lean
+  readonly width: number; // > 0, base width
+  readonly leanRad: number; // outward lean from vertical, [0, π/2)
+}
+
 /** three.js primitive used by one scene part (constructor args by name). */
 export type PartGeometrySpec =
   | { readonly kind: "box"; readonly width: number; readonly height: number; readonly depth: number }
@@ -61,7 +79,22 @@ export type PartGeometrySpec =
       readonly depth: number;
       readonly radius: number;
       readonly segments: number;
-    };
+    }
+  // MFW-70: unit leaf clump = icosahedron radius 1 with radial lumps (±lumpAmplitude, deterministic from seed), smooth normals.
+  | { readonly kind: "leafClump"; readonly detail: number; readonly lumpAmplitude: number; readonly seed: number }
+  // MFW-70: tapered, slightly bent open trunk (base at y = 0, bends toward local +X) with branch stubs, smooth normals.
+  | {
+      readonly kind: "trunk";
+      readonly height: number;
+      readonly radiusBottom: number;
+      readonly radiusTop: number;
+      readonly radialSegments: number;
+      readonly heightSegments: number;
+      readonly bend: number; // top-of-trunk offset toward local +X; spine x(y) = bend·(y/height)²
+      readonly branches: readonly TrunkBranchSpec[];
+    }
+  // MFW-70: tuft of thin blades (reeds at the water edge; scaled down = grass tufts), base at y = 0.
+  | { readonly kind: "bladeTuft"; readonly blades: readonly FoliageBladeSpec[]; readonly thicknessRatio: number };
 
 /** Matte material (the literal types enforce backlog 3.1 "non-glossy"). */
 export interface MatteMaterialSpec {

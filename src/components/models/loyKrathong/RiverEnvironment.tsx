@@ -19,7 +19,8 @@ import { VILLAGE_LIGHTS, type LightPresetId } from "@/config/look.config";
 import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
 import type { BankGeometryData, RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
-import { lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
+import { LOY_KRATHONG_RIVER_FOLIAGE, lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
+import { RiversideFoliage } from "./RiversideFoliage";
 
 export interface RiverEnvironmentProps {
   readonly layout: RiverEnvironmentLayout;
@@ -47,8 +48,9 @@ function useBankGeometry(data: BankGeometryData) {
 }
 
 /**
- * Static low-poly riverside diorama: water, rounded banks on a ground disc, a village (two roof kinds, doors, windows), trees,
- * bushes, rocks, lamps and a pier. No animation, no lights: windows and lanterns glow by emissive per light preset.
+ * Low-poly riverside diorama: water, rounded banks on a ground disc, a village (two roof kinds, doors, windows), foliage
+ * (leaf-clump trees, bushes and reeds, MFW-70), rocks, lamps and a pier. No lights: windows and lanterns glow by emissive per
+ * light preset. Only the foliage moves: it sways on HIGH and MEDIUM, and only on frames that are already rendered.
  */
 export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { layout, shadows, waterRef, lampFocusRef, selectedLampIndex, onWaterSelected, onLampSelected, lightPreset } = props;
@@ -121,9 +123,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         shadows={shadows}
         emissiveIntensity={village.windowEmissiveIntensity}
       />
-      <InstancedPart name={SCENE_OBJECT_NAMES.treeTrunks} part={parts.treeTrunk} transforms={layout.trees} shadows={shadows} />
-      <InstancedPart name={SCENE_OBJECT_NAMES.treeCanopies} part={parts.treeCanopy} transforms={layout.trees} shadows={shadows} />
-      <InstancedPart name={SCENE_OBJECT_NAMES.bushes} part={parts.bush} transforms={layout.bushes} shadows={shadows} />
+      <RiversideFoliage foliage={LOY_KRATHONG_RIVER_FOLIAGE} shadows={shadows} />
       <InstancedPart name={SCENE_OBJECT_NAMES.rocks} part={parts.rock} transforms={layout.rocks} shadows={shadows} />
       <InstancedPart name={SCENE_OBJECT_NAMES.lampPosts} part={parts.lampPost} transforms={layout.lamps} shadows={shadows} />
       <InstancedPart

@@ -303,7 +303,7 @@ Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, p
   a disc with a hole shaped like the river + banks outline (`buildGroundHoleOutline`: the outer bank edges pulled in by
   `holeMargin` 1), so it never overdraws the water or banks, and no camera ray passes under a bank edge into the hole. It is
   drawn last among opaque meshes (`RIVER_GROUND_RENDER_ORDER`). See §11.7 for why it is not a plain disc.
-- Puffy rounded trees (detail-1 canopies), squashed bushes (`bush`), faceted riverside rocks (`rock`, palette `stone`) and
+- Puffy rounded trees (detail-1 canopies), squashed bushes (`bush`) (replaced by §12, MFW-70), faceted riverside rocks (`rock`, palette `stone`) and
   the wooden pier. Props stand on the profile: base y = `bankSurfaceY(profile, setback)`.
 
 ### 11.3 Village and lights
@@ -424,3 +424,105 @@ Under reduced motion the cue is the steady size-up only; it is a size change, so
 Screenshots (phone 390×844 unless noted): `docs/design/screenshots/mfw-67/after-phone-world-night.png`,
 `after-phone-world-day.png`, `after-phone-customize-night.png`, `after-phone-pier-night.png`,
 `after-desktop-world-night.png` (1440×900), `after-phone-world-findmy-night.png` (Find My mark).
+
+## 12. Foliage (MFW-70, backlog 13.6)
+
+Owner review 2026-11-25: models looked "only squares and triangles"; trees and bushes must read as foliage (open question 43).
+Config: `src/config/events/loyKrathong.river.config.ts` (foliage section: `LOY_KRATHONG_TREE_SHAPES`,
+`LOY_KRATHONG_BUSH_CLUMPS`, `LOY_KRATHONG_TREES`, `LOY_KRATHONG_RIVERSIDE_PLANTS`, `RIVER_FOLIAGE_PARTS`,
+`RIVER_FOLIAGE_SWAY`) and `performance.config.ts` (`FOLIAGE_TIERS`, `ENVIRONMENT_RENDER_BUDGETS`). Resolver:
+`src/core/world/riversideFoliage.ts`; geometry: `src/components/canvas3d/foliageGeometry.ts`. Config wins over this note.
+
+### 12.1 Design
+
+- **Leaf clump** (`leafClump`): one unit icosahedron, welded, pushed radially by `1 + 0.12·sin(3x + s)·sin(3y + 2s)·sin(3z + 3s)`
+  (seed s = 1.7), smooth vertex normals. HIGH / MEDIUM use detail 1 (80 triangles, 42 vertices); LOW detail 0 (20, 12).
+  Every tree crown and bush is a cluster of clump instances (instance scale = clump radius × tree scale). Colour `canopy`.
+  The clumps cast no shadow-map shadow (only the trunks do): 33 detail-1 clumps doubled in the HIGH shadow pass pushed the
+  SwiftShader e2e over its time limits; trees keep their soft blob shadows (`RIVER_ENVIRONMENT_BLOB_SHADOWS.trees`).
+- **Round tree** (`trunkScale` 1): three overlapping clumps — core (0, 0.62, 0) r 0.3, left-low lobe (−0.17, 0.55, 0.08)
+  r 0.2, right-top lobe (0.15, 0.74, −0.06) r 0.21. Footprint ≈ 0.412, top ≈ 0.975.
+- **Tall tree** (`trunkScale` 0.85): three stacked clumps — (0, 0.5, 0) r 0.22, (−0.03, 0.69, 0.04) r 0.2, tip
+  (0.05, 0.85, −0.02) r 0.15. Taller than wide (top ≈ 1.018, footprint ≈ 0.274).
+- **Bush**: one low clump half sunk into the bank, (0, 0.07, 0) r 0.17 (a mound).
+- **Trunk** (`treeTrunk`, colour `trunk`): open tapered cylinder, height 0.5, radius 0.07 → 0.04, 5 sides, bent toward local
+  +X by 0.035·(y/0.5)²; two open-cone branch stubs (at 0.30 and 0.36, length 0.20 / 0.18) whose tips end inside the crown.
+- **Riverside plants** (`riversidePlant`, colour `leafLight`): a tuft of six flattened three-sided blades leaning outward
+  (heights 0.18–0.34). Eight reeds on the bank lip (setback 0.04–0.05), two grass tufts (the same tuft at scale 0.5) on the
+  terrace. Blade bases sink 0.02 into the bank.
+- The nine tree positions and six bush positions are MFW-49's; only a crown shape and a yaw were added. Nothing stands on
+  the krathong lane, the walking paths (§11.4) or the pier (`riverLayout.test.ts` R6, R10, "solid props never hide a lane").
+
+### 12.2 Variants and tiers
+
+Three InstancedMeshes, the same draw-call count as MFW-49 (`treeTrunks`, `leafClumps` = crowns + bushes,
+`riversidePlants`). `FOLIAGE_TIERS`: HIGH and MEDIUM draw `FULL` and sway; LOW draws `LIGHT` and is static. LIGHT shares
+the FULL material objects (a tier drop re-creates geometry only).
+
+Measured (`environmentBudget.test.tsx` builders):
+
+| Variant (tiers) | Trunks | Leaf clumps | Plants | Foliage triangles | Foliage vertices | Calls |
+|---|---|---|---|---|---|---|
+| MFW-49 (all tiers) | 9 × 32 | 9 × 80 canopies + 6 × 20 bushes | none | 1 128 | 2 988 | 3 |
+| FULL (HIGH, MEDIUM) | 9 × 28 = 252 | 33 × 80 = 2 640 (15 round + 12 tall + 6 bush clumps) | 10 × 18 = 180 | **3 072** | 9·38 + 33·42 + 10·48 = 2 208 | 3 |
+| LIGHT (LOW) | 9 × 14 = 126 | 24 × 20 = 480 (keepOnLow: 10 + 8 + 6) | 10 × 9 = 90 | **696** | 9·22 + 24·12 + 10·24 = 726 | 3 |
+
+LIGHT = keepOnLow clumps only (round: core + right-top lobe; tall: lower + middle; bush: its one clump), detail-0 clumps,
+trunk with one height segment and branch B1 only, three-blade tufts. LOW foliage is lighter than MFW-49's (696 < 1 128).
+
+No lotus pads: they need a fourth foliage mesh (+1 draw call, and every tier is at its draw-call budget). AC2 asks for
+"reeds, lotus pads or grass tufts"; reeds and grass tufts are built, lotus pads are an owner decision (`docs/follow-ups.md`).
+
+### 12.3 Budget before / after
+
+Lead override (MFW-70): the planned 20-triangle clumps still read as faceted crystals in the screenshots, so the lead
+allowed spending more triangles on HIGH and MEDIUM and raising the triangle part of `ENVIRONMENT_RENDER_BUDGETS` by at most
+1 500 there. Draw-call budgets, LOW and shader programs are unchanged. To fit MEDIUM, crowns use three clumps, bushes one,
+and the spec's ordered cut 1 was applied (grass tufts 4 → 2).
+
+| Tier | Before NIGHT / DAY (calls / triangles) | After NIGHT / DAY | `ENVIRONMENT_RENDER_BUDGETS` before → after |
+|---|---|---|---|
+| HIGH | 21 / 5 834 · 20 / 5 450 | 21 / 7 778 · 20 / 7 394 | 21 / 6 500 → 21 / 7 800 |
+| MEDIUM | 21 / 5 378 · 20 / 5 090 | 21 / 7 322 · 20 / 7 034 | 21 / 5 850 → 21 / 7 350 |
+| LOW | 20 / 4 970 · 19 / 4 730 | 20 / 4 538 · 19 / 4 298 | 20 / 5 400 (unchanged) |
+
+e2e `perf-audit.spec.ts` (`[perf-audit]`, local container, SwiftShader, base abf3ee5 → MFW-70, both runs at NIGHT — the
+AUTO preset after 18:00 — on the same machine):
+
+- HIGH: CUSTOMIZE calls 88 → 87 (the clumps leave the shadow pass), triangles 9 762 → 10 950, programs 8 → 6; world calls
+  43 → 42 (flat with the krathong count), triangles 8 842 → 10 030 (one) and 101 746 → 102 934 (full zone).
+- LOW zone switches: calls 28 → 28 (flat), geometries 30 → 30 (flat), programs 8 → 8.
+- Probe soak (LOW, 80 river krathongs): calls 39 → 39, triangles 28 978 → 29 130, geometries 35 → 35, programs 8 → 8;
+  every counter flat across 20 zone switches.
+- No new shader program: the foliage geometries carry only position + normal + index and the matte smooth material
+  (`environmentPrograms.test.ts`, `foliageGeometry.test.ts` G4).
+
+### 12.4 Sway
+
+- `RIVER_FOLIAGE_SWAY` (DRAFT): leaf clumps shear 0.03, period 4.2 s; plants shear 0.08, period 2.8 s; wind along +x;
+  owner k has phase k × golden angle, so neighbours never sway in step.
+- Model: each instance matrix is pre-multiplied by a horizontal shear about the owner's base height (`writeFoliageSway`):
+  a point h above the base moves `shear·sin(2π t / period + phase)·h` along the wind; every clump of one tree shares one
+  phase, so the crown leans as one piece. Trunks stay still.
+- Only on HIGH / MEDIUM (`FOLIAGE_TIERS`) and never under reduced motion: then the rest pose is written once.
+- No `invalidate()` and no interval: the matrices move only on frames the scene already renders (the shared world, where
+  krathongs drift; in CUSTOMIZE / RITUAL at the flame-flicker redraw rate). No allocation per frame
+  (`instancing-audit.test.ts`).
+
+### 12.5 DRAFT values (MFW-70)
+
+Clump geometry (detail 1 / 0, `lumpAmplitude` 0.12, seed 1.7), the round / tall / bush clump layouts and `keepOnLow`
+flags, trunk proportions and branches, reed blades, plant colour `leafLight`, the ten plant placements, the tree shape and
+yaw assignments, the bush yaws, `RIVER_FOLIAGE_SWAY`, the LIGHT variant contents. Lead guards: `FOLIAGE_TIERS`,
+`ENVIRONMENT_RENDER_BUDGETS` (HIGH / MEDIUM triangles raised by the lead override above).
+
+### 12.6 Before / after (MFW-70)
+
+Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after release. Before = the MFW-49 screenshots
+(still valid: main was MFW-49 when this card started).
+
+| | Before (MFW-49) | After — day | After — night |
+|---|---|---|---|
+| World, 1440×900 | ![day](screenshots/mfw-49/after-desktop-1440x900-world-day.png) ![night](screenshots/mfw-49/after-desktop-1440x900-world-night.png) | ![day](screenshots/mfw-70/after-desktop-1440x900-world-day.png) | ![night](screenshots/mfw-70/after-desktop-1440x900-world-night.png) |
+| World, 390×844 | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) | ![day](screenshots/mfw-70/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-70/after-phone-390x844-world-night.png) |
+| Close-up (wheel zoom) | — | ![trees](screenshots/mfw-70/after-phone-390x844-closeup-trees-day.png) | ![water edge](screenshots/mfw-70/after-desktop-1440x900-closeup-water-edge-night.png) |
