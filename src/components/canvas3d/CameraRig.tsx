@@ -2,9 +2,11 @@
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useSpring } from "@react-spring/three";
-import { useEffect, useImperativeHandle, useLayoutEffect, useState, type Ref, type RefObject } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { Vector3 } from "three";
 import { CAMERA_FLIGHT_SPRING_CONFIG } from "@/config/camera.config";
+import { RIVER_STRETCH_SWITCH_HYSTERESIS } from "@/config/world.config";
+import { stretchIndexWithHysteresis, type EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import { MS_PER_SECOND } from "@/core/coordinates/splineConstants";
 import {
   applyCameraRigPose,
@@ -13,6 +15,7 @@ import {
   createCameraController,
   getFlightYaw,
   getRotateStepPose,
+  getTravelStepPose,
   stepCameraRig,
   type CameraAnimationApi,
   type CameraPanBounds,
@@ -43,6 +46,8 @@ export function createPointTarget(x: number, y: number, z: number): PointTarget 
 
 export interface CameraRigHandle {
   rotateBy(deltaRad: number): void;
+  /** MFW-58: fly the focus by (dx, dz) world units (one stretch period from the navigator); an instant cut under reduced motion. */
+  travelBy(dx: number, dz: number): void;
 }
 
 export interface CameraRigProps {
@@ -54,6 +59,12 @@ export interface CameraRigProps {
   requestId: number;
   reducedMotion: boolean;
   handleRef: Ref<CameraRigHandle>;
+  /** MFW-58: the endless-river stretch frame (module constant). With stretchIndex and onStretchChange the rig reports seam crossings. */
+  stretchFrame?: EndlessRiverFrame;
+  /** MFW-58: the stretch the scene currently treats as the camera's (the store's currentStretchIndex). */
+  stretchIndex?: number;
+  /** MFW-58: fired once when the focus is RIVER_STRETCH_SWITCH_HYSTERESIS past a seam of `stretchIndex` (stable callback). */
+  onStretchChange?: (stretchIndex: number) => void;
 }
 
 /**
@@ -64,8 +75,20 @@ export interface CameraRigProps {
  * is terminal in the flow machine, and FlowRoot unmounts SceneViewport in WRITE_WISH, so every ritual entry starts with a
  * fresh rig.
  */
-export function CameraRig({ getRig, bounds, targetRef, requestId, reducedMotion, handleRef }: CameraRigProps): null {
+export function CameraRig({
+  getRig,
+  bounds,
+  targetRef,
+  requestId,
+  reducedMotion,
+  handleRef,
+  stretchFrame,
+  stretchIndex,
+  onStretchChange,
+}: CameraRigProps): null {
   const invalidate = useThree((s) => s.invalidate);
+  /** Last stretch reported to onStretchChange (no repeat while the store catches up). */
+  const firedStretch = useRef<number | null>(null);
   const [scratch] = useState(() => new Vector3());
   const [springs, api] = useSpring(() => ({
     focusX: 0,
@@ -103,6 +126,14 @@ export function CameraRig({ getRig, bounds, targetRef, requestId, reducedMotion,
         createCameraController(flightAnimation(api, rig), reducedMotion).rotateTo(to);
         invalidate();
       },
+      travelBy(dx: number, dz: number) {
+        if (!Number.isFinite(dx) || !Number.isFinite(dz)) return;
+        const rig = getRig();
+        const to = getTravelStepPose(rig, dx, dz);
+        syncSpringToRig(api, rig);
+        createCameraController(flightAnimation(api, rig), reducedMotion).rotateTo(to);
+        invalidate();
+      },
     }),
     [api, invalidate, reducedMotion, getRig],
   );
@@ -119,6 +150,15 @@ export function CameraRig({ getRig, bounds, targetRef, requestId, reducedMotion,
       state.invalidate();
     }
     applyCameraRigPose(rig, state.camera);
+    if (stretchFrame !== undefined && stretchIndex !== undefined && onStretchChange !== undefined) {
+      const s = stretchIndexWithHysteresis(stretchFrame, rig.focusX, rig.focusZ, stretchIndex, RIVER_STRETCH_SWITCH_HYSTERESIS);
+      if (s !== stretchIndex && s !== firedStretch.current) {
+        firedStretch.current = s;
+        onStretchChange(s);
+      } else if (s === stretchIndex) {
+        firedStretch.current = null;
+      }
+    }
   });
 
   return null;

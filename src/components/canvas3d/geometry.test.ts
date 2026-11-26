@@ -4,7 +4,7 @@ import { buildRibbonGeometryData, createRiverChannel } from "@/core/world";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { createBlobShadowGeometry } from "./blobShadowMeshes";
-import { createBankGeometry, createGroundGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
+import { createBankGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
 import { Box3, Triangle, Vector3 } from "three";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 
@@ -134,26 +134,29 @@ describe("riverside v2 parts (MFW-49)", () => {
     }
   });
 
-  it("createGroundGeometry is the ground disc minus the river + banks hole (no overdraw)", () => {
+  it("MFW-58: the ground strips are a ribbon geometry with up normals, no fold and the strip triangle count", () => {
     const ground = LOY_KRATHONG_RIVER_LAYOUT.ground;
-    const g = createGroundGeometry(ground);
+    const g = createRibbonGeometry(ground.strips);
     const pos = g.getAttribute("position");
     const idx = g.index!;
-    let area = 0;
+    const n = g.getAttribute("normal");
+    for (let i = 0; i < n.count; i++) expect(n.getY(i)).toBe(1);
     const v = (i: number) => new Vector3().fromBufferAttribute(pos, idx.getX(i));
+    const water = createRibbonGeometry(LOY_KRATHONG_RIVER_LAYOUT.water);
+    const wp = water.getAttribute("position");
+    const wi = water.index!;
+    const w = (i: number) => new Vector3().fromBufferAttribute(wp, wi.getX(i));
+    const crossXZ = (a: Vector3, b: Vector3, c: Vector3) => (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+    const sign = Math.sign(crossXZ(w(0), w(1), w(2)));
     for (let t = 0; t < idx.count; t += 3) {
-      const [a, b, c] = [v(t), v(t + 1), v(t + 2)];
-      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-      expect(cross).toBeGreaterThan(0); // faces local +z (up after the mesh rotation)
-      area += cross / 2;
+      const cross = crossXZ(v(t), v(t + 1), v(t + 2));
+      expect(Math.sign(cross)).toBe(sign); // same winding as the water: faces up, no fold
+      expect(Math.abs(cross)).toBeGreaterThan(0);
     }
-    const n = ground.segments;
-    const disc = (n / 2) * ground.radius ** 2 * Math.sin((2 * Math.PI) / n);
-    let hole = 0;
-    ground.hole.forEach((p, i) => {
-      const q = ground.hole[(i + 1) % ground.hole.length];
-      hole += (p.x * q.z - q.x * p.z) / 2;
-    });
-    expect(area).toBeCloseTo(disc - Math.abs(hole), 3);
+    const segments = LOY_KRATHONG_RIVER_LAYOUT.ribbonSegments;
+    expect(countTriangles(g)).toBe(2 * 2 * segments + 2 * 2);
+    for (let i = 0; i < pos.count; i++) expect(pos.getY(i)).toBe(0); // the mesh position sets the height
+    g.dispose();
+    water.dispose();
   });
 });

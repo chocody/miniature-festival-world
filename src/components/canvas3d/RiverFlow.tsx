@@ -26,6 +26,7 @@ import { createRiverTapProxy } from "./effects/riverTapProxy";
 import { isTapClick } from "./effects/tapPoint";
 import { pickNearestRiverHitId } from "./effects/riverHitPick";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
+import { useStretchVisibility } from "./stretchVisibility";
 import { KrathongRipples, type KrathongRipplesHandle } from "./WaterHighlights";
 
 /** One krathong on the shared river. Public data only (invariant C): no owner token, hash or private wish. */
@@ -106,6 +107,7 @@ export const RiverFlow = memo(function RiverFlow({
   const markOut = useRef(createBounceFrame());
   const tappable = onItemTapped !== undefined;
   const hitProxy = useMemo(() => (tappable ? createRiverTapProxy() : null), [tappable]);
+  const stretchVisible = useStretchVisibility();
   useEffect(() => () => hitProxy?.dispose(), [hitProxy]);
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export const RiverFlow = memo(function RiverFlow({
   }, [rendered, invalidate]);
 
   useFrame(() => {
+    if (!stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes (another copy keeps the loop alive)
     if (rendered.length === 0) {
       blobs.current?.commit(0);
       ripples.current?.commit(0);

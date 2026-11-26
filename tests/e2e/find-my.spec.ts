@@ -100,11 +100,14 @@ test("3D: finds my krathong in another zone", async ({ page }) => {
   // Pinned: the HIGH tier must not fall back to 2D mid-test on a slow SwiftShader runner (the FPS fallback has its own tests).
   const requested = await releaseThenMoveAway(page, true, E2E_PINNED_TIER_URL);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
+  const before = requested.length;
   await openAndSelect(page);
   const nav = page.locator(NAV);
   await expect(nav).toHaveAttribute("data-zone-id", "2");
   await expect(nav).toHaveAttribute("data-zone-status", "ready");
-  expect(requested[requested.length - 1]).toBe("2");
+  // MFW-58: Find My loads zone 2 into the current stretch; zone streaming also requests neighbour zones, so zone 2 is among the
+  // requests after the click rather than necessarily the last one.
+  expect(requested.slice(before)).toContain("2");
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-selected-target", "riverKrathong");
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-find-my", "following");
   // MFW-67: the own krathong (drawn by OwnKrathong) is marked by the steady size-up, without a ring.

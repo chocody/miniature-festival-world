@@ -8,6 +8,7 @@ import { createNudgeFrame, findNudgeEntry, writeNudgeAt, type NudgeSource } from
 import type { InstanceTransform } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { composeInstanceMatrix } from "../instancing";
+import { useStretchVisibility } from "../stretchVisibility";
 
 export interface PropNudgesProps {
   readonly nudges: NudgeSource;
@@ -38,10 +39,13 @@ export function PropNudges({ nudges, rockMeshRef, rocks, rockPart, pierDeckRef }
   }, [rocks]);
   const pierNudged = useRef(false);
   const rocksDirty = useRef(false);
+  const stretchVisible = useStretchVisibility();
 
   useFrame(() => {
     const pool = nudges.pool;
     if (pool.activeCount === 0 && !rocksDirty.current && !pierNudged.current) return;
+    if (!stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes (it resumes when it comes into view)
+    const stretch = nudges.stretchIndex ?? 0;
     const t = nudges.now();
     const mesh = rockMeshRef.current;
     const mask = nudgedRocks.current;
@@ -49,7 +53,7 @@ export function PropNudges({ nudges, rockMeshRef, rocks, rockPart, pierDeckRef }
       let wrote = false;
       let any = false;
       for (let i = 0; i < rocks.length; i++) {
-        const e = findNudgeEntry(pool, "rock", i);
+        const e = findNudgeEntry(pool, "rock", i, stretch);
         if (e === null && mask[i] === 0) continue;
         composeInstanceMatrix(rocks[i], rockPart, scratch.base);
         if (e !== null) {
@@ -68,7 +72,7 @@ export function PropNudges({ nudges, rockMeshRef, rocks, rockPart, pierDeckRef }
     }
     const deck = pierDeckRef.current;
     if (deck) {
-      const e = findNudgeEntry(pool, "pier", 0);
+      const e = findNudgeEntry(pool, "pier", 0, stretch);
       if (e !== null) {
         deck.scale.setScalar(writeNudgeAt("pier", t - e.startedAtMs, reducedMotion, frame).scale);
         pierNudged.current = true;

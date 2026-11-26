@@ -19,3 +19,5 @@ export * from "./timeOfDay";
 export * from "./litLuminance";
 export * from "./blobShadow";
 export * from "./riversideFoliage";
+export * from "./riverStretches";
+export * from "./endlessRiver";

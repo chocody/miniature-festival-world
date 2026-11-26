@@ -17,16 +17,21 @@ export const ZONE_NAV_COPY = Object.freeze({
 });
 
 export interface ZoneNavigatorProps {
-  readonly pagination?: Pick<ZonePagination, "loadZone" | "retry">;
+  readonly pagination?: Pick<ZonePagination, "jumpBy" | "retry">;
 }
 
-/** Moves up- and downstream between river-bend zones. Buttons exist only when that neighbour exists. */
+/**
+ * MFW-58: the position indicator of the endless river — the zone under the camera, updated live as the camera crosses a stretch
+ * seam — and a jump shortcut: ‹ › travel one stretch (3D: a camera flight; 2D: the next page), wrapping after the last zone. The
+ * buttons exist only when there is another zone (none with one zone: the same zone repeats along the river).
+ */
 export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {
   const eventId = useWorldStore((s) => s.eventId);
   const currentZoneId = useWorldStore((s) => s.currentZoneId);
   const zoneCount = useWorldStore((s) => s.zoneCount);
   const zoneStatus = useWorldStore((s) => s.zoneStatus);
   const itemCount = useWorldStore((s) => s.zoneItems.length);
+  const stretchIndex = useWorldStore((s) => s.currentStretchIndex);
   if (eventId === null) return null;
   const p = pagination ?? getZonePagination();
   const view = describeGrowingWorld(zoneCount, currentZoneId);
@@ -47,6 +52,7 @@ export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {
       data-zone-count={view?.zoneCount}
       data-zone-status={zoneStatus}
       data-zone-item-count={itemCount}
+      data-stretch-index={stretchIndex}
       className="flex w-full items-center justify-between gap-2"
     >
       {up !== null && (
@@ -54,7 +60,7 @@ export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {
           type="button"
           aria-label={ZONE_NAV_COPY.upstream}
           className={UI_CLASSES.iconButton}
-          onClick={() => void p.loadZone(up)}
+          onClick={() => p.jumpBy(-1)}
         >
           <span aria-hidden="true">{UI_GLYPHS.previous}</span>
         </button>
@@ -72,7 +78,7 @@ export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {
           type="button"
           aria-label={ZONE_NAV_COPY.downstream}
           className={UI_CLASSES.iconButton}
-          onClick={() => void p.loadZone(down)}
+          onClick={() => p.jumpBy(1)}
         >
           <span aria-hidden="true">{UI_GLYPHS.next}</span>
         </button>

@@ -90,7 +90,7 @@ export function getOwnedWishStateReader(): OwnedWishStateReader {
   return shared;
 }
 
-/** Replaces ONLY the wish fields of one visible zone item. Returns true when the store changed. */
+/** Replaces ONLY the wish fields of one visible zone item (and its streamed copy, MFW-58). Returns true when the store changed. */
 export function patchZoneItemWish(
   store: WorldStoreLike,
   creationId: string,
@@ -105,7 +105,14 @@ export function patchZoneItemWish(
   if (item.publicWishText === publicWishText && item.displayName === displayName) return false;
   const copy = items.slice();
   copy[i] = { ...item, publicWishText, displayName };
-  store.setState({ zoneItems: Object.freeze(copy) });
+  const next = Object.freeze(copy);
+  // MFW-58: the streamed entry of the current zone is the same array as zoneItems; keep both in step (one new frozen array).
+  const { currentZoneId, streamedZoneItems } = store.getState();
+  if (currentZoneId !== null && streamedZoneItems[currentZoneId] === items) {
+    store.setState({ zoneItems: next, streamedZoneItems: Object.freeze({ ...streamedZoneItems, [currentZoneId]: next }) });
+  } else {
+    store.setState({ zoneItems: next });
+  }
   return true;
 }
 

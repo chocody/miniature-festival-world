@@ -1,5 +1,6 @@
 import { createRiverLane, splineProgressToWorld } from "@/core/coordinates";
 import type { RiverLane, WorldVec3, WorldXZ } from "@/core/coordinates";
+import { acrossOf, alongOf, createEndlessRiverFrame, type EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import {
   assertBankProfile,
   bankSurfaceY,
@@ -54,19 +55,21 @@ export interface HouseFacadeDefinition {
   readonly windows: readonly LocalOffset[];
 }
 /**
- * Flat ground under the whole diorama (below the water), so no viewport shows the background. It has a hole shaped like the
- * river + banks outline (pulled in by holeMargin), so the ground never shades pixels the water or banks cover.
+ * Flat ground under the diorama (below the water), so no viewport shows the background. MFW-58: two strips per stretch of the endless
+ * river — from the banks' outer edge pulled in by `holeMargin` out to a straight edge at across = ±`outerAcross` from the river axis —
+ * plus a full-width cap row under the river at each stretch end. The strips never shade pixels the water or banks cover (the MFW-49
+ * hole design), and the copies of neighbouring stretches join exactly at the seams.
  */
 export interface RiverGroundDefinition {
-  readonly radius: number; // finite > 0
   readonly y: number; // < min(waterSurfaceY, bankProfile[0].y)
-  readonly segments: number; // integer >= 3
-  /** The hole edge stays this far (world units) inside the banks' outer boundary, so no gap shows under a bank edge. [0, bankWidth). */
+  /** The strips' inner edge stays this far (world units) inside the banks' outer boundary, so no gap shows under a bank edge. [0, bankWidth). */
   readonly holeMargin: number;
+  /** Half width of the ground band around the river axis (world units), finite > every inner edge's |across|. */
+  readonly outerAcross: number;
 }
-/** Resolved ground: a disc of `radius` with a hole following the bank outline (`buildGroundHoleOutline`; empty = no hole). */
+/** Resolved ground: the strips of one stretch (`buildGroundStripsData`), in the mesh's local xz at y = 0. */
 export interface RiverGroundLayout extends RiverGroundDefinition {
-  readonly hole: readonly WorldXZ[];
+  readonly strips: RibbonGeometryData;
 }
 export interface RiverEnvironmentDefinition {
   readonly channel: RiverChannelDefinition;
@@ -195,24 +198,107 @@ export function buildRibbonGeometryData(
   toOffset: number,
   segments: number,
 ): RibbonGeometryData {
+  return buildRibbonRowsGeometryData(channel, fromOffset, toOffset, segments, 0, segments);
+}
+
+/**
+ * Rows fromRow..toRow of a ribbon of `segments` rows along the channel (row i at progress i / segments), between the lateral offsets
+ * fromOffset < toOffset. buildRibbonGeometryData = rows 0..segments (bit-identical).
+ */
+export function buildRibbonRowsGeometryData(
+  channel: RiverLane,
+  fromOffset: number,
+  toOffset: number,
+  segments: number,
+  fromRow: number,
+  toRow: number,
+): RibbonGeometryData {
   requireFinite(fromOffset, "fromOffset");
   requireFinite(toOffset, "toOffset");
   if (!(fromOffset < toOffset)) throw new RangeError("fromOffset must be < toOffset");
   if (!Number.isInteger(segments) || segments < 1) throw new RangeError("segments must be an integer >= 1");
-  const vertexCount = (segments + 1) * 2;
+  if (!Number.isInteger(fromRow) || !Number.isInteger(toRow) || fromRow < 0 || toRow > segments || !(fromRow < toRow)) {
+    throw new RangeError("rows must be integers with 0 <= fromRow < toRow <= segments");
+  }
+  const rows = toRow - fromRow;
+  const vertexCount = (rows + 1) * 2;
   const positions = new Float32Array(vertexCount * 3);
-  const indices = new Uint32Array(segments * 6);
-  for (let i = 0; i <= segments; i++) {
-    const { centerline: c, right } = riverFrameAt(channel, i / segments);
-    const o = i * 6;
+  const indices = new Uint32Array(rows * 6);
+  for (let r = 0; r <= rows; r++) {
+    const { centerline: c, right } = riverFrameAt(channel, (fromRow + r) / segments);
+    const o = r * 6;
     positions[o] = c.x + right.x * fromOffset;
     positions[o + 2] = c.z + right.z * fromOffset;
     positions[o + 3] = c.x + right.x * toOffset;
     positions[o + 5] = c.z + right.z * toOffset;
   }
-  for (let i = 0; i < segments; i++) {
+  for (let i = 0; i < rows; i++) {
     const a = 2 * i;
     indices.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6);
+  }
+  return { positions, indices, vertexCount };
+}
+
+/**
+ * MFW-58 ground of one stretch, one position / index buffer (indices offset per part), faces up like the water ribbon:
+ * (1) left strip, rows 0..segments: from the straight outer edge O + a·along(centreline) − c·outerAcross to the inner edge
+ * centreline − right·innerLateral; (2) right strip, the mirror; (3) a cap under the river at rows 0..1 and (4) at rows
+ * segments − 1..segments, lateral −innerLateral..+innerLateral. The outer edges of neighbouring copies (offset by T) join exactly.
+ * RangeError when outerAcross is not greater than the largest |across| of an inner vertex (the strip would fold).
+ */
+export function buildGroundStripsData(
+  channel: RiverLane,
+  frame: EndlessRiverFrame,
+  innerLateral: number,
+  outerAcross: number,
+  segments: number,
+): RibbonGeometryData {
+  requirePositive(innerLateral, "innerLateral");
+  requirePositive(outerAcross, "outerAcross");
+  if (!Number.isInteger(segments) || segments < 2) throw new RangeError("segments must be an integer >= 2");
+  const stripVertices = (segments + 1) * 2;
+  const caps = [
+    buildRibbonRowsGeometryData(channel, -innerLateral, innerLateral, segments, 0, 1),
+    buildRibbonRowsGeometryData(channel, -innerLateral, innerLateral, segments, segments - 1, segments),
+  ];
+  const vertexCount = 2 * stripVertices + caps[0].vertexCount + caps[1].vertexCount;
+  const positions = new Float32Array(vertexCount * 3);
+  const indices = new Uint32Array(2 * segments * 6 + caps[0].indices.length + caps[1].indices.length);
+  let maxInnerAcross = 0;
+  // Strips: vertex 2i = "from" (the more negative lateral), 2i + 1 = "to", as in buildRibbonRowsGeometryData.
+  for (const [part, side] of [
+    [0, -1],
+    [1, 1],
+  ] as const) {
+    const base = part * stripVertices;
+    for (let i = 0; i <= segments; i++) {
+      const { centerline: c, right } = riverFrameAt(channel, i / segments);
+      const innerX = c.x + right.x * side * innerLateral;
+      const innerZ = c.z + right.z * side * innerLateral;
+      maxInnerAcross = Math.max(maxInnerAcross, Math.abs(acrossOf(frame, innerX, innerZ)));
+      const along = alongOf(frame, c.x, c.z);
+      const outerX = frame.originX + frame.axisX * along - frame.axisZ * side * outerAcross;
+      const outerZ = frame.originZ + frame.axisZ * along + frame.axisX * side * outerAcross;
+      const [fromX, fromZ, toX, toZ] = side < 0 ? [outerX, outerZ, innerX, innerZ] : [innerX, innerZ, outerX, outerZ];
+      const o = (base + 2 * i) * 3;
+      positions[o] = fromX;
+      positions[o + 2] = fromZ;
+      positions[o + 3] = toX;
+      positions[o + 5] = toZ;
+    }
+    for (let i = 0; i < segments; i++) {
+      const a = base + 2 * i;
+      indices.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], (part * segments + i) * 6);
+    }
+  }
+  if (!(outerAcross > maxInnerAcross)) throw new RangeError("ground outerAcross must exceed every inner edge's |across|");
+  let vertexOffset = 2 * stripVertices;
+  let indexOffset = 2 * segments * 6;
+  for (const cap of caps) {
+    positions.set(cap.positions, vertexOffset * 3);
+    for (let k = 0; k < cap.indices.length; k++) indices[indexOffset + k] = cap.indices[k] + vertexOffset;
+    vertexOffset += cap.vertexCount;
+    indexOffset += cap.indices.length;
   }
   return { positions, indices, vertexCount };
 }
@@ -325,38 +411,14 @@ export function resolveHouseFeatures(
 
 function assertGround(def: RiverEnvironmentDefinition): void {
   const { ground } = def;
-  requirePositive(ground.radius, "ground radius");
   requireFinite(ground.y, "ground y");
   requireFinite(ground.holeMargin, "ground holeMargin");
+  requirePositive(ground.outerAcross, "ground outerAcross");
   if (ground.holeMargin < 0 || ground.holeMargin >= def.bankWidth) throw new RangeError("ground holeMargin must be >= 0 and < bankWidth");
-  if (!Number.isInteger(ground.segments) || ground.segments < 3) throw new RangeError("ground segments must be an integer >= 3");
+  if (!Number.isInteger(def.ribbonSegments) || def.ribbonSegments < 2) throw new RangeError("ribbonSegments must be >= 2 for the ground");
   if (!(ground.y < Math.min(def.waterSurfaceY, def.bankProfile[0].y))) {
     throw new RangeError("ground y must be below the water surface and the bank profile");
   }
-}
-
-/**
- * Outline of the ground's hole (xz, counter-clockwise or clockwise, closed implicitly): the banks' outer edges pulled in by
- * `holeMargin`, from channel row 1 to row segments − 1 on the left bank and back on the right bank. The hole therefore lies under
- * the water and banks (rows 0 and `segments` stay covered by the ground under the river ends), so the ground never shades a pixel
- * the water or a bank covers. Empty (no hole) with fewer than 3 segments.
- */
-export function buildGroundHoleOutline(
-  channel: RiverLane,
-  bankWidth: number,
-  holeMargin: number,
-  segments: number,
-): WorldXZ[] {
-  if (!Number.isInteger(segments) || segments < 3) return [];
-  const lateral = channel.width / 2 + bankWidth - holeMargin;
-  const out: WorldXZ[] = [];
-  const at = (i: number, side: BankSide) => {
-    const { centerline: c, right } = riverFrameAt(channel, i / segments);
-    out.push({ x: c.x + right.x * side * lateral, z: c.z + right.z * side * lateral });
-  };
-  for (let i = 1; i < segments; i++) at(i, -1);
-  for (let i = segments - 1; i >= 1; i--) at(i, 1);
-  return out;
 }
 
 export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverEnvironmentLayout {
@@ -393,8 +455,13 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
   const water = buildRibbonGeometryData(channel, -(half + def.waterUnderlap), half + def.waterUnderlap, def.ribbonSegments);
   const left = buildBankProfileGeometryData(channel, -1, def.bankProfile, def.ribbonSegments);
   const right = buildBankProfileGeometryData(channel, 1, def.bankProfile, def.ribbonSegments);
-  const ground = buildGroundHoleOutline(channel, def.bankWidth, def.ground.holeMargin, def.ribbonSegments);
-  if (ground.some((p) => Math.hypot(p.x, p.z) >= def.ground.radius)) throw new RangeError("ground radius must enclose the river outline");
+  const strips = buildGroundStripsData(
+    channel,
+    createEndlessRiverFrame(def.channel.controlPoints),
+    def.channel.width / 2 + def.bankWidth - def.ground.holeMargin,
+    def.ground.outerAcross,
+    def.ribbonSegments,
+  );
   const resolve = (list: readonly BankPlacement[]) =>
     list.map((p) => resolveBankPlacement(channel, p, bankSurfaceY(def.bankProfile, p.setback)));
   const houses = resolve(def.houses);
@@ -406,7 +473,7 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
     bankTopY: def.bankTopY,
     ribbonSegments: def.ribbonSegments,
     bankProfile: def.bankProfile,
-    ground: { ...def.ground, hole: ground },
+    ground: { y: def.ground.y, holeMargin: def.ground.holeMargin, outerAcross: def.ground.outerAcross, strips },
     water,
     banks: { left, right },
     houses,

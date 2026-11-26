@@ -49,3 +49,24 @@ export function publicCreationsToRiverItems(
   }
   return Object.freeze(out);
 }
+
+const zoneRiverItemsCache = new WeakMap<readonly PublicCreation[], Map<string, readonly ZoneRiverItem[]>>();
+
+/**
+ * MFW-58: same result as publicCreationsToRiverItems, cached per (array identity, eventId, zoneId) in a WeakMap, so every stretch slot
+ * showing a streamed zone gets a stable reference (memo'd RiverFlow). The cache dies with the store's array. Not per frame.
+ */
+export function getZoneRiverItems(creations: readonly PublicCreation[], query: ZoneRiverItemsQuery): readonly ZoneRiverItem[] {
+  let byQuery = zoneRiverItemsCache.get(creations);
+  if (byQuery === undefined) {
+    byQuery = new Map();
+    zoneRiverItemsCache.set(creations, byQuery);
+  }
+  const key = `${query.eventId}\u0000${query.zoneId}`;
+  let items = byQuery.get(key);
+  if (items === undefined) {
+    items = publicCreationsToRiverItems(creations, query);
+    byQuery.set(key, items);
+  }
+  return items;
+}

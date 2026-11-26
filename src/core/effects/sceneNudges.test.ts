@@ -16,7 +16,7 @@ describe("scene nudges (MFW-60)", () => {
     startNudge(p, "tree", 2, 10);
     startNudge(p, "rock", 2, 10);
     const e = findNudgeEntry(p, "tree", 2)!;
-    expect(e.state).toEqual({ kind: "tree", index: 2 });
+    expect(e.state).toEqual({ kind: "tree", index: 2, stretchIndex: 0 }); // MFW-58: default stretch 0
     expect(findNudgeEntry(p, "rock", 2)).not.toBe(e);
     expect(findNudgeEntry(p, "tree", 1)).toBeNull();
     expect(findNudgeEntry(p, "bush", 2)).toBeNull();
@@ -35,7 +35,15 @@ describe("scene nudges (MFW-60)", () => {
   });
 
   it("SN2: a full pool recycles the oldest", () => {
-    const p = createObjectPool(2, () => ({ kind: "tree" as const, index: 0 }) as { kind: (typeof NUDGE_TARGET_KINDS)[number]; index: number });
+    const p = createObjectPool(
+      2,
+      () =>
+        ({ kind: "tree" as const, index: 0, stretchIndex: 0 }) as {
+          kind: (typeof NUDGE_TARGET_KINDS)[number];
+          index: number;
+          stretchIndex: number;
+        },
+    );
     startNudge(p, "tree", 0, 1);
     startNudge(p, "tree", 1, 2);
     startNudge(p, "rock", 0, 3);
@@ -80,5 +88,21 @@ describe("scene nudges (MFW-60)", () => {
     const fresh = p.acquire(0);
     retriggerGlow(fresh, Number.NaN, L.attackMs);
     expect(Number.isNaN(fresh.startedAtMs)).toBe(true); // a bad clock never throws
+  });
+
+  it("SN5 (MFW-58): the same kind + index in another stretch is a separate entry; default stretch 0 keeps the old behaviour", () => {
+    const p = pool();
+    startNudge(p, "tree", 4, 10);
+    startNudge(p, "tree", 4, 20, 1);
+    startNudge(p, "tree", 4, 30, -2);
+    expect(p.activeCount).toBe(3);
+    expect(findNudgeEntry(p, "tree", 4)).toBe(findNudgeEntry(p, "tree", 4, 0));
+    expect(findNudgeEntry(p, "tree", 4, 1)!.startedAtMs).toBe(20);
+    expect(findNudgeEntry(p, "tree", 4, -2)!.state).toEqual({ kind: "tree", index: 4, stretchIndex: -2 });
+    expect(findNudgeEntry(p, "tree", 4, 2)).toBeNull();
+    startNudge(p, "tree", 4, 40, 1); // re-tap in stretch 1 restarts only that entry
+    expect(p.activeCount).toBe(3);
+    expect(findNudgeEntry(p, "tree", 4, 1)!.startedAtMs).toBe(40);
+    expect(findNudgeEntry(p, "tree", 4, 0)!.startedAtMs).toBe(10);
   });
 });

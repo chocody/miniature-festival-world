@@ -55,8 +55,10 @@ describe("MFW-60 pools", () => {
 
   it("initial states are neutral (render-time only, never persisted)", () => {
     const m = createObjectPoolManager(EFFECT_POOL_CAPS.LOW);
-    expect(m.nudge.entryAt(0).state).toEqual({ kind: "tree", index: 0 });
-    expect(m.windowGlow.entryAt(0).state).toEqual({ houseIndex: 0 });
+    // MFW-58: lamp glow, window glow and nudge states carry their stretch copy (default 0).
+    expect(m.nudge.entryAt(0).state).toEqual({ kind: "tree", index: 0, stretchIndex: 0 });
+    expect(m.windowGlow.entryAt(0).state).toEqual({ houseIndex: 0, stretchIndex: 0 });
+    expect(m.glow.entryAt(0).state).toEqual({ lampIndex: 0, stretchIndex: 0 });
     expect(m.firework.entryAt(0).state).toEqual({ x: 0, y: 0, z: 0, paletteIndex: 0 });
     expect(m.skyLantern.entryAt(0).state).toEqual({ x: 0, y: 0, z: 0 });
   });

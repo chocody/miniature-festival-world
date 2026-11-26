@@ -12,18 +12,27 @@ export interface RippleState {
   x: number;
   z: number;
 }
-/** Index into the scene layout's lamps. */
+/** Index into the scene layout's lamps, in stretch `stretchIndex` of the endless river (MFW-58; drawn at + s·T). Render-time only. */
 export interface LampGlowState {
   lampIndex: number;
+  stretchIndex: number;
 }
-/** A tapped object that moves (MFW-60): kind + its stable layout index (villagers: villagerId). Render-time only. */
+/**
+ * A tapped object that moves (MFW-60): kind + its stable layout index (villagers: villagerId) + the stretch copy it belongs to
+ * (MFW-58: each stretch's readers filter by it). Render-time only.
+ */
 export interface NudgeState {
   kind: NudgeTargetKind;
   index: number;
+  stretchIndex: number;
 }
-/** Index into the scene layout's houses (its windows are houseWindows[houseIndex · windowsPerHouse + w]). Render-time only. */
+/**
+ * Index into the scene layout's houses (its windows are houseWindows[houseIndex · windowsPerHouse + w]), in stretch `stretchIndex`
+ * (MFW-58; drawn at + s·T). Render-time only.
+ */
 export interface WindowGlowState {
   houseIndex: number;
+  stretchIndex: number;
 }
 /** Launch point in the world-view group's space + palette start. Render-time only — NEVER persisted or sent (invariant A). */
 export interface FireworkState {
@@ -53,9 +62,9 @@ export interface ObjectPoolManager {
 /** One pool per effect kind, sized from the tier caps (EFFECT_POOL_CAPS[tier]). */
 export function createObjectPoolManager(caps: EffectPoolCaps): ObjectPoolManager {
   const ripple = createObjectPool<RippleState>(caps.ripple, () => ({ x: 0, z: 0 }));
-  const glow = createObjectPool<LampGlowState>(caps.glow, () => ({ lampIndex: 0 }));
-  const nudge = createObjectPool<NudgeState>(caps.nudge, () => ({ kind: "tree", index: 0 }));
-  const windowGlow = createObjectPool<WindowGlowState>(caps.windowGlow, () => ({ houseIndex: 0 }));
+  const glow = createObjectPool<LampGlowState>(caps.glow, () => ({ lampIndex: 0, stretchIndex: 0 }));
+  const nudge = createObjectPool<NudgeState>(caps.nudge, () => ({ kind: "tree", index: 0, stretchIndex: 0 }));
+  const windowGlow = createObjectPool<WindowGlowState>(caps.windowGlow, () => ({ houseIndex: 0, stretchIndex: 0 }));
   const firework = createObjectPool<FireworkState>(caps.firework, () => ({ x: 0, y: 0, z: 0, paletteIndex: 0 }));
   const skyLantern = createObjectPool<SkyLanternState>(caps.skyLantern, () => ({ x: 0, y: 0, z: 0 }));
   return {

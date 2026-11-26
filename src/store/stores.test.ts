@@ -40,6 +40,8 @@ describe("zustand stores", () => {
     expect(useWorldStore.getState()).toEqual({
       currentZoneId: null, participantCount: null, eventId: null, zoneCount: null,
       zoneStatus: "idle", zoneItems: [], focusedCreationId: null, focusRequestId: 0,
+      // MFW-58 endless river (render-time only, never persisted)
+      currentStretchIndex: 0, stretchAnchor: null, streamedZoneItems: {},
     });
     expect(useDeviceStore.getState()).toMatchObject({
       fps: null,

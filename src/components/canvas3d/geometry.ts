@@ -6,13 +6,10 @@ import {
   CylinderGeometry,
   IcosahedronGeometry,
   MeshStandardMaterial,
-  Path,
-  Shape,
-  ShapeGeometry,
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { MatteMaterialSpec, PartGeometrySpec } from "@/config/scene.config";
-import type { BankGeometryData, RibbonGeometryData, RiverGroundLayout } from "@/core/world";
+import type { BankGeometryData, RibbonGeometryData } from "@/core/world";
 import { createBladeTuftGeometry, createLeafClumpGeometry, createTrunkGeometry } from "./foliageGeometry";
 
 /** three's MeshStandardMaterial default. */
@@ -138,31 +135,6 @@ export function createBankGeometry(data: BankGeometryData): BufferGeometry {
   g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
-}
-
-const FULL_TURN = 2 * Math.PI;
-
-/**
- * Ground in its local xy plane (the mesh rotates it −π/2 about x, so local (x, y) = world (x, −z)): a disc of `radius` with a
- * hole shaped like the river + banks outline, so it never overdraws the water or banks (MFW-49; SwiftShader shades hidden pixels).
- */
-export function createGroundGeometry(ground: RiverGroundLayout): BufferGeometry {
-  const shape = new Shape();
-  for (let i = 0; i < ground.segments; i++) {
-    const a = (FULL_TURN * i) / ground.segments;
-    const x = ground.radius * Math.cos(a);
-    const y = ground.radius * Math.sin(a);
-    if (i === 0) shape.moveTo(x, y);
-    else shape.lineTo(x, y);
-  }
-  if (ground.hole.length >= TRIANGLE_VERTICES) {
-    const hole = new Path();
-    ground.hole.forEach((p, i) => (i === 0 ? hole.moveTo(p.x, -p.z) : hole.lineTo(p.x, -p.z)));
-    shape.holes.push(hole);
-  }
-  const geometry = new ShapeGeometry(shape, 1);
-  geometry.computeBoundingSphere();
-  return geometry;
 }
 
 export function countTriangles(geometry: BufferGeometry): number {

@@ -115,9 +115,15 @@ export function OwnKrathong({
     [lowerApi, settleApi, bumpApi, candleApi, reducedMotion],
   );
   const poseScale = ownKrathongPoseScale(poseKind);
+  /**
+   * MFW-58: while HIDDEN (the own zone is not under the camera) the krathong is not drawn but its candle light stays in the scene at
+   * intensity 0. three keys every lit material's shader on the number of point lights, so removing the light recompiled every
+   * material at each zone change (a hitch) and left the culled stretch copies holding stale program variants.
+   */
+  const hidden = poseKind === "HIDDEN";
   const candleIntensity = useMemo(
-    () => candleS.value.to((v) => candleLightIntensity(v, candleIntensityScale, poseScale)),
-    [candleS.value, candleIntensityScale, poseScale],
+    () => candleS.value.to((v) => (hidden ? 0 : candleLightIntensity(v, candleIntensityScale, poseScale))),
+    [candleS.value, candleIntensityScale, poseScale, hidden],
   );
   const own = useMemo(
     () =>
@@ -199,6 +205,7 @@ export function OwnKrathong({
       },
       scratch.current,
     );
+    if (hidden) g.visible = true; // MFW-58: the pose group stays in the scene (the candle light keeps counting); its content is hidden
     const m = markRef.current;
     const marking =
       m !== null && writeMarkCueScale(m, marked ? OWN_MARK_ID : null, nowMs, reducedMotion, markState.current, markOut.current);
@@ -223,8 +230,10 @@ export function OwnKrathong({
           decay={TOY_SCENE_LIGHTING.candle.decay}
           position={TOY_SCENE_LIGHTING.candle.position}
         />
-        <KrathongBlobShadow />
-        <group ref={markRef} name={SCENE_OBJECT_NAMES.krathongMarkCue}>
+        <group visible={!hidden}>
+          <KrathongBlobShadow />
+        </group>
+        <group ref={markRef} name={SCENE_OBJECT_NAMES.krathongMarkCue} visible={!hidden}>
           <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
             <KrathongModel appearance={appearance} shadows={shadows} />
           </PartChangeBounce>

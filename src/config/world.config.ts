@@ -11,3 +11,16 @@ export type InitialZonePolicy = (typeof INITIAL_ZONE_POLICIES)[number];
  * the "front" of the growing river. Flip to "FIRST" to start at Zone 1.
  */
 export const WORLD_INITIAL_ZONE_POLICY: InitialZonePolicy = "NEWEST";
+
+/**
+ * MFW-58: stretches rendered on each side of the camera's stretch (3 slots: S−1, S, S+1). Technical: endlessRiver.test.ts proves the
+ * largest view plus the hysteresis never reaches past S±1.
+ */
+export const RIVER_STRETCH_RENDER_RADIUS = 1;
+/**
+ * MFW-58: stretches whose zones are kept loaded on each side of the camera in 3D (5 stretches, ≤ 5 zones). DRAFT (spec silent: how
+ * many zones stay loaded); 2 = the next zone is loaded a full stretch before it can come into view. The 2D fallback uses 0.
+ */
+export const ZONE_STREAM_LOAD_RADIUS = 2;
+/** MFW-58: world units the camera focus must pass a seam before the current stretch changes (no flip-flop at a seam). Technical DRAFT. */
+export const RIVER_STRETCH_SWITCH_HYSTERESIS = 1;

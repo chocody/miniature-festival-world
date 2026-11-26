@@ -10,6 +10,7 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { createFoliageSwayScratch, writeFoliageSwayAndShake, type FoliageShakeInput } from "./foliageSway";
 import { InstancedPart } from "./InstancedPart";
 import { applyInstanceTransforms } from "./instancing";
+import { useStretchVisibility } from "./stretchVisibility";
 
 export interface SwayingInstancedPartProps {
   readonly name: string;
@@ -39,10 +40,18 @@ export function SwayingInstancedPart(props: SwayingInstancedPartProps): JSX.Elem
   /** The tap-shake input, re-made only when the pool or the owners change; nowMs / reducedMotion are refreshed per frame. */
   const shakeRef = useRef<FoliageShakeInput | null>(null);
   const wasShaking = useRef(false);
+  const stretchVisible = useStretchVisibility();
   useLayoutEffect(() => {
     shakeRef.current =
       nudges && shakeOwners
-        ? { pool: nudges.pool, owners: shakeOwners, nowMs: 0, reducedMotion: false, frame: createNudgeFrame() }
+        ? {
+            pool: nudges.pool,
+            owners: shakeOwners,
+            nowMs: 0,
+            reducedMotion: false,
+            frame: createNudgeFrame(),
+            stretchIndex: nudges.stretchIndex ?? 0,
+          }
         : null;
   }, [nudges, shakeOwners]);
 
@@ -58,6 +67,7 @@ export function SwayingInstancedPart(props: SwayingInstancedPartProps): JSX.Elem
     const shake = shakeRef.current;
     const shaking = shake !== null && shake.pool.activeCount > 0;
     if (sway === null && !shaking && !wasShaking.current) return;
+    if (!stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes
     const mesh = meshRef.current;
     if (!(mesh instanceof InstancedMesh)) return;
     if (shake !== null && nudges) {

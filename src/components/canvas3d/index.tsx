@@ -15,7 +15,7 @@ import {
   type RefObject,
 } from "react";
 import { OrthographicCamera } from "three";
-import type { Group, InstancedMesh, Mesh } from "three";
+import type { Group, Mesh } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
   SCENE_CAMERA_FAR,
@@ -36,8 +36,6 @@ import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { SCENE_TAP_HINT_COPY, type SceneTargetKind } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
-import { PropNudges } from "./effects/PropNudges";
-import { PropTapProxies } from "./effects/PropTapProxies";
 import { createObjectPoolManager, type NudgeSource } from "@/core/effects";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
@@ -46,8 +44,8 @@ import {
   applyPanDrag,
   createCameraRigState,
   endPan,
+  getEndlessRiverPanBounds,
   getFramedCameraZoom,
-  getRiverPanBounds,
   twistCameraRig,
   type CameraRigState,
   type CameraTargetKind,
@@ -75,30 +73,32 @@ import {
   RITUAL_CHIP_START_PERCENT,
   WORLD_VIEW_ROTATE_STEP_RADIANS,
 } from "@/config/interaction.config";
+import { FlameFlicker, KrathongAssetsProvider, LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
 import {
-  FlameFlicker,
-  KrathongAssetsProvider,
-  LOY_KRATHONG_PROP_TAP_TARGETS,
-  LOY_KRATHONG_RIVER_LAYOUT,
-  RiverEnvironment,
-} from "@/components/models/loyKrathong";
-import { findFocusedRiverItem, getLoyKrathongRiverLanes, NO_PINNED_RIVER_IDS, publicCreationsToRiverItems, type RiverSpot } from "@/core/world";
+  buildRiverStretchSlots,
+  findFocusedRiverItem,
+  getLoyKrathongEndlessRiverFrame,
+  getLoyKrathongRiverLanes,
+  getZoneRiverItems,
+  NO_PINNED_RIVER_IDS,
+  publicCreationsToRiverItems,
+  type RiverSpot,
+} from "@/core/world";
+import { ZONE_STREAM_LOAD_RADIUS } from "@/config/world.config";
+import { getZonePagination } from "@/services/api/zonePagination";
 import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseKind, type OwnKrathongPoseKind, type RitualState } from "@/core/ritual";
 import { CameraRig, type CameraRigHandle, type WorldPositionSource } from "./CameraRig";
-import { FindMyAnchor } from "./FindMyAnchor";
 import { OwnKrathong } from "./OwnKrathong";
 import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
 import { PerfProbePanel } from "./PerfProbePanel";
 import { readPerfProbeFlag, readPerfProbeFlagOnServer, subscribeToNothing, type RendererInfoSource } from "./perfProbe";
-import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
+import type { RiverFlowItem } from "./RiverFlow";
+import { RiverStretch } from "./RiverStretch";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { CANVAS_GL_OPTIONS } from "./sceneLook";
 import { SceneLighting } from "./SceneLighting";
-import { EnvironmentBlobShadows } from "./BlobShadows";
-import { ShoreHighlights, WaterGlints } from "./WaterHighlights";
 import { getSceneMarks } from "./sceneMarks";
-import { Villagers } from "./Villagers";
-import { AmbientLife } from "./AmbientLife";
+import { AmbientTicker } from "./AmbientLife";
 import { useResolvedLightPreset } from "./useLightPreset";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -148,8 +148,29 @@ export const NO_RIVER_ITEMS: readonly RiverFlowItem[] = Object.freeze([]);
 
 type TargetRef = RefObject<WorldPositionSource | null>;
 
-/** MFW-57 soft pan bounds of the camera focus, derived from the river channel config (a wider channel widens them). */
-const WORLD_PAN_BOUNDS = getRiverPanBounds(LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
+/** MFW-58: the endless river's stretch frame (period T = last − first centreline control point). Render-time only. */
+const ENDLESS = getLoyKrathongEndlessRiverFrame();
+
+/**
+ * Soft pan bounds of the camera focus (MFW-57), MFW-58: the endless-river corridor — unbounded along the river, the channel corridor
+ * across it. Exported so tests use the same bounds.
+ */
+export const WORLD_PAN_BOUNDS = getEndlessRiverPanBounds(ENDLESS, LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
+
+/** MFW-58: what one stretch slot shows (render-time only; derived from zone_id + SplinePathCoord and the river config). */
+interface StretchSlotView {
+  readonly ringIndex: number;
+  readonly stretchIndex: number;
+  readonly offsetX: number;
+  readonly offsetZ: number;
+  readonly isCurrent: boolean;
+  readonly zoneId: number | null;
+  readonly riverItems: readonly RiverFlowItem[];
+  readonly findMyItem: RiverFlowItem | null;
+  readonly markedRiverId: string | null;
+  /** The focused id for the current slot and the Find My slot; NO_PINNED_RIVER_IDS elsewhere (stable: no re-render). */
+  readonly pinnedRiverIds: readonly string[];
+}
 
 interface ToyNightSceneProps {
   lightPreset: LightPresetId;
@@ -157,18 +178,24 @@ interface ToyNightSceneProps {
   shadowMapSizePx: number;
   appearance: KrathongAppearance;
   reducedMotion: boolean;
-  riverItems: readonly RiverFlowItem[];
-  pinnedRiverIds: readonly string[];
+  /** MFW-58: the 3 stretch slots, current first (S, S − 1, S + 1). */
+  stretches: readonly StretchSlotView[];
+  /** MFW-58: offset s·T of the camera's stretch (the pier focus and the own krathong live there). */
+  currentOffsetX: number;
+  currentOffsetZ: number;
+  getRig: () => CameraRigState;
   objectRotation: number;
   onTargetSelected: (target: Exclude<CameraTargetKind, "water">) => void;
   selectedLampIndex: number;
-  onLampSelected: (lampIndex: number) => void;
+  /** MFW-58: the stretch of the selected lamp (its slot holds the lamp fly-to target). */
+  selectedLampStretch: number;
+  onLampSelected: (lampIndex: number, stretchIndex: number) => void;
   waterTargetRef: RefObject<Mesh | null>;
   krathongTargetRef: RefObject<Group | null>;
   lampTargetRef: RefObject<Group | null>;
   effectCaps: EffectPoolCaps;
   effectsRef: Ref<SceneEffectsHandle>;
-  onWaterSelected: (tap: WorldXZ | null) => void;
+  onWaterSelected: (tap: WorldXZ | null, stretchIndex: number) => void;
   onRiverItemTapped?: (id: string) => void;
   poseKind: OwnKrathongPoseKind;
   ritual: RitualState;
@@ -179,16 +206,14 @@ interface ToyNightSceneProps {
   onTouchedDown: (attempt: number, at: WorldXZ) => void;
   onSettled: (attempt: number) => void;
   pierFocusRef: RefObject<Group | null>;
-  findMyItem: RiverFlowItem | null;
   findMyAnchorRef: RefObject<Group | null>;
-  markedRiverId: string | null;
   ownMarked: boolean;
   /** MFW-50: the living world may keep an idle-redraw cadence (true only in WORLD_EXPLORE). A primitive keeps the memo effective. */
   livingWorldIdleRedraw: boolean;
   /** MFW-60: FIREWORK_SPARKS_PER_BURST[tier]. */
   fireworkSparks: number;
   /** MFW-60: a prop / land tap (WORLD_EXPLORE only; absent = no prop proxies and no land / pier handlers). Stable callback. */
-  onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null) => void;
+  onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex: number) => void;
 }
 
 const ToyNightScene = memo(function ToyNightScene({
@@ -197,11 +222,14 @@ const ToyNightScene = memo(function ToyNightScene({
   shadowMapSizePx,
   appearance,
   reducedMotion,
-  riverItems,
-  pinnedRiverIds,
+  stretches,
+  currentOffsetX,
+  currentOffsetZ,
+  getRig,
   objectRotation,
   onTargetSelected,
   selectedLampIndex,
+  selectedLampStretch,
   onLampSelected,
   waterTargetRef,
   krathongTargetRef,
@@ -219,102 +247,76 @@ const ToyNightScene = memo(function ToyNightScene({
   onTouchedDown,
   onSettled,
   pierFocusRef,
-  findMyItem,
   findMyAnchorRef,
-  markedRiverId,
   ownMarked,
   livingWorldIdleRedraw,
   fireworkSparks,
   onPropTapped,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
-  const lampHeadMeshRef = useRef<InstancedMesh | null>(null);
-  // MFW-60: the effect pools live here so the foliage, rocks, pier and villagers share the nudge pool with SceneEffects.
+  // MFW-60: the effect pools live here so every stretch's foliage, rocks, pier and villagers share the nudge pool with SceneEffects.
+  // MFW-58: ONE set of pools per canvas whatever the number of stretch slots (invariant E: the caps bound every stretch together).
   const pools = useMemo(() => createObjectPoolManager(effectCaps), [effectCaps]);
   const nudges = useMemo<NudgeSource>(() => ({ pool: pools.nudge, now: SCENE_EFFECT_CLOCK }), [pools]);
-  const rockMeshRef = useRef<InstancedMesh | null>(null);
-  const pierDeckRef = useRef<Mesh | null>(null);
-  const onVillagerTapped = useCallback((id: number) => onPropTapped?.("villager", id, null), [onPropTapped]);
   return (
     <>
       {/* World-fixed lights: NOT inside the world container, so pan/rotate never changes the key-light direction. */}
       <SceneLighting preset={lightPreset} shadows={shadows} shadowMapSizePx={shadowMapSizePx} />
       <FlameFlicker baseEmissiveIntensity={LIGHT_PRESETS[lightPreset].flame.emissiveIntensity} reducedMotion={reducedMotion} />
+      {/* MFW-50 idle-redraw registration: once per canvas (not per stretch slot). */}
+      <AmbientTicker enabled={livingWorldIdleRedraw} />
       {/* World container (identity). The camera moves (MFW-57); lights stay outside, world-fixed. */}
       <group name={SCENE_OBJECT_NAMES.worldView}>
-        <RiverEnvironment
-          layout={LOY_KRATHONG_RIVER_LAYOUT}
-          shadows={shadows}
-          waterRef={waterTargetRef}
-          onWaterSelected={onWaterSelected}
-          lampFocusRef={lampTargetRef}
-          selectedLampIndex={selectedLampIndex}
-          onLampSelected={onLampSelected}
-          lightPreset={lightPreset}
-          lampHeadMeshRef={lampHeadMeshRef}
-          onPropTapped={onPropTapped}
-          nudges={nudges}
-          rockMeshRef={rockMeshRef}
-          pierDeckRef={pierDeckRef}
-        />
-        {onPropTapped && <PropTapProxies targets={LOY_KRATHONG_PROP_TAP_TARGETS} onPropTapped={onPropTapped} />}
-        <PropNudges
-          nudges={nudges}
-          rockMeshRef={rockMeshRef}
-          rocks={LOY_KRATHONG_RIVER_LAYOUT.rocks}
-          rockPart={RIVER_ENVIRONMENT_PARTS.rock}
-          pierDeckRef={pierDeckRef}
-        />
-        <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
-        <ShoreHighlights layout={LOY_KRATHONG_RIVER_LAYOUT} />
-        <WaterGlints layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
-        <Villagers
-          layout={LOY_KRATHONG_RIVER_LAYOUT}
-          now={riverNow}
-          nudges={nudges}
-          onVillagerTapped={onPropTapped ? onVillagerTapped : undefined}
-        />
-        <AmbientLife
-          layout={LOY_KRATHONG_RIVER_LAYOUT}
-          now={riverNow}
-          lightPreset={lightPreset}
-          lampHeadMeshRef={lampHeadMeshRef}
-          idleRedraw={livingWorldIdleRedraw}
-        />
-        <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
-        <OwnKrathong
-          targetRef={krathongTargetRef}
-          appearance={appearance}
-          shadows={shadows}
-          reducedMotion={reducedMotion}
-          objectRotation={objectRotation}
-          onSelected={onKrathongSelected}
-          poseKind={poseKind}
-          ritual={ritual}
-          site={site}
-          lanes={getLoyKrathongRiverLanes()}
-          dragPointRef={dragPointRef}
-          releaseDropRef={releaseDropRef}
-          now={riverNow}
-          onTouchedDown={onTouchedDown}
-          onSettled={onSettled}
-          candleIntensityScale={LIGHT_PRESETS[lightPreset].candle.intensityScale}
-          marked={ownMarked}
-        />
-        <RiverFlow
-          items={riverItems}
-          lanes={getLoyKrathongRiverLanes()}
-          shadows={shadows}
-          reducedMotion={reducedMotion}
-          now={riverNow}
-          pinnedIds={pinnedRiverIds}
-          onItemTapped={onRiverItemTapped}
-          shadowSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
-          markedId={markedRiverId}
-        />
-        {findMyItem && (
-          <FindMyAnchor item={findMyItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} anchorRef={findMyAnchorRef} />
-        )}
+        {stretches.map((slot) => (
+          <RiverStretch
+            key={slot.ringIndex}
+            stretchIndex={slot.stretchIndex}
+            offsetX={slot.offsetX}
+            offsetZ={slot.offsetZ}
+            isCurrent={slot.isCurrent}
+            getRig={getRig}
+            riverItems={slot.riverItems}
+            markedRiverId={slot.markedRiverId}
+            findMyItem={slot.findMyItem}
+            findMyAnchorRef={findMyAnchorRef}
+            lampFocusRef={slot.stretchIndex === selectedLampStretch ? lampTargetRef : null}
+            selectedLampIndex={slot.stretchIndex === selectedLampStretch ? selectedLampIndex : 0}
+            waterTargetRef={slot.isCurrent ? waterTargetRef : null}
+            onWaterSelected={onWaterSelected}
+            onLampSelected={onLampSelected}
+            onPropTapped={onPropTapped}
+            onRiverItemTapped={onRiverItemTapped}
+            nudges={nudges}
+            lightPreset={lightPreset}
+            shadows={shadows}
+            reducedMotion={reducedMotion}
+            riverNow={riverNow}
+            pinnedRiverIds={slot.pinnedRiverIds}
+          />
+        ))}
+        {/* The pier focus and the own krathong belong to the camera's stretch (MFW-58; stretch 0 during the ritual). */}
+        <group position={[currentOffsetX, 0, currentOffsetZ]}>
+          <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
+          <OwnKrathong
+            targetRef={krathongTargetRef}
+            appearance={appearance}
+            shadows={shadows}
+            reducedMotion={reducedMotion}
+            objectRotation={objectRotation}
+            onSelected={onKrathongSelected}
+            poseKind={poseKind}
+            ritual={ritual}
+            site={site}
+            lanes={getLoyKrathongRiverLanes()}
+            dragPointRef={dragPointRef}
+            releaseDropRef={releaseDropRef}
+            now={riverNow}
+            onTouchedDown={onTouchedDown}
+            onSettled={onSettled}
+            candleIntensityScale={LIGHT_PRESETS[lightPreset].candle.intensityScale}
+            marked={ownMarked}
+          />
+        </group>
         <SceneEffects
           handleRef={effectsRef}
           pools={pools}
@@ -327,11 +329,37 @@ const ToyNightScene = memo(function ToyNightScene({
           windowPart={RIVER_ENVIRONMENT_PARTS.houseWindow}
           fireworkBaseY={LOY_KRATHONG_RIVER_LAYOUT.bankTopY}
           fireworkSparks={fireworkSparks}
+          frame={ENDLESS}
         />
       </group>
     </>
   );
 });
+
+/** MFW-58: the first slot (current, behind, ahead) that shows the focused krathong, with that slot's stretch. */
+function findFocusInSlots(
+  slots: readonly { readonly stretchIndex: number }[],
+  current: readonly RiverFlowItem[],
+  neighbours: readonly (readonly RiverFlowItem[])[],
+  focusedId: string | null,
+): { readonly item: RiverFlowItem; readonly stretchIndex: number } | null {
+  for (let i = 0; i < slots.length; i++) {
+    const item = findFocusedRiverItem(i === 0 ? current : neighbours[i], focusedId);
+    if (item !== null) return { item, stretchIndex: slots[i].stretchIndex };
+  }
+  return null;
+}
+
+/** MFW-58: the inspected krathong in the current zone, else in a neighbour slot. */
+function findInspectedInSlots(current: readonly RiverFlowItem[], neighbours: readonly (readonly RiverFlowItem[])[], id: string) {
+  const found = findInspectedCreation(current, id);
+  if (found !== null) return found;
+  for (const items of neighbours) {
+    const hit = findInspectedCreation(items, id);
+    if (hit !== null) return hit;
+  }
+  return null;
+}
 
 function readTarget(target: EventTarget | null): InteractionTarget | null {
   if (!(target instanceof Element)) return null;
@@ -382,6 +410,11 @@ export function SceneViewport({
   const worldZoneId = useWorldStore((s) => s.currentZoneId);
   const worldZoneItems = useWorldStore((s) => s.zoneItems);
   const focusedCreationId = useWorldStore((s) => s.focusedCreationId);
+  // MFW-58 endless river (render-time only, never persisted): the camera's stretch, the zone ↔ stretch anchor and the streamed zones.
+  const currentStretch = useWorldStore((s) => s.currentStretchIndex);
+  const stretchAnchor = useWorldStore((s) => s.stretchAnchor);
+  const worldZoneCount = useWorldStore((s) => s.zoneCount);
+  const streamedZoneItems = useWorldStore((s) => s.streamedZoneItems);
   const storeRiverItems = useMemo(
     () =>
       (mode === "WORLD_EXPLORE" || mode === "RITUAL_RELEASE") && worldEventId !== null && worldZoneId !== null
@@ -423,10 +456,27 @@ export function SceneViewport({
     [visibleRiverItems, ritual.saved, ownShown],
   );
   const focusRequestId = useWorldStore((s) => s.focusRequestId);
-  const findMyItem = useMemo(
-    () => (mode === "WORLD_EXPLORE" ? findFocusedRiverItem(visibleRiverItems, focusedCreationId) : null),
-    [mode, visibleRiverItems, focusedCreationId],
+  const slots = useMemo(
+    () => buildRiverStretchSlots(ENDLESS, currentStretch, stretchAnchor, worldZoneCount),
+    [currentStretch, stretchAnchor, worldZoneCount],
   );
+  /** Items of the neighbour slots (stable per streamed zone array); the current slot uses sceneRiverItems. */
+  const neighbourItems = useMemo(
+    () =>
+      slots.map((slot) => {
+        if (slot.relative === 0 || slot.zoneId === null || worldEventId === null) return NO_RIVER_ITEMS;
+        if (mode !== "WORLD_EXPLORE" && mode !== "RITUAL_RELEASE") return NO_RIVER_ITEMS;
+        const streamed = streamedZoneItems[slot.zoneId];
+        return streamed === undefined ? NO_RIVER_ITEMS : getZoneRiverItems(streamed, { eventId: worldEventId, zoneId: slot.zoneId });
+      }),
+    [slots, worldEventId, mode, streamedZoneItems],
+  );
+  /** MFW-30 Find My target: the first slot (current, behind, ahead) that shows the focused krathong. */
+  const findMy = useMemo(
+    () => (mode === "WORLD_EXPLORE" ? findFocusInSlots(slots, visibleRiverItems, neighbourItems, focusedCreationId) : null),
+    [mode, slots, visibleRiverItems, neighbourItems, focusedCreationId],
+  );
+  const findMyItem = findMy?.item ?? null;
   const findMyAnchorRef = useRef<Group | null>(null);
   const [seenFocusRequestId, setSeenFocusRequestId] = useState(0);
   const pinnedRiverIds = useMemo(
@@ -458,6 +508,8 @@ export function SceneViewport({
   const krathongTargetRef = useRef<Group | null>(null);
   const lampTargetRef = useRef<Group | null>(null);
   const [selectedLampIndex, setSelectedLampIndex] = useState(0);
+  /** MFW-58: the stretch of the selected lamp (the lamp fly-to target lives in that slot). */
+  const [selectedLampStretch, setSelectedLampStretch] = useState(0);
   const [selectedTarget, setSelectedTarget] = useState<CameraTargetKind | null>(null);
   /**
    * The camera's fly-to target. It changes only with a fly request (or a reset), never on a water tap, so the CameraRig flight
@@ -485,7 +537,7 @@ export function SceneViewport({
     }
   }
   if (selectedTarget === "riverKrathong" && findMyItem === null) setSelectedTarget(null); // zone switch / leave cleared the focus
-  if (flightTarget === "riverKrathong" && findMyItem === null) setFlightTarget(null);
+  // MFW-58: the flight target is NOT reset when the Find My item leaves the stretch window — a camera must never fly on its own.
   const onTargetSelected = useCallback((target: Exclude<CameraTargetKind, "water">) => {
     // Only WORLD_EXPLORE has "แตะสั้นเพื่อ Interact"; RITUAL_RELEASE locks the camera and CUSTOMIZE only rotates/zooms.
     if (mode !== "WORLD_EXPLORE") return;
@@ -494,22 +546,24 @@ export function SceneViewport({
     setFlyRequestId((requestId) => requestId + 1);
   }, [mode]);
 
-  const onWaterSelected = useCallback((tap: WorldXZ | null) => {
+  // MFW-58: every tap handler gets the tapped stretch; tap points arrive in world-view space (slot-local + s·T).
+  const onWaterSelected = useCallback((tap: WorldXZ | null, stretchIndex: number) => {
     if (mode !== "WORLD_EXPLORE") return;
     // Decided (lead default, MFW-69; owner may revisit): a water tap selects the water and makes its ripple, but
     // never moves the camera. A flight on every water tap moved the scene under repeated taps at one screen point.
     setSelectedTarget("water");
-    const gimmick = effectsRef.current?.react("water", 0, tap) ?? null; // registry (MFW-60): a ripple when the tap point is known
+    const gimmick = effectsRef.current?.react("water", 0, tap, stretchIndex) ?? null; // registry (MFW-60): a ripple at the tap
     if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
-  const onLampSelected = useCallback((index: number) => {
+  const onLampSelected = useCallback((index: number, stretchIndex: number) => {
     if (mode !== "WORLD_EXPLORE") return;
     setSelectedLampIndex(index);
+    setSelectedLampStretch(stretchIndex);
     setSelectedTarget("lamp");
     setFlightTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
-    const gimmick = effectsRef.current?.react("lamp", index, null) ?? null; // registry (MFW-60): light-up + a sky lantern
+    const gimmick = effectsRef.current?.react("lamp", index, null, stretchIndex) ?? null; // registry (MFW-60): glow + sky lantern
     if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
@@ -517,9 +571,9 @@ export function SceneViewport({
    * MFW-60: a tap on a house, tree, bush, reed, rock, the pier, a villager or bare land ("sky"). It neither selects anything nor
    * moves the camera (loop decision, not yet reviewed by the owner); the reaction comes from the SCENE_TAP_REACTIONS registry.
    */
-  const onPropTapped = useCallback((kind: SceneTargetKind, index: number, at: WorldXZ | null) => {
+  const onPropTapped = useCallback((kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex: number) => {
     if (mode !== "WORLD_EXPLORE") return;
-    const gimmick = effectsRef.current?.react(kind, index, at) ?? null;
+    const gimmick = effectsRef.current?.react(kind, index, at, stretchIndex) ?? null;
     if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
@@ -544,9 +598,10 @@ export function SceneViewport({
     dragPointRef.current = null;
   }, [writeChipPosition]);
 
+  // MFW-58: a tapped krathong may be in any rendered stretch (the current zone first).
   const inspected = useMemo(
-    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedCreation(sceneRiverItems, inspectedId) : null),
-    [mode, inspectedId, sceneRiverItems],
+    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedInSlots(sceneRiverItems, neighbourItems, inspectedId) : null),
+    [mode, inspectedId, sceneRiverItems, neighbourItems],
   );
 
   const flightTargetRef: TargetRef | null = flightTarget === "krathong"
@@ -564,6 +619,27 @@ export function SceneViewport({
   });
   const cameraTargetRef: TargetRef | null =
     flightTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
+  const findMyStretch = findMy?.stretchIndex ?? null;
+  const stretches = useMemo<readonly StretchSlotView[]>(
+    () =>
+      slots.map((slot, i) => {
+        const holdsFindMy = findMyStretch === slot.stretchIndex;
+        return {
+          ringIndex: slot.ringIndex,
+          stretchIndex: slot.stretchIndex,
+          offsetX: slot.offsetX,
+          offsetZ: slot.offsetZ,
+          isCurrent: slot.relative === 0,
+          zoneId: slot.zoneId,
+          riverItems: i === 0 ? sceneRiverItems : neighbourItems[i],
+          findMyItem: holdsFindMy ? findMyItem : null,
+          markedRiverId: holdsFindMy ? markedRiverId : null,
+          pinnedRiverIds: i === 0 || holdsFindMy ? pinnedRiverIds : NO_PINNED_RIVER_IDS,
+        };
+      }),
+    [slots, sceneRiverItems, neighbourItems, findMyStretch, findMyItem, markedRiverId, pinnedRiverIds],
+  );
+  const onStretchChange = useCallback((stretchIndex: number) => getZonePagination().setCurrentStretch(stretchIndex), []);
 
   const applyCameraZoom = useCallback(() => {
     const camera = cameraRef.current;
@@ -725,6 +801,22 @@ export function SceneViewport({
 
   const sceneShown = profiled && qualityTier !== "FALLBACK_2D";
 
+  // MFW-58: the 3D scene streams the zones of ZONE_STREAM_LOAD_RADIUS stretches on each side (the 2D fallback uses 0).
+  useEffect(() => {
+    if (!sceneShown) return;
+    const pagination = getZonePagination();
+    pagination.setStreamRadius(ZONE_STREAM_LOAD_RADIUS);
+    return () => pagination.setStreamRadius(0);
+  }, [sceneShown]);
+
+  // MFW-58: in the shared world the navigator's ‹ › fly the camera one stretch along the river (reduced motion: an instant cut).
+  useEffect(() => {
+    if (!sceneShown || mode !== "WORLD_EXPLORE") return;
+    return getZonePagination().registerTravelDriver((delta) =>
+      rigHandleRef.current?.travelBy(delta * ENDLESS.periodX, delta * ENDLESS.periodZ),
+    );
+  }, [sceneShown, mode]);
+
   // MFW-54: the base zoom frames the scene at any viewport size; applied imperatively, never through React state.
   useEffect(() => {
     const el = viewportRef.current;
@@ -781,6 +873,8 @@ export function SceneViewport({
       data-find-my={selectedTarget === "riverKrathong" ? "following" : undefined}
       data-interaction-mode={mode ?? undefined}
       data-zone-id={mode === "WORLD_EXPLORE" ? worldZoneId ?? undefined : undefined}
+      data-stretch-index={mode === "WORLD_EXPLORE" ? currentStretch : undefined}
+      data-streamed-zone-ids={stretches.map((slot) => slot.zoneId ?? "").join(",")}
       data-river-item-count={visibleRiverItems.length}
       data-own-krathong-pose={mode ? poseKind : undefined}
       data-camera-locked={mode ? String(isCameraLocked(mode)) : undefined}
@@ -821,11 +915,14 @@ export function SceneViewport({
             shadowMapSizePx={settings.shadowMapSizePx}
             appearance={appearance}
             reducedMotion={reducedMotion}
-            riverItems={sceneRiverItems}
-            pinnedRiverIds={pinnedRiverIds}
+            stretches={stretches}
+            currentOffsetX={slots[0].offsetX}
+            currentOffsetZ={slots[0].offsetZ}
+            getRig={getRig}
             objectRotation={objectRotation}
             onTargetSelected={onTargetSelected}
             selectedLampIndex={selectedLampIndex}
+            selectedLampStretch={selectedLampStretch}
             onLampSelected={onLampSelected}
             waterTargetRef={waterTargetRef}
             krathongTargetRef={krathongTargetRef}
@@ -843,9 +940,7 @@ export function SceneViewport({
             onTouchedDown={onTouchedDown}
             onSettled={onSettled}
             pierFocusRef={pierFocusRef}
-            findMyItem={findMyItem}
             findMyAnchorRef={findMyAnchorRef}
-            markedRiverId={markedRiverId}
             ownMarked={ownMarked}
             livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
             fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier as RenderTier]}
@@ -858,6 +953,9 @@ export function SceneViewport({
             requestId={flyRequestId}
             reducedMotion={reducedMotion}
             handleRef={rigHandleRef}
+            stretchFrame={ENDLESS}
+            stretchIndex={currentStretch}
+            onStretchChange={onStretchChange}
           />
         </KrathongAssetsProvider>
       </Canvas>

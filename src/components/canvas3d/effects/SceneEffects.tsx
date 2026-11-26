@@ -16,6 +16,7 @@ import {
 import type { EffectKind } from "@/config/performance.config";
 import type { ScenePartSpec } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
+import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import { releaseExpiredNudges, retriggerGlow, startNudge, type ObjectPoolManager } from "@/core/effects";
 import type { InstanceTransform } from "@/core/world";
 import {
@@ -46,19 +47,26 @@ const isFiniteXZ = (at: WorldXZ | null): at is WorldXZ => at !== null && Number.
 export interface SceneEffectsHandle {
   /** Starts a ripple at a world-view-group-local point (non-finite → ignored). Recycles the oldest when the pool is full. */
   spawnRipple(at: WorldXZ): void;
-  /** Lights lamp `lampIndex`; a lit lamp is re-triggered without dipping (WCAG). Non-integer or out-of-range → ignored (false). */
-  lightLamp(lampIndex: number): boolean;
-  /** Lights the windows of house `houseIndex` (re-tap: stays lit). Out of range → false. */
-  lightHouse(houseIndex: number): boolean;
-  /** A firework from a land point (null / non-finite → false). Launches closer than FIREWORK_MIN_LAUNCH_INTERVAL_MS are ignored. */
+  /**
+   * Lights lamp `lampIndex` of stretch copy `stretchIndex` (MFW-58, default 0); a lit lamp (same index and stretch) is re-triggered
+   * without dipping (WCAG). Non-integer or out-of-range → ignored (false).
+   */
+  lightLamp(lampIndex: number, stretchIndex?: number): boolean;
+  /** Lights the windows of house `houseIndex` of stretch `stretchIndex` (re-tap: stays lit). Out of range → false. */
+  lightHouse(houseIndex: number, stretchIndex?: number): boolean;
+  /**
+   * A firework from a land point in world-view space (MFW-58: already includes the stretch offset; null / non-finite → false).
+   * Launches closer than FIREWORK_MIN_LAUNCH_INTERVAL_MS are ignored.
+   */
   launchFirework(at: WorldXZ | null): boolean;
-  /** A sky lantern rises from lamp `lampIndex`'s head. Out of range → false. */
-  releaseSkyLantern(lampIndex: number): boolean;
+  /** A sky lantern rises from lamp `lampIndex`'s head in stretch `stretchIndex` (+ s·T). Out of range → false. */
+  releaseSkyLantern(lampIndex: number, stretchIndex?: number): boolean;
   /**
    * Registry dispatch (SCENE_TAP_REACTIONS[kind].effects); returns the reaction's gimmick when at least one effect started, else null.
-   * index = layout index (villagers: villagerId); at = the tap point (water, sky). Krathong taps never come here (markCue: no-op).
+   * index = layout index (villagers: villagerId); at = the tap point (water, sky) in world-view space; stretchIndex = the stretch copy
+   * that was tapped (MFW-58, default 0; a non-safe integer → no effect, null). Krathong taps never come here (markCue: no-op).
    */
-  react(kind: SceneTargetKind, index: number, at: WorldXZ | null): SceneGimmickKind | null;
+  react(kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex?: number): SceneGimmickKind | null;
   activeCount(kind: EffectKind): number;
 }
 
@@ -79,6 +87,11 @@ export interface SceneEffectsProps {
   readonly fireworkSparks: number;
   /** Clock in ms; default SCENE_EFFECT_CLOCK. Injectable for tests. */
   readonly now?: () => number;
+  /**
+   * MFW-58: the endless-river stretch frame; lamp / window glows and sky lanterns of stretch s are drawn at + s·T. The pools stay one
+   * set per canvas (invariant E: their caps bound every stretch together). Null / absent = every stretch draws at offset 0.
+   */
+  readonly frame?: EndlessRiverFrame | null;
 }
 
 /**
@@ -98,6 +111,7 @@ export function SceneEffects({
   fireworkBaseY,
   fireworkSparks,
   now = SCENE_EFFECT_CLOCK,
+  frame = null,
 }: SceneEffectsProps) {
   const invalidate = useThree((state) => state.invalidate);
   const ripple = useMemo(() => createRippleMesh(pools.ripple.capacity), [pools.ripple.capacity]);
@@ -132,33 +146,38 @@ export function SceneEffects({
       invalidate();
       return true;
     };
-    const lightLamp = (lampIndex: number): boolean => {
-      if (!validLamp(lampIndex)) return false;
+    const lightLamp = (lampIndex: number, stretchIndex: number = 0): boolean => {
+      if (!validLamp(lampIndex) || !Number.isSafeInteger(stretchIndex)) return false;
       const t = now();
       for (let s = 0; s < pools.glow.capacity; s++) {
         const e = pools.glow.entryAt(s);
-        if (e.active && e.state.lampIndex === lampIndex) {
+        if (e.active && e.state.lampIndex === lampIndex && e.state.stretchIndex === stretchIndex) {
           retriggerGlow(e, t, LAMP_GLOW_LOOK.attackMs);
           invalidate();
           return true;
         }
       }
-      pools.glow.acquire(t).state.lampIndex = lampIndex;
+      const entry = pools.glow.acquire(t);
+      entry.state.lampIndex = lampIndex;
+      entry.state.stretchIndex = stretchIndex;
       invalidate();
       return true;
     };
-    const lightHouse = (houseIndex: number): boolean => {
+    const lightHouse = (houseIndex: number, stretchIndex: number = 0): boolean => {
       if (!Number.isInteger(houseIndex) || houseIndex < 0 || houseIndex >= houseCount) return false;
+      if (!Number.isSafeInteger(stretchIndex)) return false;
       const t = now();
       for (let s = 0; s < pools.windowGlow.capacity; s++) {
         const e = pools.windowGlow.entryAt(s);
-        if (e.active && e.state.houseIndex === houseIndex) {
+        if (e.active && e.state.houseIndex === houseIndex && e.state.stretchIndex === stretchIndex) {
           retriggerGlow(e, t, WINDOW_GLOW_LOOK.attackMs);
           invalidate();
           return true;
         }
       }
-      pools.windowGlow.acquire(t).state.houseIndex = houseIndex;
+      const entry = pools.windowGlow.acquire(t);
+      entry.state.houseIndex = houseIndex;
+      entry.state.stretchIndex = stretchIndex;
       invalidate();
       return true;
     };
@@ -176,13 +195,13 @@ export function SceneEffects({
       invalidate();
       return true;
     };
-    const releaseSkyLantern = (lampIndex: number): boolean => {
-      if (!validLamp(lampIndex)) return false;
+    const releaseSkyLantern = (lampIndex: number, stretchIndex: number = 0): boolean => {
+      if (!validLamp(lampIndex) || !Number.isSafeInteger(stretchIndex)) return false;
       const lamp = lamps[lampIndex];
       const e = pools.skyLantern.acquire(now());
-      e.state.x = lamp.position.x;
+      e.state.x = lamp.position.x + (frame === null ? 0 : stretchIndex * frame.periodX);
       e.state.y = lamp.position.y + lampHead.yOffset * lamp.scale;
-      e.state.z = lamp.position.z;
+      e.state.z = lamp.position.z + (frame === null ? 0 : stretchIndex * frame.periodZ);
       invalidate();
       return true;
     };
@@ -194,7 +213,8 @@ export function SceneEffects({
       lightHouse,
       launchFirework,
       releaseSkyLantern,
-      react(kind, index, at) {
+      react(kind, index, at, stretchIndex = 0) {
+        if (!Number.isSafeInteger(stretchIndex)) return null;
         const reaction = SCENE_TAP_REACTIONS[kind];
         let started = false;
         for (const effect of reaction.effects) {
@@ -203,17 +223,17 @@ export function SceneEffects({
               started = spawnRipple(at) || started;
               break;
             case "lampGlow":
-              started = lightLamp(index) || started;
+              started = lightLamp(index, stretchIndex) || started;
               break;
             case "skyLantern":
-              started = releaseSkyLantern(index) || started;
+              started = releaseSkyLantern(index, stretchIndex) || started;
               break;
             case "windowGlow":
-              started = lightHouse(index) || started;
+              started = lightHouse(index, stretchIndex) || started;
               break;
             case "nudge":
               if (isNudgeKind(kind) && Number.isInteger(index) && index >= 0) {
-                startNudge(pools.nudge, kind, index, now());
+                startNudge(pools.nudge, kind, index, now(), stretchIndex);
                 invalidate();
                 started = true;
               }
@@ -229,14 +249,14 @@ export function SceneEffects({
       },
       activeCount: (kind) => pools.activeCount(kind),
     };
-  }, [pools, lamps, lampHead.yOffset, houseWindows, windowsPerHouse, fireworkBaseY, now, invalidate]);
+  }, [pools, lamps, lampHead.yOffset, houseWindows, windowsPerHouse, fireworkBaseY, now, invalidate, frame]);
 
   useFrame(() => {
     const t = now();
     const s = scratch.current;
     const a = writeRippleInstances(ripple, pools.ripple, t, reducedMotion, waterSurfaceY, s);
-    const b = writeLampGlowInstances(glow, pools.glow, lamps, lampHead, t, reducedMotion, s);
-    const c = writeWindowGlowInstances(windows, pools.windowGlow, houseWindows, windowsPerHouse, windowPart, t, reducedMotion, s);
+    const b = writeLampGlowInstances(glow, pools.glow, lamps, lampHead, t, reducedMotion, s, frame);
+    const c = writeWindowGlowInstances(windows, pools.windowGlow, houseWindows, windowsPerHouse, windowPart, t, reducedMotion, s, frame);
     const d = writeFireworkInstances(fireworks, pools.firework, t, reducedMotion, s);
     const e = writeSkyLanternInstances(lanterns, pools.skyLantern, t, reducedMotion, s);
     const released = releaseExpiredNudges(pools.nudge, t, reducedMotion);

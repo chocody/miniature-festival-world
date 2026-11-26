@@ -60,7 +60,8 @@ test("FALLBACK_2D: starts on the newest zone and pages up- and downstream", asyn
   await expect(nav).toHaveAttribute("data-zone-item-count", "80");
   await expect(nav).toContainText("คุ้งน้ำที่ 3 จาก 3");
   expect(requested).toEqual(["3"]);
-  await expect(page.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toHaveCount(0);
+  // MFW-58 (open question 37): the river wraps, so at zone 3 of 3 the next button exists (it leads to zone 1, checked below).
+  await expect(page.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toHaveCount(1);
 
   await page.getByRole("button", { name: /คุ้งน้ำก่อนหน้า/ }).click();
   await expect(nav).toHaveAttribute("data-zone-id", "2");
@@ -73,6 +74,13 @@ test("FALLBACK_2D: starts on the newest zone and pages up- and downstream", asyn
   await expect(nav).toHaveAttribute("data-zone-id", "3");
   await expect(nav).toHaveAttribute("data-zone-item-count", "80");
   expect(requested).toEqual(["3", "2", "3"]);
+
+  // MFW-58: after the last zone comes zone 1 again (the 2D navigator pages the endless river with wrap-around).
+  await page.getByRole("button", { name: /คุ้งน้ำถัดไป/ }).click();
+  await expect(nav).toHaveAttribute("data-zone-id", "1");
+  await expect(nav).toHaveAttribute("data-zone-status", "ready");
+  await expect(nav).toContainText("คุ้งน้ำที่ 1 จาก 3");
+  expect(requested).toEqual(["3", "2", "3", "1"]);
   await expect(page.locator("canvas")).toHaveCount(0);
 });
 

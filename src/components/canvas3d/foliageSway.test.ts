@@ -134,3 +134,24 @@ describe("writeFoliageSwayAndShake (MFW-60 tap shake)", () => {
     expect(new Vector3().setFromMatrixPosition(got).distanceTo(new Vector3().setFromMatrixPosition(staticMatrix(0)))).toBeLessThan(1e-6);
   });
 });
+
+describe("writeFoliageSwayAndShake per stretch (MFW-58)", () => {
+  const OWNERS: FoliageOwnerRef[] = [
+    { kind: "tree", index: 0 },
+    { kind: "tree", index: 1 },
+  ];
+  it("a nudge tagged stretch 1 shakes only the mesh of stretch 1", () => {
+    const pool = createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge;
+    const input = (stretchIndex: number): FoliageShakeInput => ({
+      pool,
+      owners: OWNERS,
+      nowMs: 1_000 + TAP_SHAKE_LOOKS.tree.periodMs / 4,
+      reducedMotion: false,
+      frame: createNudgeFrame(),
+      stretchIndex,
+    });
+    startNudge(pool, "tree", 1, 1_000, 1);
+    expect(writeFoliageSwayAndShake(mesh(), INSTANCES, PART, 180, SWAY, input(0), createFoliageSwayScratch())).toBe(false);
+    expect(writeFoliageSwayAndShake(mesh(), INSTANCES, PART, 180, SWAY, input(1), createFoliageSwayScratch())).toBe(true);
+  });
+});

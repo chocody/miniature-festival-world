@@ -219,3 +219,24 @@ describe("Villagers tap hop (MFW-60)", () => {
     expect(head.instanceMatrix.version).toBe(v2);
   });
 });
+
+describe("Villagers per stretch (MFW-58)", () => {
+  it("a villager nudge tagged stretch 1 moves only the villagers of stretch 1", () => {
+    useDeviceStore.getState().setQualityTier("LOW"); // static pose: only a nudge writes
+    const pool = createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge;
+    render(<Villagers layout={layout} now={now} nudges={{ pool, now, stretchIndex: 0 }} />);
+    const head0 = latest().head;
+    const frame0 = lastFrame();
+    render(<Villagers layout={layout} now={now} nudges={{ pool, now, stretchIndex: 1 }} />);
+    const head1 = latest().head;
+    const frame1 = lastFrame();
+    startNudge(pool, "villager", LOY_KRATHONG_VILLAGERS[0].villagerId, NOW, 1);
+    NOW += VILLAGER_TAP_HOP.durationMs / 2;
+    const before0 = matrices(head0);
+    const before1 = matrices(head1);
+    frame0();
+    frame1();
+    expect(matrices(head0)).toEqual(before0);
+    expect(matrices(head1)).not.toEqual(before1);
+  });
+});

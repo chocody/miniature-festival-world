@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { INITIAL_WORLD_STATE, useWorldStore, type WorldState } from "@/store/useWorldStore";
 import { ZONE_NAV_COPY, ZoneNavigator } from "./ZoneNavigator";
 
-const pagination = { loadZone: vi.fn(async () => "loaded" as const), retry: vi.fn(async () => "loaded" as const) };
+const pagination = { jumpBy: vi.fn(), retry: vi.fn(async () => "loaded" as const) };
 const setWorld = (partial: Partial<WorldState>) => act(() => useWorldStore.setState(partial));
 const base: Partial<WorldState> = { eventId: "loy_krathong", zoneStatus: "ready" };
 
 beforeEach(() => {
   useWorldStore.setState({ ...INITIAL_WORLD_STATE }, true);
-  pagination.loadZone.mockClear();
+  pagination.jumpBy.mockClear();
   pagination.retry.mockClear();
 });
 afterEach(cleanup);
@@ -27,13 +27,14 @@ describe("ZoneNavigator", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("2 of 3: both buttons are wired", () => {
+  it("2 of 3: both buttons travel one stretch (MFW-58: jumpBy, not loadZone)", () => {
     setWorld({ ...base, currentZoneId: 2, zoneCount: 3 });
     render(<ZoneNavigator pagination={pagination} />);
     fireEvent.click(screen.getByRole("button", { name: /คุ้งน้ำก่อนหน้า/ }));
-    expect(pagination.loadZone).toHaveBeenLastCalledWith(1);
+    expect(pagination.jumpBy).toHaveBeenLastCalledWith(-1);
     fireEvent.click(screen.getByRole("button", { name: /คุ้งน้ำถัดไป/ }));
-    expect(pagination.loadZone).toHaveBeenLastCalledWith(3);
+    expect(pagination.jumpBy).toHaveBeenLastCalledWith(1);
+    expect(pagination.jumpBy).toHaveBeenCalledTimes(2);
   });
 
   it("zone buttons are icon buttons named by the copy (MFW-55)", () => {
@@ -48,16 +49,26 @@ describe("ZoneNavigator", () => {
     expect(screen.getAllByRole("button")).toEqual([up, down]);
   });
 
-  it("edges", () => {
+  it("edges wrap (MFW-58): at zone 3 of 3 next exists (→ zone 1), at zone 1 of 3 previous exists", () => {
     setWorld({ ...base, currentZoneId: 3, zoneCount: 3 });
     const { unmount } = render(<ZoneNavigator pagination={pagination} />);
     expect(screen.getByRole("button", { name: /คุ้งน้ำก่อนหน้า/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /คุ้งน้ำถัดไป/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /คุ้งน้ำถัดไป/ }));
+    expect(pagination.jumpBy).toHaveBeenLastCalledWith(1);
     unmount();
     setWorld({ ...base, currentZoneId: 1, zoneCount: 3 });
     render(<ZoneNavigator pagination={pagination} />);
-    expect(screen.queryByRole("button", { name: /คุ้งน้ำก่อนหน้า/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /คุ้งน้ำก่อนหน้า/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toBeInTheDocument();
+  });
+
+  it("is a live position indicator: the label and data-stretch-index follow the store (MFW-58)", () => {
+    setWorld({ ...base, currentZoneId: 3, zoneCount: 3, currentStretchIndex: 0 });
+    render(<ZoneNavigator pagination={pagination} />);
+    expect(screen.getByText("คุ้งน้ำที่ 3 จาก 3")).toBeInTheDocument();
+    setWorld({ currentZoneId: 1, currentStretchIndex: 1 });
+    expect(screen.getByText("คุ้งน้ำที่ 1 จาก 3")).toBeInTheDocument();
+    expect(screen.getByTestId("zone-navigator")).toHaveAttribute("data-stretch-index", "1");
   });
 
   it("loading text without buttons", () => {

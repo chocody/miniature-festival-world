@@ -22,6 +22,7 @@ import {
   writeRippleFrameAt,
   writeSkyLanternAt,
 } from "@/core/effects";
+import { getLoyKrathongEndlessRiverFrame } from "@/core/world/endlessRiver";
 import { composeInstanceMatrix } from "../instancing";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
 import {
@@ -305,6 +306,57 @@ describe("MFW-60 reaction meshes", () => {
       const hits: Intersection[] = [];
       e.mesh.raycast(new Raycaster(), hits);
       expect(hits).toHaveLength(0);
+    }
+  });
+});
+
+describe("MFW-58 stretch offsets of the glow writers", () => {
+  const frame = getLoyKrathongEndlessRiverFrame();
+  const lampHead = RIVER_ENVIRONMENT_PARTS.lampHead;
+  const lamps = LOY_KRATHONG_RIVER_LAYOUT.lamps;
+  const windowPart = RIVER_ENVIRONMENT_PARTS.houseWindow;
+  const W = LOY_KRATHONG_RIVER_ENVIRONMENT.houseFacade.windows.length;
+  const houseWindows = LOY_KRATHONG_RIVER_LAYOUT.houseWindows;
+
+  it("a lamp glow of stretch s sits at lamp + s·T; the same lamp in two stretches is two instances", () => {
+    const e = createLampGlowMesh(3, lampHead.geometry);
+    const pool = createObjectPoolManager(caps).glow;
+    const a = pool.acquire(0).state;
+    a.lampIndex = 2;
+    a.stretchIndex = 1;
+    const b = pool.acquire(0).state;
+    b.lampIndex = 2;
+    b.stretchIndex = -3;
+    expect(writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame)).toBe(2);
+    const l = lamps[2];
+    const p0 = decompose(e.mesh, 0).p;
+    const p1 = decompose(e.mesh, 1).p;
+    expect(p0.x).toBeCloseTo(l.position.x + frame.periodX, 5);
+    expect(p0.z).toBeCloseTo(l.position.z + frame.periodZ, 5);
+    expect(p1.x).toBeCloseTo(l.position.x - 3 * frame.periodX, 5);
+    expect(p1.z).toBeCloseTo(l.position.z - 3 * frame.periodZ, 5);
+    // No frame: every stretch draws at offset 0 (the MFW-60 behaviour).
+    writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch());
+    expect(decompose(e.mesh, 0).p.x).toBeCloseTo(l.position.x, 5);
+    b.stretchIndex = 0.5; // a bad stretch is released
+    expect(writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame)).toBe(1);
+  });
+
+  it("window glows of stretch s are the stretch-0 matrices pre-translated by s·T", () => {
+    const e = createWindowGlowMesh(2, W, windowPart.geometry);
+    const pool = createObjectPoolManager(caps).windowGlow;
+    const st = pool.acquire(0).state;
+    st.houseIndex = 1;
+    st.stretchIndex = 2;
+    const t = WINDOW_GLOW_LOOK.attackMs + 10;
+    expect(writeWindowGlowInstances(e, pool, houseWindows, W, windowPart, t, false, createEffectFrameScratch(), frame)).toBe(W);
+    for (let w = 0; w < W; w++) {
+      const want = composeInstanceMatrix(houseWindows[W + w], windowPart, new Matrix4())
+        .multiply(new Matrix4().makeScale(WINDOW_GLOW_LOOK.shellScale, WINDOW_GLOW_LOOK.shellScale, WINDOW_GLOW_LOOK.shellScale))
+        .premultiply(new Matrix4().makeTranslation(2 * frame.periodX, 0, 2 * frame.periodZ));
+      const got = new Matrix4();
+      e.mesh.getMatrixAt(w, got);
+      got.elements.forEach((v, k) => expect(v).toBeCloseTo(want.elements[k], 4));
     }
   });
 });

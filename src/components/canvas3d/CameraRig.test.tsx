@@ -11,6 +11,8 @@ import {
   type CameraPanBounds,
   type CameraRigState,
 } from "@/core/camera";
+import { RIVER_STRETCH_SWITCH_HYSTERESIS } from "@/config/world.config";
+import { createEndlessRiverFrame, frameToWorldInto } from "@/core/coordinates/endlessRiverFrame";
 import { CameraRig, createPointTarget, type CameraRigHandle, type WorldPositionSource } from "./CameraRig";
 
 const fiber = vi.hoisted(() => ({
@@ -214,5 +216,96 @@ describe("CameraRig (MFW-57)", () => {
     expect(spring.api.start).toHaveBeenCalledTimes(1);
     rerender({ targetRef, requestId: 2 });
     expect(spring.api.start).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("CameraRig on the endless river (MFW-58)", () => {
+  const frameOf = createEndlessRiverFrame([
+    { x: -12, z: 0.6 },
+    { x: 12, z: -0.5 },
+  ]);
+  const at = (along: number) => frameToWorldInto(frameOf, along, 0, { x: 0, z: 0 });
+  const h = RIVER_STRETCH_SWITCH_HYSTERESIS;
+
+  function renderStretchRig(stretchIndex: number, onStretchChange: (s: number) => void, reducedMotion = false) {
+    const handleRef = createRef<CameraRigHandle>();
+    const view = (s: number) => (
+      <CameraRig
+        getRig={getRig}
+        bounds={BOUNDS}
+        targetRef={null}
+        requestId={0}
+        reducedMotion={reducedMotion}
+        handleRef={handleRef}
+        stretchFrame={frameOf}
+        stretchIndex={s}
+        onStretchChange={onStretchChange}
+      />
+    );
+    const result = render(view(stretchIndex));
+    return { handleRef, rerender: (s: number) => result.rerender(view(s)) };
+  }
+  const placeFocus = (along: number) => {
+    const p = at(along);
+    rig.focusX = p.x;
+    rig.focusZ = p.z;
+  };
+
+  it("travelBy flies the focus by (dx, dz) keeping the yaw; reduced motion makes it an instant cut", () => {
+    const onChange = vi.fn();
+    rig.yawRad = 0.4;
+    const { handleRef } = renderStretchRig(0, onChange);
+    act(() => handleRef.current!.travelBy(frameOf.periodX, frameOf.periodZ));
+    expect(spring.api.start).toHaveBeenLastCalledWith({
+      to: { focusX: frameOf.periodX, focusY: 0, focusZ: frameOf.periodZ, yawRad: 0.4 },
+      immediate: false,
+    });
+    expect(rig.phase).toBe("FLIGHT");
+    // A second tap during the flight builds on its destination (taps accumulate).
+    act(() => handleRef.current!.travelBy(frameOf.periodX, frameOf.periodZ));
+    expect(spring.api.start).toHaveBeenLastCalledWith(
+      expect.objectContaining({ to: expect.objectContaining({ focusX: 2 * frameOf.periodX }) }),
+    );
+    expect(invalidateSpy).toHaveBeenCalled();
+    cleanup();
+    rig = createCameraRigState();
+    const reduced = renderStretchRig(0, onChange, true);
+    act(() => reduced.handleRef.current!.travelBy(-frameOf.periodX, -frameOf.periodZ));
+    expect(spring.api.start).toHaveBeenLastCalledWith(expect.objectContaining({ immediate: true }));
+    const calls = spring.api.start.mock.calls.length;
+    act(() => reduced.handleRef.current!.travelBy(Number.NaN, 0));
+    expect(spring.api.start.mock.calls.length).toBe(calls);
+  });
+
+  it("onStretchChange fires once when the focus is h past a seam, not within ± h of it", () => {
+    const onChange = vi.fn();
+    const { rerender } = renderStretchRig(0, onChange);
+    placeFocus(frameOf.length + 0.5 * h);
+    frame();
+    expect(onChange).not.toHaveBeenCalled();
+    placeFocus(-0.5 * h);
+    frame();
+    expect(onChange).not.toHaveBeenCalled();
+    placeFocus(frameOf.length + 1.5 * h);
+    frame();
+    frame(); // the store has not caught up yet: no repeat
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    rerender(1);
+    frame();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    placeFocus(frameOf.length - 0.5 * h); // back over the seam, still within h: stays 1
+    frame();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    placeFocus(frameOf.length - 1.5 * h);
+    frame();
+    expect(onChange).toHaveBeenLastCalledWith(0);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("without the stretch props nothing is reported (MFW-57 behaviour)", () => {
+    renderRig({});
+    placeFocus(10 * frameOf.length);
+    expect(() => frame()).not.toThrow();
   });
 });

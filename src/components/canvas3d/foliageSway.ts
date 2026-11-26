@@ -41,6 +41,8 @@ export interface FoliageShakeInput {
   nowMs: number; // the effect clock (NudgeSource.now)
   reducedMotion: boolean;
   frame: NudgeFrame;
+  /** MFW-58: the stretch copy this mesh belongs to (nudges of other stretches are ignored); default 0. */
+  stretchIndex?: number;
 }
 
 /**
@@ -67,7 +69,7 @@ export function writeFoliageSwayAndShake(
     composeInstanceMatrix(instance, part, scratch.base);
     let k = sway ? foliageSwayShearAt(swayTimeMs, instance.swayPhaseRad, sway) : 0;
     const owner = active !== null ? active.owners[i] : undefined;
-    const entry = active !== null && owner !== undefined ? findNudgeEntry(active.pool, owner.kind, owner.index) : null;
+    const entry = active !== null && owner !== undefined ? findNudgeEntry(active.pool, owner.kind, owner.index, active.stretchIndex ?? 0) : null;
     if (active !== null && owner !== undefined && entry !== null) {
       const f = writeNudgeAt(owner.kind, active.nowMs - entry.startedAtMs, active.reducedMotion, active.frame);
       k += f.shear;
