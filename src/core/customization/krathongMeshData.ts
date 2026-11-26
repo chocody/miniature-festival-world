@@ -1,10 +1,19 @@
-import type { BladeSpec, KrathongMeshSpec, MeshProfilePoint, MeshTransform, PetalDiscSpec } from "@/config/krathongModel.config";
+import type {
+  BladeSpec,
+  KrathongLod,
+  KrathongMeshSpec,
+  LeafShellSpec,
+  MeshProfilePoint,
+  MeshTransform,
+  PetalDiscSpec,
+  PetalRingSpec,
+} from "@/config/krathongModel.config";
 import { assembleKrathong } from "./krathongAssembler";
 import { meshSpecFor } from "./krathongAssetKeys";
 import type { KrathongAppearance, KrathongPartInstance } from "./types";
 
 /**
- * Pure (three-free, React-free) builders of the v2 krathong meshes (MFW-48). Every mesh is an indexed closed solid with
+ * Pure (three-free, React-free) builders of the krathong meshes (v2 MFW-48, v3 leaf / petal shells MFW-69). Every mesh is an indexed closed solid with
  * counter-clockwise triangles seen from outside, so it renders FrontSide only with smooth normals.
  */
 export interface KrathongMeshData {
@@ -28,6 +37,9 @@ const MIN_PETALS = 3;
 const MIN_PETAL_SAMPLES = 2;
 const DISC_CENTRES = 2; // top and bottom centre vertices
 const SIGNED_VOLUME_DIVISOR = 6;
+const MIN_SHELL_ROWS = 2;
+const MIN_SHELL_COLUMNS = 3;
+const MIN_RING_PETALS = 2;
 
 function finish(positions: readonly number[], indices: readonly number[]): KrathongMeshData {
   const vertexCount = positions.length / XYZ;
@@ -158,6 +170,110 @@ export function buildPetalDiscMeshData(spec: PetalDiscSpec): KrathongMeshData {
   return finish(positions, indices);
 }
 
+/** Width of a leaf / petal shell at spine parameter t (clamped to [0, 1]): width · sin(π·t^e)^fullness, peak at widestAt. */
+export function leafShellWidthAt(spec: LeafShellSpec, t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  const exponent = Math.log(HALF) / Math.log(spec.widestAt);
+  return spec.width * Math.max(0, Math.sin(Math.PI * u ** exponent)) ** spec.fullness;
+}
+
+function assertLeafShell(spec: LeafShellSpec): void {
+  const { length, width, widestAt, fullness, baseTiltRad, bendRad, fold, cup, thickness, rows, columns } = spec;
+  const fields = [length, width, widestAt, fullness, baseTiltRad, bendRad, fold, cup, thickness, rows, columns];
+  if (fields.some((v) => !Number.isFinite(v))) throw new RangeError("leaf shell fields must be finite");
+  if (length <= 0 || width <= 0 || thickness <= 0) throw new RangeError("leaf shell length, width and thickness must be > 0");
+  if (widestAt <= 0 || widestAt >= 1) throw new RangeError("leaf shell widestAt must be in (0, 1)");
+  if (fullness <= 0) throw new RangeError("leaf shell fullness must be > 0");
+  if (fold < 0 || cup < 0) throw new RangeError("leaf shell fold and cup must be ≥ 0");
+  if (!isInt(rows, MIN_SHELL_ROWS)) throw new RangeError(`leaf shell rows must be an integer ≥ ${MIN_SHELL_ROWS}`);
+  if (!isInt(columns, MIN_SHELL_COLUMNS) || columns % 2 === 0) {
+    throw new RangeError(`leaf shell columns must be an odd integer ≥ ${MIN_SHELL_COLUMNS}`);
+  }
+}
+
+/**
+ * Curved, tapered banana-leaf / petal shell (MFW-69): a thin closed lens. The front (inner / upper, −n) face carries the
+ * V fold (midrib crease) and the cup; the back face bulges by `thickness` toward +n; both faces share the edge columns.
+ * Vertex layout: 0 base pole · front rows (R × K) · back interior (R × (K − 2)) · tip pole.
+ */
+export function buildLeafShellMeshData(spec: LeafShellSpec): KrathongMeshData {
+  assertLeafShell(spec);
+  const { length, width, baseTiltRad, bendRad, fold, cup, thickness, rows: R, columns: K } = spec;
+  const segments = R + 1;
+  const step = length / segments;
+  const spineY: number[] = [0];
+  const spineZ: number[] = [0];
+  for (let k = 1; k <= segments; k++) {
+    const phi = baseTiltRad + bendRad * ((k - SPINE_MIDPOINT) / segments);
+    spineY.push(spineY[k - 1] + step * Math.cos(phi));
+    spineZ.push(spineZ[k - 1] + step * Math.sin(phi));
+  }
+  const across = (c: number) => -1 + (2 * c) / (K - 1);
+  const front: number[] = [];
+  const back: number[] = [];
+  for (let i = 1; i <= R; i++) {
+    const t = i / segments;
+    const phi = baseTiltRad + bendRad * t;
+    const ny = -Math.sin(phi); // n_i = (0, −sin φ, cos φ): the back direction; front f = −n
+    const nz = Math.cos(phi);
+    const w = leafShellWidthAt(spec, t);
+    for (let c = 0; c < K; c++) {
+      const s = across(c);
+      const lift = w * (fold * Math.abs(s) + cup * s * s);
+      const fx = s * w * HALF;
+      const fy = spineY[i] - ny * lift;
+      const fz = spineZ[i] - nz * lift;
+      front.push(fx, fy, fz);
+      if (c > 0 && c < K - 1) {
+        const d = thickness * (1 - s * s) * (w / width);
+        back.push(fx, fy + ny * d, fz + nz * d);
+      }
+    }
+  }
+  const positions = [0, 0, 0, ...front, ...back, 0, spineY[segments], spineZ[segments]];
+  const tip = positions.length / XYZ - 1;
+  const F = (i: number, c: number) => 1 + (i - 1) * K + c;
+  const B = (i: number, c: number) => (c === 0 || c === K - 1 ? F(i, c) : 1 + R * K + (i - 1) * (K - 2) + (c - 1));
+  const indices: number[] = [];
+  for (let c = 0; c < K - 1; c++) {
+    indices.push(0, F(1, c), F(1, c + 1), 0, B(1, c + 1), B(1, c));
+    for (let i = 1; i < R; i++) {
+      indices.push(F(i, c), F(i + 1, c), F(i, c + 1), F(i, c + 1), F(i + 1, c), F(i + 1, c + 1));
+      indices.push(B(i, c), B(i, c + 1), B(i + 1, c), B(i, c + 1), B(i + 1, c + 1), B(i + 1, c));
+    }
+    indices.push(F(R, c), tip, F(R, c + 1), B(R, c), B(R, c + 1), tip);
+  }
+  return finish(positions, indices);
+}
+
+/** `count` copies of one petal shell around the y axis; jitter[i % length] varies petal i (scale, yaw, tilt). */
+export function buildPetalRingMeshData(spec: PetalRingSpec): KrathongMeshData {
+  const { petal, count, radius, phaseRad, jitter } = spec;
+  if (!isInt(count, MIN_RING_PETALS)) throw new RangeError(`petal ring count must be an integer ≥ ${MIN_RING_PETALS}`);
+  if (!Number.isFinite(radius) || radius < 0) throw new RangeError("petal ring radius must be finite and ≥ 0");
+  if (!Number.isFinite(phaseRad)) throw new RangeError("petal ring phaseRad must be finite");
+  if (jitter.length === 0) throw new RangeError("petal ring jitter needs at least one entry");
+  for (const j of jitter) {
+    if (![j.scale, j.yawRad, j.tiltRad].every(Number.isFinite)) throw new RangeError("petal ring jitter must be finite");
+    if (j.scale <= 0) throw new RangeError("petal ring jitter scale must be > 0");
+  }
+  const base = buildLeafShellMeshData(petal);
+  const parts: KrathongMeshData[] = [];
+  for (let i = 0; i < count; i++) {
+    const j = jitter[i % jitter.length];
+    const theta = phaseRad + (TAU * i) / count + j.yawRad;
+    parts.push(
+      applyMeshTransform(base, {
+        scale: [j.scale, j.scale, j.scale],
+        rotateXRad: j.tiltRad,
+        rotateYRad: theta,
+        translate: [radius * Math.sin(theta), 0, radius * Math.cos(theta)],
+      }),
+    );
+  }
+  return mergeMeshData(parts);
+}
+
 export function applyMeshTransform(data: KrathongMeshData, transform: MeshTransform | undefined): KrathongMeshData {
   if (transform === undefined) return data;
   const [sx, sy, sz] = transform.scale ?? [1, 1, 1];
@@ -213,6 +329,12 @@ export function buildKrathongMeshData(spec: KrathongMeshSpec): KrathongMeshData 
     case "petalDisc":
       data = buildPetalDiscMeshData(spec.disc);
       break;
+    case "leafShell":
+      data = buildLeafShellMeshData(spec.shell);
+      break;
+    case "petalRing":
+      data = buildPetalRingMeshData(spec.ring);
+      break;
     case "group":
       data = mergeMeshData(spec.children.map(buildKrathongMeshData));
       break;
@@ -256,31 +378,32 @@ export function meshYRange(data: KrathongMeshData): { readonly min: number; read
 }
 
 const meshCache = new Map<string, KrathongMeshData>();
-function cachedMeshData(key: KrathongPartInstance["geometryKey"]): KrathongMeshData {
-  let data = meshCache.get(key);
+function cachedMeshData(key: KrathongPartInstance["geometryKey"], lod: KrathongLod): KrathongMeshData {
+  const cacheKey = `${key}@${lod}`;
+  let data = meshCache.get(cacheKey);
   if (data === undefined) {
-    data = buildKrathongMeshData(meshSpecFor(key));
-    meshCache.set(key, data);
+    data = buildKrathongMeshData(meshSpecFor(key, lod));
+    meshCache.set(cacheKey, data);
   }
   return data;
 }
 
-/** Σ triangleCount(buildKrathongMeshData(meshSpecFor(part.geometryKey))) over all assembled parts. */
-export function countKrathongTriangles(appearance: KrathongAppearance): number {
+/** Σ triangleCount(buildKrathongMeshData(meshSpecFor(part.geometryKey, lod))) over all assembled parts. */
+export function countKrathongTriangles(appearance: KrathongAppearance, lod: KrathongLod = "full"): number {
   const assembly = assembleKrathong(appearance);
   let sum = 0;
-  for (const part of assembly.body) sum += cachedMeshData(part.geometryKey).triangleCount;
-  for (const part of assembly.centerAnchor.parts) sum += cachedMeshData(part.geometryKey).triangleCount;
+  for (const part of assembly.body) sum += cachedMeshData(part.geometryKey, lod).triangleCount;
+  for (const part of assembly.centerAnchor.parts) sum += cachedMeshData(part.geometryKey, lod).triangleCount;
   return sum;
 }
 
 /** Max XZ distance from the model origin over all parts (part transform T·R_y·S applied; centre-anchor parts offset by the anchor). */
-export function krathongModelRadiusXZ(appearance: KrathongAppearance): number {
+export function krathongModelRadiusXZ(appearance: KrathongAppearance, lod: KrathongLod = "full"): number {
   const assembly = assembleKrathong(appearance);
   const anchor = assembly.centerAnchor.localPosition;
   let max = 0;
   const measure = (part: KrathongPartInstance, ox: number, oz: number) => {
-    const p = cachedMeshData(part.geometryKey).positions;
+    const p = cachedMeshData(part.geometryKey, lod).positions;
     const c = Math.cos(part.rotationY);
     const s = Math.sin(part.rotationY);
     const [sx, , sz] = part.scale;

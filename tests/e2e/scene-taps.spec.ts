@@ -37,7 +37,12 @@ const TIERS = [
   { tier: "MEDIUM", memory: 4, cores: 6, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },
   { tier: "LOW", memory: 2, cores: 2, viewport: { width: 390, height: 844 } },
 ] as const;
-const SPAWN_PROGRESS = [0.35, 0.5, 0.65];
+/**
+ * Measured on the MFW-68 framing (zoom 66.7 at 360 px): at the start these krathongs sit downstream (right) of the probe's first
+ * water point and drift away from it; after the lamp flight (which starts from the pier view, since a water tap no longer moves
+ * the camera, MFW-69) they stay inside the 360-px frame. 0.35 / 0.5 / 0.65 drifted out of it; 0.15 / 0.2 drifted into the water point.
+ */
+const SPAWN_PROGRESS = [0.25, 0.28, 0.31];
 const TOUCH_VIEWPORT = { width: 390, height: 844 };
 
 async function routeZone(page: Page) {

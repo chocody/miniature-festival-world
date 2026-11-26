@@ -498,31 +498,43 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(r3f.flightStarts).toHaveLength(before);
   });
 
-  it("only WORLD_EXPLORE taps select a target and fly the camera", () => {
+  it("only WORLD_EXPLORE taps select a target; lamp and krathong fly the camera, water does not (MFW-69)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
     expect(container.querySelector("ringGeometry")).toBeNull();
-    expect(r3f.flightStarts).toHaveLength(1);
+    expect(r3f.flightStarts).toHaveLength(0);
     fireEvent.click(lampMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
     fireEvent.click(krathongMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "krathong");
-    expect(r3f.flightStarts).toHaveLength(3);
+    expect(r3f.flightStarts).toHaveLength(2);
+  });
+
+  it("a water tap after a flight keeps the camera target: no flight re-fires (MFW-69)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(lampMesh(container));
+    expect(r3f.flightStarts).toHaveLength(1);
+    for (let i = 0; i < 5; i++) fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(r3f.flightStarts).toHaveLength(1);
+    fireEvent.click(lampMesh(container));
+    expect(r3f.flightStarts).toHaveLength(2);
   });
 
   it("reduced motion turns the flight into an instant cut", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     useDeviceStore.getState().setReducedMotion(true);
     const first = render(<SceneViewport mode="WORLD_EXPLORE" />);
-    fireEvent.click(waterMesh(first.container));
+    fireEvent.click(lampMesh(first.container));
     expect(r3f.flightStarts.at(-1)?.immediate).toBe(true);
     first.unmount();
 
     useDeviceStore.getState().setReducedMotion(false);
     const second = render(<SceneViewport mode="WORLD_EXPLORE" />);
-    fireEvent.click(waterMesh(second.container));
+    fireEvent.click(lampMesh(second.container));
     expect(r3f.flightStarts.at(-1)?.immediate).toBe(false);
   });
 
@@ -1767,17 +1779,17 @@ describe("camera drag-to-travel (MFW-57)", () => {
     expect(r3f.flightStarts.at(-1)!.to).toMatchObject({ yawRad: expect.closeTo(0.25, 9) });
   });
 
-  it("water tap after a pan flies to the water target and draws no ring", () => {
+  it("water tap after a pan ripples without moving the camera and draws no ring", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     drag([100, 100], [[160, 140]]);
     const flights = r3f.flightStarts.length;
+    const panned = r3f.camera!.position.clone();
     tapStub.value = { x: 0.5, z: 0 };
     fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
-    expect(r3f.flightStarts).toHaveLength(flights + 1);
-    // Deviation from the MFW-57 spec: the target is the water mesh (stub world position = origin), not the tapped point.
-    expect(r3f.flightStarts.at(-1)!.to).toEqual({ focusX: 0, focusY: 0, focusZ: 0, yawRad: 0 });
-    expect(r3f.flightStarts.at(-1)!.immediate).toBe(false);
+    expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(r3f.flightStarts).toHaveLength(flights);
+    expect(r3f.camera!.position.distanceTo(panned)).toBeLessThan(1e-9);
     expect(container.querySelector("ringGeometry")).toBeNull();
   });
 

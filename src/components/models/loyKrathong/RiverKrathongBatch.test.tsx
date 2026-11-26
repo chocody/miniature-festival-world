@@ -1,11 +1,12 @@
 import { createRef } from "react";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { BufferGeometry, InstancedMesh, Material, Matrix4, Quaternion } from "three";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { perfSoakAppearance } from "@/components/canvas3d/perfSoak";
+import { KRATHONG_RIVER_LOD_BY_TIER } from "@/config/krathongModel.config";
+import { useDeviceStore } from "@/store/useDeviceStore";
 import {
   DEFAULT_KRATHONG_APPEARANCE,
-  KRATHONG_GEOMETRY_KEYS,
   KRATHONG_INSTANCE_BUCKET_COUNT,
   KRATHONG_INSTANCE_BUCKETS,
 } from "@/core/customization";
@@ -20,6 +21,10 @@ function ui(ref: React.Ref<RiverKrathongBatchHandle>, p = plan(3), shadows = fal
   return <KrathongAssetsProvider>{withBatch ? <RiverKrathongBatch ref={ref} plan={p} shadows={shadows} /> : null}</KrathongAssetsProvider>;
 }
 
+beforeEach(() => {
+  useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  useDeviceStore.getState().setQualityTier("HIGH");
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -33,7 +38,7 @@ describe("RiverKrathongBatch", () => {
     expect(container.querySelector('[name="river-krathong-batch"]')!.querySelectorAll("primitive")).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
   });
 
-  it("MFW-48: bucket meshes use the shared v2 geometry and material", () => {
+  it("bucket meshes use the shared geometry of the tier LOD", () => {
     let assets: KrathongAssets | null = null;
     function Probe() {
       assets = useKrathongAssets();
@@ -50,9 +55,38 @@ describe("RiverKrathongBatch", () => {
     const a = assets as unknown as KrathongAssets;
     expect(ref.current!.meshes).toHaveLength(KRATHONG_INSTANCE_BUCKETS.length);
     ref.current!.meshes.forEach((mesh, i) => {
-      expect(mesh.geometry).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey));
+      // HIGH draws the LOD of KRATHONG_RIVER_LOD_BY_TIER.HIGH (PLACEHOLDER "medium", MFW-69 lead decision).
+      expect(mesh.geometry).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, KRATHONG_RIVER_LOD_BY_TIER.HIGH));
       expect(mesh.material).toBe(a.material(KRATHONG_INSTANCE_BUCKETS[i].materialKey));
     });
+  });
+
+  it("MFW-69: tier change swaps LOD on the same meshes", () => {
+    let assets: KrathongAssets | null = null;
+    function Probe() {
+      assets = useKrathongAssets();
+      return null;
+    }
+    const ref = createRef<RiverKrathongBatchHandle>();
+    render(
+      <KrathongAssetsProvider>
+        <Probe />
+        <RiverKrathongBatch ref={ref} plan={plan(3)} shadows={false} />
+      </KrathongAssetsProvider>,
+    );
+    const a = assets as unknown as KrathongAssets;
+    const meshes = ref.current!.meshes;
+    const items = [...meshes];
+    const geometrySpy = vi.spyOn(BufferGeometry.prototype, "dispose");
+    for (const [tier, lod] of [["MEDIUM", "medium"], ["LOW", "low"]] as const) {
+      act(() => useDeviceStore.getState().setQualityTier(tier));
+      expect(ref.current!.meshes, tier).toBe(meshes);
+      meshes.forEach((mesh, i) => {
+        expect(mesh, `${tier} ${i}`).toBe(items[i]);
+        expect(mesh.geometry, `${tier} ${i}`).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
+      });
+    }
+    expect(geometrySpy).toHaveBeenCalledTimes(0);
   });
 
   it("counts follow the plan", () => {
@@ -93,8 +127,18 @@ describe("RiverKrathongBatch", () => {
     expect(meshSpy).toHaveBeenCalledTimes(KRATHONG_INSTANCE_BUCKET_COUNT);
     expect(geometrySpy).toHaveBeenCalledTimes(0);
     expect(materialSpy).toHaveBeenCalledTimes(0);
+    let assets: KrathongAssets | null = null;
+    function Probe() {
+      assets = useKrathongAssets();
+      return null;
+    }
+    view.rerender(
+      <KrathongAssetsProvider>
+        <Probe />
+      </KrathongAssetsProvider>,
+    );
     view.unmount();
-    expect(geometrySpy).toHaveBeenCalledTimes(KRATHONG_GEOMETRY_KEYS.length);
+    expect(geometrySpy).toHaveBeenCalledTimes((assets as unknown as KrathongAssets).listGeometries().length);
   });
 
   it("writeItem + commit write the planned slots", () => {

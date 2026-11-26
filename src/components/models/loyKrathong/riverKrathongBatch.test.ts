@@ -1,5 +1,5 @@
-import { DynamicDrawUsage, Group, Matrix4, Object3D, Quaternion, Vector3 } from "three";
-import { describe, expect, it } from "vitest";
+import { BufferGeometry, DynamicDrawUsage, Group, Matrix4, Object3D, Quaternion, Vector3 } from "three";
+import { describe, expect, it, vi } from "vitest";
 import { perfSoakAppearance } from "@/components/canvas3d/perfSoak";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
@@ -15,6 +15,7 @@ import { computeUprightLocalQuaternion } from "@/core/customization/uprightConst
 import { RIVER_ITEM_EULER_ORDER } from "@/core/world/riverFlow";
 import { createKrathongAssets } from "./krathongAssets";
 import {
+  applyKrathongBatchLod,
   applyKrathongBatchPlan,
   applyKrathongBatchShadows,
   commitKrathongBatch,
@@ -216,5 +217,28 @@ describe("batch meshes", () => {
     }
     assets.dispose();
   });
-});
 
+  it("MFW-69: createKrathongBatchMeshes(…, \"low\") uses the low geometries", () => {
+    const assets = createKrathongAssets();
+    const meshes = createKrathongBatchMeshes(assets, ZONE_ITEM_CAP, "low");
+    meshes.forEach((mesh, i) => expect(mesh.geometry).toBe(assets.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, "low")));
+    assets.dispose();
+  });
+
+  it("MFW-69: applyKrathongBatchLod re-points geometry without creating or disposing", () => {
+    const assets = createKrathongAssets();
+    const meshes = createKrathongBatchMeshes(assets);
+    const items = [...meshes];
+    const dispose = vi.spyOn(BufferGeometry.prototype, "dispose");
+    for (const lod of ["medium", "low", "full"] as const) {
+      applyKrathongBatchLod(meshes, assets, lod);
+      meshes.forEach((mesh, i) => {
+        expect(mesh, `${lod} ${i}`).toBe(items[i]);
+        expect(mesh.geometry, `${lod} ${i}`).toBe(assets.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
+      });
+    }
+    expect(dispose).toHaveBeenCalledTimes(0);
+    dispose.mockRestore();
+    assets.dispose();
+  });
+});
