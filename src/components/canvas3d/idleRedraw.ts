@@ -71,7 +71,7 @@ export function createIdleRedrawTicker(invalidate: () => void, env: IdleRedrawEn
 const BROWSER_ENV: IdleRedrawEnv = {
   setInterval: (handler, ms) => window.setInterval(handler, ms),
   clearInterval: (id) => window.clearInterval(id),
-  isHidden: () => document.visibilityState === "hidden",
+  isHidden: () => document.hidden,
   onVisibilityChange(listener) {
     document.addEventListener("visibilitychange", listener);
     return () => document.removeEventListener("visibilitychange", listener);
