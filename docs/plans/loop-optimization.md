@@ -194,6 +194,8 @@
 กติกา:
 - reviewer ได้ brief + diff + ส่วน `## Acceptance criteria → checks` และ `## Decisions` ของ spec; อ่านส่วนอื่นของ spec เมื่อ diff ไม่ตรงเท่านั้น
 - r3f-perf-reviewer และ privacy-auditor ได้ diff + brief (ไม่ได้ spec)
+- มี `docs/plans/<KEY>.md` และ `node scripts/spec-lint.mjs docs/plans/<KEY>.md --ac <n>` ผ่าน → ข้าม lead; dev ใช้ไฟล์นั้นเป็น spec
+  (`spec-lint` ไม่ผ่าน → lead ตามปกติ โดยได้ไฟล์นั้นเป็นข้อมูลตั้งต้น)
 - `sizeHint.skipLead === true` เมื่อ AC ≤ 2, ไม่มี label `privacy`/`db`/`migration`/`dev-opus`/`3d`, และไม่ใช่ระบบใหม่ → dev ทำจาก brief โดยตรง แล้วผ่าน reviewer + qa + CI ครบ
 
 - [ ] เทสต์ `sizeHint.skipLead`: AC 2 ข้อ label `ui` → true; AC 2 ข้อ label `privacy` → false; AC 3 ข้อ → false
@@ -207,18 +209,18 @@
 - [ ] รัน 5 การ์ดถัดไปด้วยลูปใหม่ แล้วรัน `node scripts/loop-metrics.mjs` ต่อใบ
 - [ ] เขียนตารางเทียบเป้าหมายด้านบนลง `optimization-results.md`
 - [ ] ถ้าอัตรารอบแก้หรือ CI ผ่านรอบแรกแย่กว่า baseline: ถอย Task 3 (เพดาน spec) ก่อน แล้ว Task 8 (ข้าม lead) และบันทึกเหตุผล
-- [ ] ทดลองแยก (เฉพาะเมื่อ 5 ใบแรกผ่านเป้าคุณภาพ): lead ใช้ sonnet กับการ์ด S/M ที่ไม่มี label `dev-opus` จำนวน 3 ใบ เทียบอัตรารอบแก้; ใช้ถาวรเมื่อไม่แย่ลงเท่านั้น
 
 ## ลำดับและการพึ่งพา
 
 Task 1 → (Task 2, 4, 5, 6, 7 ทำขนานกันได้ คนละไฟล์ ยกเว้น `loop-ticket/SKILL.md` ที่ต้อง merge ทีละใบ) → Task 3 → Task 8 → Task 9
 
-## สิ่งที่ต้องให้ owner ตัดสิน
+## การตัดสินใจของ owner (2026-11-26)
 
-1. การ์ดขนาด S ข้าม lead ได้หรือไม่ (Task 8) — ด่านตรวจหลังบ้านอยู่ครบ แต่เปลี่ยนกติกา "ทุกการ์ดผ่าน pipeline เต็ม"
-2. ทดลอง lead เป็น sonnet (Task 9) — ประหยัดโควต้า opus แต่เสี่ยงแผนหยาบลง
-3. เพดานขนาด spec 24 KB / 40 KB (Task 3) เป็นค่าเริ่มต้นที่ผมเสนอ ยังไม่มีข้อมูลรองรับว่าเหมาะที่สุด
-4. จะทำแผนนี้ก่อนหรือหลังปิด MFW-58, 71, 72 — ผมแนะนำหลัง MFW-58 merge เพราะ Task 4 แตะ `follow-ups.md` และ look doc ที่ MFW-58 แก้ค้างอยู่
+1. การ์ดขนาด S ข้าม lead ได้ (Task 8)
+2. ไม่ทดลอง lead เป็น sonnet; แทนด้วยกติกา "การ์ดที่มี spec อยู่แล้วให้ implement เลย": ถ้ามี `docs/plans/<KEY>.md`
+   และ `spec-lint` ผ่าน ให้ข้าม lead แล้วส่งไฟล์นั้นให้ dev เป็น spec (Task 8)
+3. เพดานขนาด spec 24 KB (S/M) และ 40 KB (L) ใช้เป็นค่าเริ่มต้น (Task 3)
+4. เริ่มทำแผนนี้หลัง MFW-58 merge
 
 ## ยังไม่ได้อยู่ในแผน
 
