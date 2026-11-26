@@ -187,6 +187,8 @@ Captured on the production build with SwiftShader WebGL (HIGH tier, before the f
 
 ## 10. Krathong v2 (MFW-48)
 
+Superseded in part by §13 (krathong v3 detail, MFW-69): leaves, flowers, base lip, candle and flame shapes and the per-tier LOD.
+
 Backlog 9.2. Every value mirrors `src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it
 from the screenshots below. Appearance keys and stored appearance data are unchanged, so saved krathongs render with v2.
 The same model is drawn in the customizer, at the pier and on the river; the river uses the instanced batch.
@@ -527,14 +529,80 @@ Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after
 | World, 390×844 | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) | ![day](screenshots/mfw-70/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-70/after-phone-390x844-world-night.png) |
 | Close-up (wheel zoom) | — | ![trees](screenshots/mfw-70/after-phone-390x844-closeup-trees-day.png) | ![water edge](screenshots/mfw-70/after-desktop-1440x900-closeup-water-edge-night.png) |
 
-## 13. Living riverside (MFW-50, backlog 9.4)
+## 13. Krathong v3 detail (MFW-69)
+
+Backlog 13.5. Owner (2026-11-25): the leaves and flowers were "only squares and triangles". Every value mirrors
+`src/config/krathongModel.config.ts` (config wins) and is **DRAFT**: the owner reviews it from the screenshots below.
+Appearance keys, geometry / material keys, river buckets, the assembler and stored data are unchanged, so saved krathongs
+render with v3. The customizer, pier and river use the same models (the river at a lighter LOD).
+
+### Shapes
+
+- **Leaf shell** (`LeafShellSpec`, `buildLeafShellMeshData`): a curved, tapered blade, built as a thin closed lens with
+  shared edges. Width follows `width · sin(π·t^e)^fullness` (peak at `widestAt`). The spine tilts out from the base and bends
+  outward along its length (`baseTiltRad`, `bendRad`). The upper face carries a V fold (the midrib crease, `fold`) and a rounded
+  cup (`cup`); the lower face bulges by `thickness`. Petals use the same shell.
+- **Leaves**: 8 units of two overlapping layers.
+  - Outer leaf: broad, tucked inside the base lip (`OUTER_LEAF_OFFSET`), flaring outward over it.
+  - Inner leaf: taller and more upright, on the flower-socket angle, so the two layers overlap around the ring (tested).
+  - style_01: pointed (`widestAt` ≈ 0.4); style_02: rounder and broader (`widestAt` 0.55, `fullness` 0.55).
+- **Flowers** (`PetalRingSpec`, `buildPetalRingMeshData`): rings of cupped shell petals around a raised yellow centre, each
+  petal varied by `PETAL_JITTER` (scale / yaw / tilt).
+  - marigold: ruffled, 7 + 5 short rounded petals in two rings;
+  - orchid: 3 narrow sepals, 2 broad petals and a cupped lip;
+  - lotus: 6 + 4 pointed petals in an upright cup.
+- **Bases**: banana trunk with a belly and a rounded lip; bread with a rounded shoulder; lotus = a bowl inside two rings of
+  cupped petals.
+- **Candle**: rounded lip and two wax drips (no wick: a wick needs a new material and river bucket).
+- **Flame**: a larger soft teardrop (height 0.34, radius 0.085; v2 0.26 / 0.065).
+- No halo, ring or glow disc was added.
+
+### Levels of detail
+
+| Where | LOD |
+|---|---|
+| Own krathong (customizer, pier) | full (`KRATHONG_HERO_LOD`) |
+| River, HIGH | medium — **PLACEHOLDER** (lead decision; the AC says full; lever `KRATHONG_RIVER_LOD_BY_TIER.HIGH = "full"`) |
+| River, MEDIUM | medium |
+| River, LOW | low |
+
+- medium: the same leaf shells with 3 columns (outer 2 rows, inner 3 rows); flowers are cupped lobed petal discs; lighter
+  lathes for the base, candle, flame and centre.
+- low: leaf shells with 2 rows each; fewer lobes and segments.
+- Triangles per krathong (worst): full 3 708 / medium 992 / low 808 (guards `KRATHONG_MAX_TRIANGLES_BY_LOD` 3 800 / 1 088 / 900).
+  Details and the zone budget per tier: `docs/perf/MFW-69.md`.
+
+### DRAFT list
+
+- Every `LeafShellSpec` / `PetalRingSpec` / lathe value, `OUTER_LEAF_OFFSET`, `PETAL_JITTER`, `CANDLE_DRIP` and the drip
+  placement, the flame size.
+- The iterated shapes differ from the lead's draft (leaves wider, flatter fold and cup, more rows; outer leaves more upright;
+  marigold petals blunter; the lotus base's inner petals moved to the bowl rim); the per-part numbers are in `docs/perf/MFW-69.md` §3.
+- `KRATHONG_RIVER_LOD_BY_TIER.HIGH` = "medium" is PLACEHOLDER (owner decides after the phone check).
+- Lead guards (not product numbers): `KRATHONG_MAX_TRIANGLES_BY_LOD`, `KRATHONG_FLOWER_CENTRE_MIN_RAISE`.
+
+### Before / after (MFW-69)
+
+Captured on the production build with SwiftShader WebGL, 390×844 at device pixel ratio 4, cropped (CUSTOMIZE zoomed in with
+"+" three times; the river zoomed in with the mouse wheel).
+
+| | Before (MFW-48, BASE ce0f2e4) | After |
+|---|---|---|
+| Own krathong, day | ![before](screenshots/mfw-69/before-customize-day.png) | ![after](screenshots/mfw-69/after-customize-day.png) |
+| Own krathong, night | ![before](screenshots/mfw-69/before-customize-night.png) | ![after](screenshots/mfw-69/after-customize-night.png) |
+| River on HIGH (medium LOD), day | — | ![after](screenshots/mfw-69/after-river-high-day.png) |
+| River on HIGH (medium LOD), night | — | ![after](screenshots/mfw-69/after-river-high-night.png) |
+| River on LOW (low LOD), day | — | ![after](screenshots/mfw-69/after-river-low-day.png) |
+| Lotus base, style_02, orchids (own krathong), day | — | ![after](screenshots/mfw-69/after-variant-lotus-style02-orchid-day.png) |
+
+## 14. Living riverside (MFW-50, backlog 9.4)
 
 Config: `src/config/events/loyKrathong.life.config.ts` (villager parts, `LOY_KRATHONG_VILLAGERS`, motion, `AMBIENT_MOTES`,
 `AMBIENT_MOTE_FAN`, `LANTERN_FLICKER`), `look.config.ts` (`VILLAGER_LOOK`, `AMBIENT_MOTE_LOOK`) and
 `performance.config.ts` (`LIVING_WORLD_TIERS`, `LIVING_WORLD_RENDER_BUDGETS`). Pure motion: `src/core/world/villagers.ts`
 and `ambientLife.ts`. Config wins over this note.
 
-### 13.1 Villagers
+### 14.1 Villagers
 
 - Simple dark silhouettes (owner, 2026-11-25: "คนอาจจะแค่เป็นเงาๆก็พอ"): a tapered robe-like body (8-sided cylinder), a
   round head (smooth icosahedron) and a conical hat on 3 of 8; about 0.345 world units tall (`VILLAGER_HEIGHT`, two-thirds
@@ -547,7 +615,7 @@ and `ambientLife.ts`. Config wins over this note.
   short segment of path 1 or 2, a fixed `across` in the strip, a speed, a phase, an optional watch stop and a scale.
   Villagers whose segments overlap on one path walk on opposite sides of the strip, so they pass side by side.
 
-### 13.2 Motion
+### 14.2 Motion
 
 - `villagerPoseInto` is a pure function of (definition, path, wall clock): a ping-pong walk over the segment; on each leg an
   optional stop at `watch.atFraction` for `watch.durationMs`, turned to face the water ("some stop to watch the river").
@@ -558,7 +626,7 @@ and `ambientLife.ts`. Config wins over this note.
 - MFW-60 hook (no tap built here): the stable `villagerId`, `VillagerInstancePlan.villagerIds` (body and head instance →
   id) and `.hatVillagerIds`, and `villagerPoseInto` for the current pose.
 
-### 13.3 Ambient life (lead pick, D3)
+### 14.3 Ambient life (lead pick, D3)
 
 - Foliage sway is MFW-70's (§12.4, `RIVER_FOLIAGE_SWAY`); MFW-50's own tree sway was dropped when MFW-70 replaced the
   canopies. The living world adds two kinds:
@@ -572,14 +640,14 @@ and `ambientLife.ts`. Config wins over this note.
 - Rejected: chimney smoke (MFW-60 uses it as the house tap reaction; there are no chimneys), ducks / birds (they would move
   over the water where krathongs float, and need new models).
 
-### 13.4 Reduced motion and WCAG 2.3.1
+### 14.4 Reduced motion and WCAG 2.3.1
 
 Reduced motion freezes all of it: villagers stand, motes hang at their t = 0 frame, lanterns
 get the preset base, and the living world registers no idle redraw. Nothing changes luminance faster than WCAG 2.3.1 allows (≤ 3 cycles
 per second): every period is ≥ 1000/3 ms (lanterns 1 900 / 3 100 ms, mote pulse 2 300 ms), checked on the config and by
 sampling the maxima per second (`ambientLife.test.ts` W1–W3).
 
-### 13.5 Tiers, idle redraw and budget
+### 14.5 Tiers, idle redraw and budget
 
 | Tier | Villagers (hats) | Walk | Motes | Lantern flicker | Idle redraw (WORLD_EXPLORE only) | Draw calls | Triangles |
 |---|---|---|---|---|---|---|---|
@@ -601,7 +669,7 @@ sampling the maxima per second (`ambientLife.test.ts` W1–W3).
   already redraws every frame while krathongs drift; the cadence matters only for an empty river.
 - Every per-frame writer is allocation-free (`tests/unit/instancing-audit.test.ts`).
 
-### 13.6 Never covering krathongs (AC5)
+### 14.6 Never covering krathongs (AC5)
 
 A layout guarantee, tested (`livingWorldLayout.test.ts`): the camera is orthographic and MFW-57 only pans and turns it
 about +Y, so a point at height H projects onto the water at most H / tan(elevation) away. From any camera yaw, no villager
@@ -610,7 +678,7 @@ villagers, 1.45 for motes); from the default camera, camera-side villagers and m
 and 0.69). Every living-world mesh has `NO_RAYCAST` and no handler, so none is in R3F's interaction set: water, lamps and the
 MFW-59 krathong tap proxies win unchanged (e2e `living-world.spec.ts`).
 
-### 13.7 Measured numbers (local container, SwiftShader)
+### 14.7 Measured numbers (local container, SwiftShader)
 
 BASE = main abf3ee5 (MFW-49). Production build, `?pinTier=1`, 390×844.
 
@@ -626,19 +694,19 @@ BASE = main abf3ee5 (MFW-49). Production build, `?pinTier=1`, 390×844.
 | LOW | 30 → 35 | 45 → 40 | 16 → 16 |
 
   That first version redrew CUSTOMIZE / RITUAL at its own 50 / 67 ms on top of the flame timer, so MEDIUM CUSTOMIZE / RITUAL
-  dropped. Fixed (§13.5): one shared idle-redraw timer, and the living world registers only in the shared world view.
+  dropped. Fixed (§14.5): one shared idle-redraw timer, and the living world registers only in the shared world view.
 - Re-measured after the fix, rebased on MFW-70 (BASE = ce6ad2d), MEDIUM, medians of 3 alternating rounds, load ≈ 6–7:
   CUSTOMIZE 50 → 50, RITUAL 53 → 50, WORLD 28 → 25 fps (BASE → MFW-50). `[perf-audit]` HIGH CUSTOMIZE: 92 calls, 12 182
   triangles, 6 programs; HIGH world one / full zone 47 / 47 calls.
 
-### 13.8 DRAFT values (MFW-50)
+### 14.8 DRAFT values (MFW-50)
 
 `VILLAGER_LOOK`, `AMBIENT_MOTE_LOOK`, `VILLAGER_PARTS`, `VILLAGER_BLOB_SHADOW_RADIUS`, `VILLAGER_MOTION`,
 `LOY_KRATHONG_VILLAGERS`, `AMBIENT_MOTES` (radius 0.035 → 0.06 for the soft point), `AMBIENT_MOTE_FAN`,
 `LANTERN_FLICKER`, `LIVING_WORLD_TIERS`. Lead guard (not a product number): `LIVING_WORLD_RENDER_BUDGETS`. The walking path
 stays invisible.
 
-### 13.9 Before / after (MFW-50)
+### 14.9 Before / after (MFW-50)
 
 Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after release, on MFW-70 (foliage).
 

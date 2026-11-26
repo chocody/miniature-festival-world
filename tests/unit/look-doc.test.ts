@@ -30,9 +30,9 @@ describe("art-direction note (MFW-47 AC1)", () => {
     expect(doc).toContain("screenshots/mfw-70/");
   });
 
-  it("documents the living riverside (MFW-50, §13 after MFW-70's §12)", () => {
+  it("documents the living riverside (MFW-50, §14)", () => {
     const doc = readFileSync(DOC, "utf8");
-    for (const term of ["## 13. Living riverside (MFW-50", "LOY_KRATHONG_VILLAGERS", "LIVING_WORLD_TIERS", "WCAG 2.3.1", "villagerPoseInto", "idleRedraw.ts", "screenshots/mfw-50/"]) {
+    for (const term of ["## 14. Living riverside (MFW-50", "LOY_KRATHONG_VILLAGERS", "LIVING_WORLD_TIERS", "WCAG 2.3.1", "villagerPoseInto", "idleRedraw.ts", "screenshots/mfw-50/"]) {
       expect(doc).toContain(term);
     }
   });

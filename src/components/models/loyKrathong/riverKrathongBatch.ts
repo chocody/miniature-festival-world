@@ -1,5 +1,6 @@
 import { DynamicDrawUsage, Euler, InstancedMesh, Matrix4, Quaternion, Vector3 } from "three";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
+import type { KrathongLod } from "@/config/krathongModel.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import {
   assembleKrathong,
@@ -143,10 +144,14 @@ export function itemIndexForInstance(plan: KrathongInstancePlan, bucketIndex: nu
 }
 
 /** One persistent InstancedMesh per bucket, sharing the krathong assets. The batch never creates or disposes geometry or material. */
-export function createKrathongBatchMeshes(assets: KrathongAssets, maxItems: number = ZONE_ITEM_CAP): readonly InstancedMesh[] {
+export function createKrathongBatchMeshes(
+  assets: KrathongAssets,
+  maxItems: number = ZONE_ITEM_CAP,
+  lod: KrathongLod = "full",
+): readonly InstancedMesh[] {
   assertMaxItems(maxItems);
   const meshes = KRATHONG_INSTANCE_BUCKETS.map((b, i) => {
-    const mesh = new InstancedMesh(assets.geometry(b.geometryKey), assets.material(b.materialKey), b.maxPerKrathong * maxItems);
+    const mesh = new InstancedMesh(assets.geometry(b.geometryKey, lod), assets.material(b.materialKey), b.maxPerKrathong * maxItems);
     mesh.name = SCENE_OBJECT_NAMES.riverBatchMeshPrefix + i;
     mesh.userData[KRATHONG_BATCH_BUCKET_USERDATA_KEY] = i;
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -157,6 +162,22 @@ export function createKrathongBatchMeshes(assets: KrathongAssets, maxItems: numb
     return mesh;
   });
   return Object.freeze(meshes);
+}
+
+/**
+ * Re-points each bucket mesh at the shared geometry of `lod` (MFW-69, tier change). Creates, disposes and allocates nothing;
+ * called from a layout effect, never per frame. Part matrices do not depend on the LOD.
+ */
+export function applyKrathongBatchLod(meshes: readonly InstancedMesh[], assets: KrathongAssets, lod: KrathongLod): void {
+  for (let i = 0; i < meshes.length; i++) {
+    const bucket = KRATHONG_INSTANCE_BUCKETS[i];
+    if (bucket === undefined) continue;
+    const geometry = assets.geometry(bucket.geometryKey, lod);
+    if (meshes[i].geometry !== geometry) {
+      meshes[i].geometry = geometry;
+      meshes[i].boundingSphere = null;
+    }
+  }
 }
 
 export function applyKrathongBatchPlan(meshes: readonly InstancedMesh[], plan: KrathongInstancePlan): void {

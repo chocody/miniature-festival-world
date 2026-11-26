@@ -16,6 +16,9 @@ import {
   KRATHONG_LEAF_COUNT,
   KRATHONG_LEAF_MODELS,
   KRATHONG_LEAF_VARIATION,
+  KRATHONG_LODS,
+  KRATHONG_MAX_TRIANGLES_BY_LOD,
+  KRATHONG_RIVER_LOD_BY_TIER,
 } from "./krathongModel.config";
 import { LOOK_PALETTE } from "./look.config";
 
@@ -43,6 +46,8 @@ describe("krathong model v2 config (MFW-48)", () => {
       KRATHONG_LEAF_VARIATION,
       FLAME_FLICKER,
       FLAME_FLICKER_REDRAW_INTERVAL_MS,
+      KRATHONG_RIVER_LOD_BY_TIER,
+      KRATHONG_MAX_TRIANGLES_BY_LOD,
     };
     for (const [name, spec] of Object.entries(specs)) expectDeepFrozen(spec, name);
     expect(KRATHONG_LEAF_VARIATION).toHaveLength(KRATHONG_LEAF_COUNT);
@@ -96,5 +101,16 @@ describe("krathong model v2 config (MFW-48)", () => {
     }
     expect(HIGH).toBeLessThanOrEqual(MEDIUM);
     expect(MEDIUM).toBeLessThanOrEqual(LOW);
+  });
+
+  it("LOD map covers every 3D tier with a known LOD (MFW-69)", () => {
+    for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) expect(KRATHONG_LODS, tier).toContain(KRATHONG_RIVER_LOD_BY_TIER[tier]);
+    expect(Object.keys(KRATHONG_RIVER_LOD_BY_TIER).sort()).toEqual(["HIGH", "LOW", "MEDIUM"]);
+    // A lower tier never draws more detail than a higher one.
+    const rank = (t: keyof typeof KRATHONG_RIVER_LOD_BY_TIER) => KRATHONG_LODS.indexOf(KRATHONG_RIVER_LOD_BY_TIER[t]);
+    expect(rank("HIGH")).toBeLessThanOrEqual(rank("MEDIUM"));
+    expect(rank("MEDIUM")).toBeLessThanOrEqual(rank("LOW"));
+    expect(KRATHONG_RIVER_LOD_BY_TIER.MEDIUM).toBe("medium");
+    expect(KRATHONG_RIVER_LOD_BY_TIER.LOW).toBe("low");
   });
 });
