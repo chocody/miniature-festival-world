@@ -1,14 +1,23 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { FLAT_RIVER_END_MARGIN_PROGRESS } from "@/config/fallback2d.config";
-import { LOY_KRATHONG_RIVER_ENVIRONMENT, LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
+import { FLAT_RIVER_END_MARGIN_PROGRESS, FLAT_RIVER_VISIBLE_BANK_DEPTH } from "@/config/fallback2d.config";
+import {
+  LOY_KRATHONG_RIVER_CHANNEL,
+  LOY_KRATHONG_RIVER_ENVIRONMENT,
+  LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION,
+  LOY_KRATHONG_RIVER_LANE_ID,
+  LOY_KRATHONG_RIVER_LANE_WIDTH,
+  LOY_KRATHONG_TREE_SHAPES,
+  LOY_KRATHONG_TREES,
+} from "@/config/events/loyKrathong.river.config";
 import { RIVER_COLLISION_RADIUS } from "@/config/riverFlow.config";
-import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
+import { LOY_KRATHONG_RIVER_FOLIAGE, LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 import { RIVER_CHANNEL_CURVE_ID } from "@/core/world/riverEnvironment";
+import { createFlatCanvasScratch, flatProgressToCanvasInto } from "./flatRiverFrame";
 import { createFlatLaneFrameOut, flatLaneFrameInto } from "./flatLane";
 import { FLAT_RIVER_CHANNEL_CURVE_ID, resolveFlatRiverScene } from "./flatRiverScene";
 import { getLoyKrathongFlatRiver } from "./loyKrathongFlatRiver";
-import { worldToCanvas } from "./topDownProjection";
+import { createCanvasPointOut, worldToCanvas } from "./topDownProjection";
 
 const DIGITS = 12;
 const def = LOY_KRATHONG_RIVER_ENVIRONMENT;
@@ -101,8 +110,103 @@ describe("flat river scene = MFW-27 resolved layout", () => {
 
   it("rejects bad input", () => {
     const bent = { ...def, channel: { ...def.channel, controlPoints: def.channel.controlPoints.map((p) => ({ ...p, y: 1 })) } };
-    expect(() => resolveFlatRiverScene(bent, 1, 0.05)).toThrow(RangeError);
-    expect(() => resolveFlatRiverScene(def, 0, 0.05)).toThrow(RangeError);
-    expect(() => resolveFlatRiverScene(def, 1, 0.5)).toThrow(RangeError);
+    const foliage = LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION;
+    expect(() => resolveFlatRiverScene(bent, foliage, 1, 0.05)).toThrow(RangeError);
+    expect(() => resolveFlatRiverScene(def, foliage, 0, 0.05)).toThrow(RangeError);
+    expect(() => resolveFlatRiverScene(def, foliage, 1, 0.5)).toThrow(RangeError);
+    // T68: one foliage tree per environment tree.
+    expect(() => resolveFlatRiverScene(def, { trees: [], plants: [] }, 1, 0.05)).toThrow(RangeError);
+  });
+});
+
+describe("flat river scene = the 3D village and foliage (MFW-51, invariant B)", () => {
+  const near = (a: number, b: number, tol: number) => expect(Math.abs(a - b)).toBeLessThan(tol);
+
+  it("T62 houses carry their roof and sit on the 3D per-roof instances", () => {
+    const seen = { pyramid: 0, gable: 0 };
+    scene.houses.forEach((h, i) => {
+      expect(h.roof).toBe(def.houses[i].roof);
+      expect(h.side).toBe(def.houses[i].side);
+      const t = layout.housesByRoof[h.roof][seen[h.roof]++];
+      near(h.x, t.position.x, 1e-12);
+      near(h.z, t.position.z, 1e-12);
+    });
+    expect(seen.pyramid).toBe(layout.housesByRoof.pyramid.length);
+    expect(seen.gable).toBe(layout.housesByRoof.gable.length);
+  });
+
+  it("T63 bushes, rocks and riverside plants match the 3D instances", () => {
+    for (const key of ["bushes", "rocks"] as const) {
+      expect(scene[key]).toHaveLength(layout[key].length);
+      scene[key].forEach((p, i) => {
+        const t = layout[key][i];
+        near(p.x, t.position.x, 1e-12);
+        near(p.z, t.position.z, 1e-12);
+        near(p.yawRad, t.yawRad, 1e-12);
+        near(p.scale, t.scale, 1e-12);
+      });
+    }
+    expect(scene.plants).toHaveLength(LOY_KRATHONG_RIVER_FOLIAGE.plants.length);
+    scene.plants.forEach((p, i) => {
+      const t = LOY_KRATHONG_RIVER_FOLIAGE.plants[i];
+      near(p.x, t.position.x, 1e-12);
+      near(p.z, t.position.z, 1e-12);
+      near(p.yawRad, t.yawRad, 1e-12);
+      near(p.scale, t.scale, 1e-12);
+    });
+  });
+
+  it("T64 tree shapes place the clumps where the 3D foliage puts them", () => {
+    const clumps = LOY_KRATHONG_RIVER_FOLIAGE.clumps;
+    let k = 0;
+    scene.trees.forEach((t, i) => {
+      expect(t.shape).toBe(LOY_KRATHONG_TREES[i].shape);
+      const cos = Math.cos(t.yawRad);
+      const sin = Math.sin(t.yawRad);
+      for (const c of LOY_KRATHONG_TREE_SHAPES[t.shape].clumps) {
+        near(t.x + (c.x * cos + c.z * sin) * t.scale, clumps[k].position.x, 1e-9);
+        near(t.z + (-c.x * sin + c.z * cos) * t.scale, clumps[k].position.z, 1e-9);
+        k++;
+      }
+    });
+  });
+
+  it("T65 the water is the shared channel width", () => {
+    const n = def.ribbonSegments;
+    for (let i = 0; i <= n; i++) {
+      const a = scene.waterOutline[i];
+      const b = scene.waterOutline[2 * (n + 1) - 1 - i];
+      near(Math.hypot(a.x - b.x, a.z - b.z), LOY_KRATHONG_RIVER_CHANNEL.width, 1e-9);
+    }
+  });
+
+  it("T66 lane ±0.5 through the shared projection is the 3D lane width", () => {
+    const lane = lanes.get(LOY_KRATHONG_RIVER_LANE_ID)!;
+    const a = flatProgressToCanvasInto(lane, 0.4, -0.5, projection, createCanvasPointOut(), createFlatCanvasScratch());
+    const b = flatProgressToCanvasInto(lane, 0.4, 0.5, projection, createCanvasPointOut(), createFlatCanvasScratch());
+    near(Math.hypot(a.x - b.x, a.y - b.y), LOY_KRATHONG_RIVER_LANE_WIDTH * projection.scale, 1e-6);
+  });
+
+  it("T67 bounds: x spans the water edges, z the bank depth", () => {
+    const m = FLAT_RIVER_END_MARGIN_PROGRESS;
+    const n = def.ribbonSegments;
+    const f = createFlatLaneFrameOut();
+    const half = def.channel.width / 2;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (let i = 0; i <= n; i++) {
+      flatLaneFrameInto(scene.channel, m + (1 - 2 * m) * (i / n), f);
+      for (const s of [-1, 1]) {
+        const x = f.cx + f.rx * s * half;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        const lat = s * (half + FLAT_RIVER_VISIBLE_BANK_DEPTH);
+        const z = f.cz + f.rz * lat;
+        expect(z).toBeGreaterThanOrEqual(scene.bounds.minZ);
+        expect(z).toBeLessThanOrEqual(scene.bounds.maxZ);
+      }
+    }
+    expect(scene.bounds.minX).toBe(minX);
+    expect(scene.bounds.maxX).toBe(maxX);
   });
 });

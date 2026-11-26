@@ -102,6 +102,13 @@ describe("FALLBACK_2D import graph is three-free (MFW-33, MFW-44)", () => {
       "src/core/world/zoneRiverItems.ts",
       "src/components/ui/InspectPopup.tsx",
       "src/core/ritual/ownKrathong.ts",
+      // MFW-51: the new look's modules are walked too.
+      "src/core/fallback2d/krathongOutlines.ts",
+      "src/core/customization/krathongMeshData.ts",
+      "src/core/fallback2d/flatRiverArt.ts",
+      "src/core/fallback2d/flatLight.ts",
+      "src/components/ui/useResolvedLightPreset.ts",
+      "src/config/events/loyKrathong.life.config.ts",
     ]) {
       expect(seen.has(path.join(ROOT, f)), f).toBe(true);
     }

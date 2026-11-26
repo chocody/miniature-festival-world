@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import {
   FLAT_KRATHONG_VIEW_AZIMUTH_RAD,
@@ -8,20 +8,21 @@ import {
   FLAT_RIVER_FRAME_INTERVAL_MS,
   FLAT_RIVER_MARK_SCALE,
   FLAT_RIVER_PADDING_PX,
-  FLAT_RIVER_PROP_SIZES,
   FLAT_RIVER_SPRITE_SCALE,
   FLAT_MIN_TAP_RADIUS_PX,
   FLAT_RIVER_TAP_RADIUS,
   FLAT_RIVER_VIEW_HEIGHT_PX,
-  FLAT_VIEW_COLORS,
   FLAT_VIEW_COPY,
 } from "@/config/fallback2d.config";
 import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
+import { KRATHONG_HERO_LOD, type KrathongLod } from "@/config/krathongModel.config";
 import { FALLBACK_2D_EFFECT_POOL_CAPS } from "@/config/performance.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
+import { krathongRiverLod } from "@/core/customization/krathongAssetKeys";
 import { createObjectPoolManager } from "@/core/effects/objectPoolManager";
 import { createRippleFrame, writeRippleFrameAt } from "@/core/effects/gimmickCurves";
 import {
+  buildFlatRiverArt,
   buildKrathongLayers2D,
   canvasToWorldXZ,
   createCanvasPointOut,
@@ -31,11 +32,11 @@ import {
   flatRiverScrollLeft,
   flatRiverScrollLeftAfterRescale,
   getLoyKrathongFlatRiver,
+  krathongAppearanceKey,
   worldToCanvas,
   worldToCanvasInto,
   type FlatLane,
   type FlatLaneSet,
-  type FlatProp,
   type KrathongLayer2D,
   type TopDownProjection,
 } from "@/core/fallback2d/flat";
@@ -49,12 +50,14 @@ import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { OverlaySlot } from "@/components/ui/StageLayout";
+import { useResolvedLightPreset } from "@/components/ui/useResolvedLightPreset";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { useWorldStore } from "@/store/useWorldStore";
 import { FlatKrathongShapes } from "./FlatKrathongShapes";
+import { FlatBlobGradient, FlatRiverBackdrop, FlatRiverNearProps } from "./FlatRiverArt";
 import { useFlatFocusRequestId, useFlatFocusTarget } from "./useFlatFocusTarget";
 
 export interface FrameScheduler {
@@ -80,11 +83,13 @@ interface FlatRiverRenderItem {
 }
 type GimmickKind = "ripple" | "inspect";
 
-const SPRITE_VIEW = Object.freeze({
+const SPRITE_ANGLES = Object.freeze({
   azimuthRad: FLAT_KRATHONG_VIEW_AZIMUTH_RAD,
   elevationRad: FLAT_KRATHONG_VIEW_ELEVATION_RAD,
-  modelYawRad: 0,
 });
+const SPRITE_VIEW = Object.freeze({ ...SPRITE_ANGLES, modelYawRad: 0 });
+/** River batch LOD of FALLBACK_2D (the 3D LOD table, MFW-69): shared river krathongs; the own krathong uses the hero LOD. */
+const SHARED_RIVER_LOD: KrathongLod = krathongRiverLod("FALLBACK_2D");
 const defaultNow = (): number => Date.now();
 const defaultFrames: FrameScheduler = {
   request: (callback) => requestAnimationFrame(callback),
@@ -110,9 +115,6 @@ function pierSpotCanvasPoint(lanes: FlatLaneSet, projection: TopDownProjection):
   );
   return { x: p.x, y: p.y };
 }
-function polygonPoints(points: readonly { readonly x: number; readonly y: number }[]): string {
-  return points.map((p) => `${p.x},${p.y}`).join(" ");
-}
 
 /**
  * Semi top-down 2D river of FALLBACK_2D (MFW-33): a horizontally scrollable SVG map. Krathongs are placed from the SAME stored
@@ -122,7 +124,10 @@ function polygonPoints(points: readonly { readonly x: number; readonly y: number
 export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }: FlatRiverViewProps) {
   // MFW-54: the map is as tall as the stage (measured below); null until measured → the default map height.
   const [stageHeightPx, setStageHeightPx] = useState<number | null>(null);
-  const { lanes, scene, projection } = getLoyKrathongFlatRiver(stageHeightPx ?? FLAT_RIVER_VIEW_HEIGHT_PX);
+  const { lanes, scene, projection, villagers } = getLoyKrathongFlatRiver(stageHeightPx ?? FLAT_RIVER_VIEW_HEIGHT_PX);
+  // MFW-51: both 2D views follow the same day / night preset as 3D.
+  const preset = useResolvedLightPreset();
+  const gradientId = "flat-blob-" + useId().replace(/[^A-Za-z0-9_-]/g, "");
   const mapWidth = projection.viewport.width;
   const mapHeight = projection.viewport.height;
 
@@ -135,25 +140,10 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   const focusId = useFlatFocusTarget();
   const focusRequestId = useFlatFocusRequestId();
 
-  // Static map art, once.
-  const art = useMemo(() => {
-    const toCanvas = (p: { readonly x: number; readonly z: number }) => worldToCanvas(p, projection);
-    const waterPath = `${scene.waterOutline.map((p, i) => `${i === 0 ? "M" : "L"} ${toCanvas(p).x} ${toCanvas(p).y}`).join(" ")} Z`;
-    const pierPoints = polygonPoints(scene.pierDeck.map(toCanvas));
-    const prop = (p: FlatProp, size: number) => ({ ...toCanvas(p), size: size * p.scale * projection.scale });
-    return {
-      waterPath,
-      pierPoints,
-      pierTipX: toCanvas(scene.pierTip).x,
-      houses: scene.houses.map((p) => ({
-        ...toCanvas(p),
-        halfW: FLAT_RIVER_PROP_SIZES.houseHalfWidth * p.scale * projection.scale,
-        halfD: FLAT_RIVER_PROP_SIZES.houseHalfDepth * p.scale * projection.scale,
-      })),
-      trees: scene.trees.map((p) => prop(p, FLAT_RIVER_PROP_SIZES.treeRadius)),
-      lamps: scene.lamps.map((p) => prop(p, FLAT_RIVER_PROP_SIZES.lampRadius)),
-    };
-  }, [scene, projection]);
+  // Static map art: rebuilt only on a rescale or a preset switch (never per frame).
+  const art = useMemo(() => buildFlatRiverArt(scene, villagers, projection, preset, SPRITE_ANGLES), [scene, villagers, projection, preset]);
+  // The scroll effects read only the pier tip, so a preset switch never re-runs them.
+  const pierTipX = useMemo(() => worldToCanvas(scene.pierTip, projection).x, [scene, projection]);
 
   const saved = ritual.saved;
   const pierPreview = mode === "RITUAL_RELEASE" && ritual.phase !== "RELEASED";
@@ -172,6 +162,17 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
       if (el) elements.set(id, el);
       else elements.delete(id);
     };
+    // Equal appearances share one layer array (per LOD), so a full zone builds each look once.
+    const layerCache = new Map<string, readonly KrathongLayer2D[]>();
+    const layersFor = (appearance: KrathongAppearance, lod: KrathongLod) => {
+      const key = krathongAppearanceKey(appearance) + "|" + lod;
+      let layers = layerCache.get(key);
+      if (layers === undefined) {
+        layers = buildKrathongLayers2D(appearance, SPRITE_VIEW, { lod, preset });
+        layerCache.set(key, layers);
+      }
+      return layers;
+    };
     const list: FlatRiverRenderItem[] = [];
     for (const it of sharedItems) {
       const lane = lanes.get(it.coord.laneId);
@@ -181,7 +182,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         coord: it.coord,
         createdAtMs: it.createdAtMs,
         lane,
-        layers: buildKrathongLayers2D(it.appearance, SPRITE_VIEW),
+        layers: layersFor(it.appearance, SHARED_RIVER_LOD),
         own: false,
         setElement: register(it.id),
       });
@@ -194,16 +195,19 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
           coord: saved.coord,
           createdAtMs: saved.createdAtMs,
           lane,
-          layers: buildKrathongLayers2D(ownAppearance, SPRITE_VIEW),
+          layers: layersFor(ownAppearance, KRATHONG_HERO_LOD),
           own: true,
           setElement: register(saved.id),
         });
       }
     }
     return { items: list, shared: sharedItems };
-  }, [eventId, currentZoneId, zoneItems, saved, pierPreview, ownOnRiver, ownAppearance, lanes, elements]);
+  }, [eventId, currentZoneId, zoneItems, saved, pierPreview, ownOnRiver, ownAppearance, lanes, elements, preset]);
 
-  const ownLayers = useMemo(() => buildKrathongLayers2D(ownAppearance, SPRITE_VIEW), [ownAppearance]);
+  const ownLayers = useMemo(
+    () => buildKrathongLayers2D(ownAppearance, SPRITE_VIEW, { lod: KRATHONG_HERO_LOD, preset }),
+    [ownAppearance, preset],
+  );
   const pier = useMemo(() => pierSpotCanvasPoint(lanes, projection), [lanes, projection]);
 
   const clockOffsetMs = saved?.serverClockOffsetMs ?? 0;
@@ -332,7 +336,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller || latest.current.focusId !== null) return;
-    scrollScrollerTo(scroller, flatRiverScrollLeft(art.pierTipX, scroller.clientWidth, mapWidth), "auto");
+    scrollScrollerTo(scroller, flatRiverScrollLeft(pierTipX, scroller.clientWidth, mapWidth), "auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount
   }, []);
 
@@ -346,7 +350,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
     if (prev.mapWidth <= prev.viewportWidth && latest.current.focusId === null) {
       // The old map could not scroll (no wider than the viewport, e.g. the first measurement on a desktop), so its centre was not
       // a chosen position: centre the pier, as on mount.
-      scrollScrollerTo(scroller, flatRiverScrollLeft(art.pierTipX, scroller.clientWidth, mapWidth), "auto");
+      scrollScrollerTo(scroller, flatRiverScrollLeft(pierTipX, scroller.clientWidth, mapWidth), "auto");
       return;
     }
     scrollScrollerTo(
@@ -361,7 +365,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
       ),
       "auto",
     );
-  }, [projection, mapWidth, art]);
+  }, [projection, mapWidth, pierTipX]);
 
   // Find My: one scroll per request that centres the krathong (instant under reduced motion).
   useEffect(() => {
@@ -467,11 +471,12 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
         data-river-item-count={items.length}
         data-flat-own-krathong={pierPreview ? "pier" : ownOnRiver ? "river" : "none"}
         data-focused-creation-id={focusId ?? undefined}
+        data-light-preset={preset}
         data-ripple-capacity={pools.ripple.capacity}
         data-last-gimmick={gimmick.kind ?? undefined}
         data-gimmick-count={gimmick.count}
         className="relative h-full w-full overflow-hidden"
-        style={{ backgroundColor: FLAT_VIEW_COLORS.bank }}
+        style={{ backgroundColor: art.groundFill }}
       >
         <div
           ref={scrollerRef}
@@ -492,27 +497,12 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerCancel}
           >
-            <rect width={mapWidth} height={mapHeight} fill={FLAT_VIEW_COLORS.bank} />
-            <path d={art.waterPath} fill={FLAT_VIEW_COLORS.water} data-input-target="water" />
-            <g pointerEvents="none">
-              {art.trees.map((p, i) => (
-                <circle key={`tree-${i}`} cx={p.x} cy={p.y} r={p.size} fill={FLAT_VIEW_COLORS.tree} />
-              ))}
-              {art.houses.map((p, i) => (
-                <rect
-                  key={`house-${i}`}
-                  x={p.x - p.halfW}
-                  y={p.y - p.halfD}
-                  width={p.halfW * HALF}
-                  height={p.halfD * HALF}
-                  fill={FLAT_VIEW_COLORS.house}
-                />
-              ))}
-              {art.lamps.map((p, i) => (
-                <circle key={`lamp-${i}`} cx={p.x} cy={p.y} r={p.size} fill={FLAT_VIEW_COLORS.lamp} />
-              ))}
-            </g>
-            <polygon points={art.pierPoints} fill={FLAT_VIEW_COLORS.pier} pointerEvents="none" />
+            <defs>
+              <FlatBlobGradient id={gradientId} />
+            </defs>
+            <rect width={mapWidth} height={mapHeight} fill={art.groundFill} />
+            <FlatRiverBackdrop art={art} gradientId={gradientId} />
+            <path d={art.pier.d} fill={art.pier.fill} pointerEvents="none" />
             <g pointerEvents="none">
               {rippleSlots.map((slot) => (
                 <circle
@@ -529,6 +519,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
             </g>
             {pierPreview && pier && (
               <g data-testid="flat-own-krathong" transform={`translate(${pier.x} ${pier.y})`} pointerEvents="none">
+                <circle r={art.krathongBlobRadiusPx} fill={`url(#${gradientId})`} />
                 <g transform={`scale(${spritePx})`}>
                   <FlatKrathongShapes layers={ownLayers} />
                 </g>
@@ -543,6 +534,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
                 data-own={it.own ? "true" : undefined}
                 data-marked={it.id === focusId ? "true" : undefined}
               >
+                <circle r={art.krathongBlobRadiusPx} fill={`url(#${gradientId})`} pointerEvents="none" />
                 <g transform={`scale(${spritePx})`}>
                   <FlatKrathongShapes layers={it.layers} />
                 </g>
@@ -551,6 +543,7 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
                 )}
               </g>
             ))}
+            <FlatRiverNearProps art={art} />
           </svg>
         </div>
         {tapHint.visible && (

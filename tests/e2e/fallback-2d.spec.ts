@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { makeOwnZoneItem } from "./fixtures/findMyFixtures";
 import { E2E_CREATION_ID, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
-import { E2E_FLAT_RIVER_PROBED_HEIGHT_PX } from "./fixtures/stageFixtures";
+import { E2E_FLAT_RIVER_PROBED_HEIGHT_PX, E2E_LIGHT_PRESET_STORAGE_KEY } from "./fixtures/stageFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 
@@ -181,4 +181,40 @@ test("Find My scrolls to my krathong", async ({ page }) => {
   await expect(own).toHaveAttribute("data-marked", "true");
   await expect(own).toHaveAttribute("transform", /\bscale\(/);
   await expect(page.locator('[data-testid="flat-focus-ring"]')).toHaveCount(0);
+});
+
+test("FALLBACK_2D follows the day / night preset (MFW-51)", async ({ page }) => {
+  const errors = await setUp(page);
+  await page.addInitScript((key) => localStorage.setItem(key, "NIGHT"), E2E_LIGHT_PRESET_STORAGE_KEY);
+  await page.goto("/");
+  await waitForActiveEvent(page);
+  await expect(page.locator(PREVIEW)).toHaveAttribute("data-light-preset", "NIGHT");
+  await page.getByRole("button", { name: "ถัดไป" }).click();
+  await completeWishStep(page);
+  await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
+  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expect(page.locator(RIVER)).toHaveAttribute("data-light-preset", "NIGHT");
+  const bankFill = () => page.locator(`${RIVER} svg > rect`).first().getAttribute("fill");
+  const nightFill = await bankFill();
+  await page.getByRole("radiogroup", { name: "แสงในฉาก" }).getByRole("radio", { name: "กลางวัน" }).click();
+  await expect(page.locator(RIVER)).toHaveAttribute("data-light-preset", "DAY");
+  await expect.poll(bankFill).not.toBe(nightFill);
+  expect(errors).toEqual([]);
+});
+
+test("FALLBACK_2D world shows the village (MFW-51)", async ({ page }) => {
+  await setUp(page);
+  await page.goto("/");
+  await walkToWorld(page);
+  for (const selector of [
+    '[data-flat-prop="house"][data-roof="pyramid"]',
+    '[data-flat-prop="house"][data-roof="gable"]',
+    '[data-flat-prop="tree"][data-tree-shape="round"]',
+    '[data-flat-prop="tree"][data-tree-shape="tall"]',
+    '[data-flat-prop="lamp"]',
+    '[data-flat-prop="reed"]',
+  ]) {
+    await expect.poll(() => page.locator(selector).count(), { message: selector }).toBeGreaterThan(0);
+  }
+  await expect(page.locator("canvas")).toHaveCount(0);
 });

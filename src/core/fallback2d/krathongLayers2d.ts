@@ -1,71 +1,138 @@
-import { FLAT_KRATHONG_SIDE_SHADE } from "@/config/fallback2d.config";
+import { FLAT_KRATHONG_VEIN } from "@/config/fallback2d.config";
+import { KRATHONG_HERO_LOD, type KrathongLod } from "@/config/krathongModel.config";
+import { KRATHONG_FLAME_GLOW, LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
 import { assembleKrathong } from "@/core/customization/krathongAssembler";
-import { geometrySpecFor, materialSpecFor } from "@/core/customization/krathongAssetKeys";
+import { materialSpecFor } from "@/core/customization/krathongAssetKeys";
 import type { KrathongAppearance, KrathongPartInstance, KrathongPartRole } from "@/core/customization/types";
 import { shadeHex } from "@/core/math/shadeHex";
+import { createFlatLightContext, rotateYaw, type FlatLightContext, type FlatVec3 } from "./flatLight";
+import { bladePath, convexHull2D, polygonPath, smoothClosedPath, smoothOpenPath } from "./flatPath";
+import { krathongOutlineDataFor } from "./krathongOutlines";
+import { projectModelPoint, type FlatKrathongView, type ProjectedPoint2D } from "./spriteProjection";
 
-/** Orthographic 3/4 view: camera azimuth/elevation around the model, plus the model's own yaw (three rotation.y). */
-export interface FlatKrathongView {
-  readonly azimuthRad: number;
-  readonly elevationRad: number;
-  readonly modelYawRad: number;
+export { projectModelPoint, type FlatKrathongView, type ProjectedPoint2D, type FlatSpriteView } from "./spriteProjection";
+
+/** One filled outline of a part, model units, screen y DOWN. Derived at render time, NEVER persisted. */
+export interface KrathongShape2D {
+  readonly d: string; // SVG path, model units, y down
+  readonly fill: string; // "#rrggbb"
+  readonly vein?: string; // open path (leaf midrib), full LOD only
+  readonly veinStroke?: string; // shadeHex(fill, FLAT_KRATHONG_VEIN.shade)
 }
-interface LayerBase {
-  readonly id: string;
+/** One MFW-19 part: its shapes back to front. */
+export interface KrathongLayer2D {
+  readonly id: string; // part id (unique)
   readonly role: KrathongPartRole;
-  readonly depth: number;
-  readonly fill: string;
+  readonly depth: number; // projected depth of the part origin (+ centre anchor)
+  readonly shapes: readonly KrathongShape2D[]; // back to front
 }
-/** Model units, screen x right, screen y DOWN, origin = projected model origin. Derived at render time, NEVER persisted. */
-export type KrathongLayer2D =
-  | (LayerBase & { readonly kind: "ellipse"; readonly cx: number; readonly cy: number; readonly rx: number; readonly ry: number })
-  | (LayerBase & {
-      readonly kind: "triangle";
-      readonly points: readonly [number, number, number, number, number, number];
-    })
-  | (LayerBase & {
-      readonly kind: "puck";
-      readonly cx: number;
-      readonly topY: number;
-      readonly bottomY: number;
-      readonly topRx: number;
-      readonly topRy: number;
-      readonly bottomRx: number;
-      readonly bottomRy: number;
-      readonly sideFill: string;
-    });
-export interface ProjectedPoint2D {
-  readonly x: number;
-  readonly y: number;
-  readonly depth: number;
+export interface KrathongLayers2DOptions {
+  readonly lod?: KrathongLod;
+  readonly preset?: LightPresetId;
 }
 
-export function projectModelPoint(p: readonly [number, number, number], view: FlatKrathongView): ProjectedPoint2D {
-  const [x, y, z] = p;
-  const cosRho = Math.cos(view.modelYawRad);
-  const sinRho = Math.sin(view.modelYawRad);
-  const xw = x * cosRho + z * sinRho;
-  const zw = -x * sinRho + z * cosRho;
-  const cosA = Math.cos(view.azimuthRad);
-  const sinA = Math.sin(view.azimuthRad);
-  const sx = xw * cosA - zw * sinA;
-  const zt = xw * sinA + zw * cosA; // toward the camera
-  const cosPhi = Math.cos(view.elevationRad);
-  const sinPhi = Math.sin(view.elevationRad);
-  return { x: sx, y: -y * cosPhi + zt * sinPhi, depth: zt * cosPhi + y * sinPhi };
-}
+const UP: FlatVec3 = Object.freeze([0, 1, 0] as const);
+const XYZ = 3;
 
 interface PositionedPart {
   readonly part: KrathongPartInstance;
   readonly position: readonly [number, number, number];
 }
+interface DepthShape {
+  readonly shape: KrathongShape2D;
+  readonly depth: number;
+  readonly k: number;
+}
+
+const sub = (a: FlatVec3, b: FlatVec3): FlatVec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a: FlatVec3, b: FlatVec3): FlatVec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a: FlatVec3, b: FlatVec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const meanDepth = (points: readonly ProjectedPoint2D[]): number => points.reduce((s, p) => s + p.depth, 0) / points.length;
+
+/** "base|lotusFold|leafColor|flowers (null → -)|candleColor": equal appearances share one layer set. */
+export function krathongAppearanceKey(appearance: KrathongAppearance): string {
+  return `${appearance.base}|${appearance.lotusFold}|${appearance.leafColor}|${appearance.flowers.map((f) => f ?? "-").join(",")}|${appearance.candleColor}`;
+}
+
+function partShapes(
+  { part, position }: PositionedPart,
+  view: FlatKrathongView,
+  lod: KrathongLod,
+  preset: LightPresetId,
+  ctx: FlatLightContext,
+): readonly KrathongShape2D[] {
+  const data = krathongOutlineDataFor(part.geometryKey, lod);
+  const color = materialSpecFor(part.materialKey).color;
+  const [sx, sy, sz] = part.scale;
+  const cosY = Math.cos(part.rotationY);
+  const sinY = Math.sin(part.rotationY);
+  const pos = data.positions;
+  const model = (v: number): FlatVec3 => {
+    const x = pos[v * XYZ] * sx;
+    const y = pos[v * XYZ + 1] * sy;
+    const z = pos[v * XYZ + 2] * sz;
+    return [x * cosY + z * sinY + position[0], y + position[1], -x * sinY + z * cosY + position[2]];
+  };
+  const project = (v: number) => projectModelPoint(model(v), view);
+  /** Model normal → world normal (model yaw), flipped toward the camera. */
+  const facing = (n: FlatVec3): FlatVec3 => {
+    const w = rotateYaw(n, view.modelYawRad);
+    return dot(w, ctx.cameraDir) < 0 ? [-w[0], -w[1], -w[2]] : w;
+  };
+  const capRole = part.role === "base" || part.role === "candle";
+  const list: DepthShape[] = [];
+  let firstHull = true;
+  const push = (shape: KrathongShape2D, depth: number) => list.push({ shape: Object.freeze(shape), depth, k: list.length });
+
+  for (const s of data.shapes) {
+    if (s.kind === "blade") {
+      const outline = s.outline.map(project);
+      const normal = facing(cross(sub(model(s.outline[s.tipAt]), model(s.outline[0])), sub(model(s.mid[1]), model(s.mid[0]))));
+      const fill = ctx.lit(color, normal);
+      const d = bladePath(outline, s.tipAt);
+      push(
+        lod === "full" ? { d, fill, vein: smoothOpenPath(s.vein.map(project)), veinStroke: shadeHex(fill, FLAT_KRATHONG_VEIN.shade) } : { d, fill },
+        meanDepth(outline),
+      );
+    } else if (s.kind === "hull") {
+      const points = s.vertices.map(project);
+      const depth = meanDepth(points);
+      const fill =
+        part.role === "flame"
+          ? ctx.lit(
+              color,
+              UP, // the flame glow is up-lit like T4 / the lead probe (MFW-51 dev: the spec's P5 said cameraDir, T26 pins UP)
+              materialSpecFor("flame").emissive,
+              LIGHT_PRESETS[preset].flame.emissiveIntensity,
+              KRATHONG_FLAME_GLOW.toneMapped,
+            )
+          : ctx.lit(color, ctx.cameraHorizontalDir);
+      push({ d: polygonPath(convexHull2D(points)), fill }, depth);
+      if (firstHull && capRole && s.cap !== null) push({ d: polygonPath(s.cap.map(project)), fill: ctx.lit(color, UP) }, depth);
+      firstHull = false;
+    } else {
+      const rim = s.rim.map(project);
+      const normal = facing(sub(model(s.axis[0]), model(s.axis[1])));
+      push({ d: smoothClosedPath(rim), fill: ctx.lit(color, normal) }, meanDepth(rim));
+    }
+  }
+  list.sort((a, b) => a.depth - b.depth || a.k - b.k);
+  return Object.freeze(list.map((e) => e.shape));
+}
 
 /**
- * Appearance (parsed) → one layer per MFW-19 part, sorted back-to-front by depth (ties keep part order).
- * Sphere layers are exact for sx = sz and an approximation for MFW-19's flattened `style_02` leaf (accepted).
- * Throws only on an unknown key, like geometrySpecFor. Pure; never mutates the appearance.
+ * Appearance (parsed) → one layer per MFW-19 part, sorted back-to-front by part depth (ties keep part order). Each layer holds
+ * the part's outlines from the 3D mesh vertices (krathongOutlines), lit like 3D under the preset (flatLight). Default LOD
+ * KRATHONG_HERO_LOD, default preset DAY. Throws only on an unknown key. Pure; never mutates the appearance.
  */
-export function buildKrathongLayers2D(appearance: KrathongAppearance, view: FlatKrathongView): readonly KrathongLayer2D[] {
+export function buildKrathongLayers2D(
+  appearance: KrathongAppearance,
+  view: FlatKrathongView,
+  options: KrathongLayers2DOptions = {},
+): readonly KrathongLayer2D[] {
+  const lod = options.lod ?? KRATHONG_HERO_LOD;
+  const preset = options.preset ?? "DAY";
+  const ctx = createFlatLightContext(view, preset);
   const assembly = assembleKrathong(appearance);
   const anchor = assembly.centerAnchor.localPosition;
   const parts: PositionedPart[] = [
@@ -79,62 +146,15 @@ export function buildKrathongLayers2D(appearance: KrathongAppearance, view: Flat
       ] as const,
     })),
   ];
-  const cosPhi = Math.cos(view.elevationRad);
-  const sinPhi = Math.sin(view.elevationRad);
-  const indexed = parts.map(({ part, position }, k) => {
-    const g = geometrySpecFor(part.geometryKey);
-    const fill = materialSpecFor(part.materialKey).color;
-    const [sx, sy, sz] = part.scale;
-    const [px, py, pz] = position;
-    const c = projectModelPoint(position, view);
-    const base = { id: part.id, role: part.role, depth: c.depth, fill };
-    let layer: KrathongLayer2D;
-    if (g.type === "cylinder") {
-      const half = (g.height * sy) / 2;
-      const top = projectModelPoint([px, py + half, pz], view);
-      const bottom = projectModelPoint([px, py - half, pz], view);
-      layer = {
-        ...base,
-        kind: "puck",
-        cx: c.x,
-        topY: top.y,
-        bottomY: bottom.y,
-        topRx: g.radiusTop * sx,
-        topRy: g.radiusTop * sz * sinPhi,
-        bottomRx: g.radiusBottom * sx,
-        bottomRy: g.radiusBottom * sz * sinPhi,
-        sideFill: shadeHex(fill, FLAT_KRATHONG_SIDE_SHADE),
-      };
-    } else if (g.type === "sphere") {
-      layer = {
-        ...base,
-        kind: "ellipse",
-        cx: c.x,
-        cy: c.y,
-        rx: g.radius * sx,
-        ry: g.radius * Math.hypot(sy * cosPhi, sz * sinPhi),
-      };
-    } else {
-      const half = (g.height * sy) / 2;
-      const apex = projectModelPoint([px, py + half, pz], view);
-      const bottom = projectModelPoint([px, py - half, pz], view);
-      const r = g.radius * sx;
-      layer = { ...base, kind: "triangle", points: [c.x - r, bottom.y, c.x + r, bottom.y, c.x, apex.y] };
-    }
-    return { layer: Object.freeze(layer), k };
-  });
+  const indexed = parts.map((p, k) => ({
+    layer: Object.freeze({
+      id: p.part.id,
+      role: p.part.role,
+      depth: projectModelPoint(p.position, view).depth,
+      shapes: partShapes(p, view, lod, preset, ctx),
+    }),
+    k,
+  }));
   indexed.sort((a, b) => a.layer.depth - b.layer.depth || a.k - b.k);
   return Object.freeze(indexed.map((e) => e.layer));
-}
-
-/** Side of a puck: bottom front half-arc + straight sides to the top ellipse. */
-export function puckSidePath(layer: Extract<KrathongLayer2D, { kind: "puck" }>): string {
-  const l = layer;
-  return `M ${l.cx - l.bottomRx} ${l.bottomY} A ${l.bottomRx} ${l.bottomRy} 0 0 0 ${l.cx + l.bottomRx} ${l.bottomY} L ${l.cx + l.topRx} ${l.topY} L ${l.cx - l.topRx} ${l.topY} Z`;
-}
-
-/** "x0,y0 x1,y1 x2,y2". */
-export function trianglePoints(layer: Extract<KrathongLayer2D, { kind: "triangle" }>): string {
-  const p = layer.points;
-  return `${p[0]},${p[1]} ${p[2]},${p[3]} ${p[4]},${p[5]}`;
 }

@@ -36,4 +36,9 @@ describe("art-direction note (MFW-47 AC1)", () => {
       expect(doc).toContain(term);
     }
   });
+
+  it("documents the 2D fallback (MFW-51)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    for (const term of ["flatSurfaceColor", "krathongOutlines", "screenshots/mfw-51/"]) expect(doc).toContain(term);
+  });
 });

@@ -478,10 +478,11 @@ describe("FlowRoot", () => {
       expect(inSlot(lightSwitch(), "top")).toBe(true);
     });
 
-    it("FALLBACK_2D shows no day/night switch (2D day/night is MFW-51)", () => {
+    it("FALLBACK_2D shows the day/night switch in the corner: it drives the 2D view (MFW-51)", () => {
       act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
       render(<FlowRoot eventId="loy_krathong" />);
-      expect(screen.queryByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel })).toBeNull();
+      const lightSwitch = screen.getByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel });
+      expect(inSlot(lightSwitch, "corner")).toBe(true);
     });
 
     it("the scene element survives RITUAL → WORLD", async () => {

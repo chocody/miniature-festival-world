@@ -16,12 +16,13 @@ afterEach(() => {
 });
 
 describe("DayNightSwitch", () => {
-  it("renders nothing before profiling and on FALLBACK_2D", () => {
+  it("renders nothing before profiling; renders the three radios on FALLBACK_2D (MFW-51)", () => {
     const { container, rerender } = render(<DayNightSwitch />);
     expect(container).toBeEmptyDOMElement();
     act(() => useDeviceStore.getState().setQualityTier("FALLBACK_2D"));
     rerender(<DayNightSwitch />);
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("radiogroup", { name: COPY.groupLabel })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
   });
 
   it("shows three radios on a 3D tier, AUTO checked by default", () => {

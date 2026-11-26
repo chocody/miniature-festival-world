@@ -46,7 +46,7 @@ screenshots. "Reserved" keys are not used yet; the listed card builds on them.
 | flameHalo | #F9EAA6 | flame halo — reserved for 9.2 |
 | lanternGlow | #FFC46B | warm lamp emissive |
 | shadowTint | #40564A | blob-shadow tint (dark sage, never black) |
-| daySky | #D8E4CF | DAY background (pale sage haze); also the 2D fallback background |
+| daySky | #D8E4CF | DAY background (pale sage haze); the 2D customize preview now shows lit water (MFW-51) |
 | nightSky | #2E3E63 | NIGHT background (deep periwinkle, not black) |
 | stone | #B9B7A8 | riverside rocks; not in the reference, DRAFT (MFW-49) |
 
@@ -128,7 +128,7 @@ A preset change is an instant cut (no cross-fade), so it is safe under reduced m
   PLACEHOLDER). One timer fires at the next boundary, and the clock is re-read when the tab becomes visible again.
   There is no per-frame or per-second work.
 - The switch below the scene ("แสงในฉาก": ตามเวลาจริง / กลางวัน / กลางคืน) overrides AUTO. It is hidden before profiling
-  and on FALLBACK_2D (the 2D view keeps the DAY albedo until MFW-51).
+  only; on FALLBACK_2D the switch drives the 2D view (MFW-51).
 - The choice is a per-device display preference. It is kept only in this device's LocalStorage under
   `mfw:lightPreset:v1` ("DAY" or "NIGHT"; AUTO = no key) and in `useDeviceStore.lightPresetChoice`. It is never sent
   to the server and is not creation data.
@@ -215,7 +215,7 @@ All parts are parametric clay meshes. Each is an indexed closed solid with smoot
 - Flame: a teardrop on the candle tip.
 - Incense: 3 slim sticks.
 - The 2D fallback is unchanged in code. It reads the same assembly, so it picks up the v2 proportions, the leaf variation and
-  one small yellow ellipse per flower centre. Full 2D v2 art is MFW-51.
+  one small yellow ellipse per flower centre. Full 2D art followed in MFW-51 (§15), which replaced this.
 
 ### Palette use
 
@@ -716,3 +716,86 @@ Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after
 | World, 1440×900, night | ![before](screenshots/mfw-70/after-desktop-1440x900-world-night.png) | ![after](screenshots/mfw-50/after-desktop-1440x900-world-night.png) |
 | World, 390×844, day | ![before](screenshots/mfw-70/after-phone-390x844-world-day.png) | ![after](screenshots/mfw-50/after-phone-390x844-world-day.png) |
 | World, 390×844, night | ![before](screenshots/mfw-70/after-phone-390x844-world-night.png) | ![after](screenshots/mfw-50/after-phone-390x844-world-night.png) |
+
+## 15. 2D fallback v2 (MFW-51, backlog 9.5)
+
+FALLBACK_2D (flat SVG, no three.js code) now shows the same world as 3D: the same palette lit by the same DAY / NIGHT
+preset, the krathong outlined from the same v3 meshes for every appearance key, and the riverside drawn from the same layout
+config. Every position comes from the stored coord or the shared config through the three-free twins (invariant B); there is
+no 2D-only position, size or colour.
+
+### 15.1 Colour rule
+
+`flatSurfaceColor` (`src/core/fallback2d/flatLight.ts`) estimates the 3D lit colour of a face: Lambert under
+`LIGHT_PRESETS[preset]` (hemisphere + ambient + key, the formula of `estimateLitLuminance`) + emissive, then three's PBR
+Neutral tone map (`LOOK_RENDERER`; the flame stays untoned like `KRATHONG_FLAME_GLOW`), then sRGB. One preset config drives
+both views. Lead probe against the 3D screenshots: DAY grass `#a5b789` (3D `#A4B689`), NIGHT grass `#678483` (3D `#678282`),
+DAY water `#8ca6a2`, NIGHT water `#53769b` (3D `#54759A`) — within ±3 per channel (pinned in `flatLight.test.ts`).
+The day / night switch shows on FALLBACK_2D too and both 2D views follow `useResolvedLightPreset` (moved to
+`src/components/ui/` so the 2D import graph stays three-free; loop decision, not yet reviewed by the owner).
+
+### 15.2 Krathong outlines
+
+`krathongOutlines` (`src/core/fallback2d/krathongOutlines.ts`) reads the exact vertices the 3D builders make
+(`buildLeafShellMeshData`, `buildPetalRingMeshData`, `buildPetalDiscMeshData`, `buildLatheMeshData` + `applyMeshTransform`):
+leaf and petal shells → pointed blade outlines (edge columns, tip) with a midrib; petal discs → their lobed rim; lathes → a dense
+silhouette (`FLAT_LATHE_SILHOUETTE_SEGMENTS` 48, technical) as a convex hull plus a top cap on the base and candle. Projected
+with the 3D camera's 3/4 angles and drawn as smooth SVG paths, one layer per assembled part, each face lit by its own normal.
+LODs: own krathong (CUSTOMIZE preview, pier, own river item) = `KRATHONG_HERO_LOD` (full, with midribs); shared river
+krathongs = `krathongRiverLod("FALLBACK_2D")` = low (no midribs). Equal appearances share one layer array.
+
+### 15.3 Riverside sprites
+
+Props are small 3/4 sprites anchored at their top-down ground point (open question 9: top-down map + 3/4 sprites), every
+number from the 3D config (`src/core/fallback2d/flatProps2d.ts`):
+
+| Prop | Source |
+|---|---|
+| House body, door, windows | `RIVER_ENVIRONMENT_PARTS.houseBody` (rounded faces), `houseDoor`, `houseWindow` (glow at NIGHT via `VILLAGE_LIGHTS`), `HOUSE_FACADE` |
+| Roofs | `houseRoof` (pyramid) and `houseRoofGable` (gable) per `LOY_KRATHONG_RIVER_ENVIRONMENT.houses[i].roof` |
+| Trees | `LOY_KRATHONG_TREE_SHAPES` round / tall clumps (two-tone clay spheres) on the `treeTrunk` geometry |
+| Bushes | `LOY_KRATHONG_BUSH_CLUMPS` |
+| Rocks | `RIVER_ENVIRONMENT_PARTS.rock` |
+| Lamps | `lampPost`, `lampHead` (lantern emissive at NIGHT, no halo — MFW-67) |
+| Reeds / grass tufts | `riversidePlant` blades at `LOY_KRATHONG_RIVERSIDE_PLANTS` |
+| Villagers | `VILLAGER_PARTS` silhouettes; the LOW living world (`LIVING_WORLD_TIERS.LOW`: 2 standing at their STAND pose) |
+| Bank slopes, shore band, blobs | `RIVER_BANK_PROFILE`, `RIVER_WATER_HIGHLIGHTS.shore`, `RIVER_ENVIRONMENT_BLOB_SHADOWS`, `BLOB_SHADOW_LOOK` |
+
+Far-bank sprites draw under the krathongs, near-bank sprites over them (3/4 occlusion); all are `pointer-events: none`, only
+the water and the krathong hit circles take taps. Static art is rebuilt only on a rescale or a preset switch; per frame the
+2D river still writes only krathong transforms.
+
+### 15.4 Framing
+
+`FLAT_RIVER_VISIBLE_BANK_DEPTH` 1.2 → 3.2 (DRAFT): the village (houses at setback 1.45 / 2.6) and most trees are on the map;
+at 390×844 the map is ≈ 70.7 px per world unit (3D phone framing ≈ 72). Bounds rule (technical): across the flow the map shows
+water ± bank depth; along the flow it is cropped at the water edges, so a deeper bank never widens the map and the % 1 wrap
+stays off-map (owner decision 22). The wider river (MFW-49) arrives through the shared lane projection.
+
+### 15.5 DRAFT values and loop decisions (MFW-51)
+
+`FLAT_RIVER_VISIBLE_BANK_DEPTH` 3.2; `FLAT_SPHERE_HIGHLIGHT` { offset 0.25, radius 0.72 }; `FLAT_KRATHONG_VEIN` { shade 0.75,
+width 0.015 }. Loop decisions, not yet reviewed by the owner: the switch shows on FALLBACK_2D; 2 standing villagers in 2D
+(`FLAT_RIVER_VILLAGER_COUNT` = LOW); the 2D customize backdrop is lit water; the 2D night krathong is moonlit (no candle
+warmth). Technical: `FLAT_PATH_DECIMALS` 3, `FLAT_BLOB_GRADIENT_STOPS` 5, `FLAT_SHORE_BAND_STEPS` 2,
+`FLAT_LATHE_SILHOUETTE_SEGMENTS` 48.
+
+Not drawn in 2D: the endless river (MFW-71), lamp / villager taps (MFW-60), ambient motes, lantern flicker, foliage sway and
+villager walking, the per-krathong pale ripple ring and water glints, pier piles and plank detail, the walking path (not drawn
+in 3D either), the own-krathong candle point light.
+
+DOM size (measured, jsdom): a default river krathong at low LOD is 55 SVG elements (≈ 19 KB of path data; lead estimate before: ≈ 25
+elements); a full 80-item zone ≈ 4 400 + 313 static elements. Re-test on a weak phone (docs/follow-ups.md).
+
+### 15.6 Before / after (MFW-51)
+
+Production build, WebGL disabled (FALLBACK_2D), reduced motion.
+
+| | Before | After |
+|---|---|---|
+| World, 390×844, day | ![before](screenshots/mfw-51/before-phone-390x844-world-day.png) | ![after](screenshots/mfw-51/after-phone-390x844-world-day.png) |
+| World, 390×844, night | (2D had no night) | ![after](screenshots/mfw-51/after-phone-390x844-world-night.png) |
+| World, 1440×900, day | — | ![after](screenshots/mfw-51/after-desktop-1440x900-world-day.png) |
+| Customize, 390×844, day | — | ![after](screenshots/mfw-51/after-phone-390x844-customize-day.png) |
+| Customize, 390×844, night | — | ![after](screenshots/mfw-51/after-phone-390x844-customize-night.png) |
+

@@ -29,16 +29,15 @@ function targetIndex(key: string, current: number, count: number): number | null
 }
 
 /**
- * Day / night switch for the 3D scene (open question 32, MFW-47): AUTO follows the device's local time, DAY / NIGHT
- * override it; the choice stays on this device. Hidden before profiling and on FALLBACK_2D (2D day/night is MFW-51).
+ * Day / night switch of the scene (open question 32, MFW-47): AUTO follows the device's local time, DAY / NIGHT
+ * override it; the choice stays on this device. Hidden before profiling; on FALLBACK_2D it drives the 2D view (MFW-51).
  * Keyboard: one tab stop (the checked radio); arrow keys, Home and End move the choice. Visual design DRAFT (MFW-55).
  */
 export function DayNightSwitch(): JSX.Element | null {
   const profiled = useDeviceStore((s) => s.profiled);
-  const qualityTier = useDeviceStore((s) => s.qualityTier);
   const choice = useDeviceStore((s) => s.lightPresetChoice);
   const radios = useRef<Array<HTMLButtonElement | null>>([]);
-  if (!profiled || qualityTier === "FALLBACK_2D") return null;
+  if (!profiled) return null;
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const next = targetIndex(event.key, index, LIGHT_PRESET_CHOICES.length);

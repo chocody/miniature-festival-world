@@ -76,7 +76,7 @@ function partShapeFor(key: KrathongGeometryKey): PartShapeSpec | undefined {
   return undefined;
 }
 
-/** v1 primitive: the 2D-fallback silhouette and the river-footprint proxy. */
+/** v1 primitive: the river-footprint proxy (the 2D fallback draws outlines of `mesh` since MFW-51). */
 export function geometrySpecFor(key: KrathongGeometryKey): PrimitiveGeometrySpec {
   const shape = partShapeFor(key);
   if (shape === undefined) throw new Error(`unknown krathong geometry key: ${key}`);

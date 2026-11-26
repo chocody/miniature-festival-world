@@ -3,7 +3,7 @@ import { CAMERA_FLIGHT_OFFSET } from "./camera.config";
 import * as cfg from "./fallback2d.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
 import { KRATHONG_MARK_CUE, MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
-import { EFFECT_POOL_CAPS, FALLBACK_2D_EFFECT_POOL_CAPS } from "./performance.config";
+import { EFFECT_POOL_CAPS, FALLBACK_2D_EFFECT_POOL_CAPS, LIVING_WORLD_TIERS } from "./performance.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 
 describe("fallback2d.config", () => {
@@ -31,7 +31,6 @@ describe("fallback2d.config", () => {
 
   it("keeps the placeholders finite and positive", () => {
     for (const v of [
-      cfg.FLAT_KRATHONG_SIDE_SHADE,
       cfg.FLAT_KRATHONG_PREVIEW_VIEW.halfExtent,
       cfg.FLAT_KRATHONG_PREVIEW_VIEW.centerLift,
       cfg.FLAT_RIVER_VIEW_HEIGHT_PX,
@@ -46,16 +45,31 @@ describe("fallback2d.config", () => {
     expect(cfg.FLAT_RIVER_END_MARGIN_PROGRESS).toBeLessThan(0.5);
   });
 
-  it("uses #RRGGBB colours, non-empty copy and frozen objects", () => {
-    for (const c of Object.values(cfg.FLAT_VIEW_COLORS)) expect(c).toMatch(/^#[0-9a-fA-F]{6}$/);
+  it("uses non-empty copy and frozen objects", () => {
     for (const t of Object.values(cfg.FLAT_VIEW_COPY)) expect(t.length).toBeGreaterThan(0);
     for (const o of [
       cfg.FLAT_KRATHONG_PREVIEW_VIEW,
-      cfg.FLAT_RIVER_PROP_SIZES,
-      cfg.FLAT_VIEW_COLORS,
       cfg.FLAT_VIEW_COPY,
+      cfg.FLAT_KRATHONG_VEIN,
+      cfg.FLAT_SPHERE_HIGHLIGHT,
     ]) {
       expect(Object.isFrozen(o)).toBe(true);
     }
+  });
+
+  it("MFW-51 look constants: finite positive DRAFT members, integer technical counts", () => {
+    for (const o of [cfg.FLAT_KRATHONG_VEIN, cfg.FLAT_SPHERE_HIGHLIGHT]) {
+      expect(Object.isFrozen(o)).toBe(true);
+      for (const v of Object.values(o)) expect(Number.isFinite(v) && v > 0).toBe(true);
+    }
+    for (const n of [cfg.FLAT_LATHE_SILHOUETTE_SEGMENTS, cfg.FLAT_PATH_DECIMALS, cfg.FLAT_SHORE_BAND_STEPS]) {
+      expect(Number.isInteger(n) && n >= 1).toBe(true);
+    }
+    expect(Number.isInteger(cfg.FLAT_BLOB_GRADIENT_STOPS) && cfg.FLAT_BLOB_GRADIENT_STOPS >= 2).toBe(true);
+  });
+
+  it("FALLBACK_2D shows the LOW living world: its villager count, standing (MFW-51)", () => {
+    expect(cfg.FLAT_RIVER_VILLAGER_COUNT).toBe(LIVING_WORLD_TIERS.LOW.villagerCount);
+    expect(LIVING_WORLD_TIERS.LOW.villagersWalk).toBe(false);
   });
 });
