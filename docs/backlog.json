@@ -808,7 +808,7 @@
     {
       "id": "L13",
       "summary": "Loop 13 — Generated 3D Models, Natural Look & Bigger Scene",
-      "description": "Owner request 2026-11-25 (second review): the procedural models still look flat. Use generated 3D models (Higgsfield image/text-to-3D → GLB) made from docs/spec/assets/loy-krathong-look-ref.png for the krathong, houses, lamps and fireworks; people can be simple silhouettes. No yellow rings around objects — the scene should look natural; anything in the scene can be interacted with; the scene should fill the screen (it looks small).",
+      "description": "Owner request 2026-11-25 (second review): the procedural models still look flat. Use generated 3D models (Higgsfield image/text-to-3D → GLB) made from docs/spec/assets/loy-krathong-look-ref.png for the krathong, houses, lamps and fireworks; people can be simple silhouettes. No yellow rings around objects — the scene should look natural; anything in the scene can be interacted with; the scene should fill the screen (it looks small). Update 2026-11-26 (owner): the owner supplied the krathong and house models, so 13.1 / 13.2 / 13.7 use them instead of Higgsfield.",
       "labels": [
         "loop-13",
         "loy-krathong",
@@ -819,14 +819,11 @@
       "stories": [
         {
           "id": "13.1",
-          "summary": "Generated-model pipeline (GLB) and krathong model from the reference",
-          "goal": "A repeatable way to bring generated 3D models into the scene within the mobile budget, proven on the krathong.",
+          "summary": "Owner-supplied krathong models — GLB pipeline, colouring script and the first design",
+          "goal": "Owner (2026-11-26): use the five krathong models the owner supplied (models_and_refs.zip: hy3d-model*.glb, one-piece, uncoloured, about 20,000 triangles each) instead of Higgsfield-generated ones. The loop colours them by script from the owner's colour reference images; non-commercial use (owner).",
           "ac": [
-            "Krathong part models are generated with Higgsfield (image/text-to-3D) from docs/spec/assets/loy-krathong-look-ref.png, exported as GLB, and optimised offline (decimated, compressed, textures ≤ the tier's max texture size); source prompts / job ids and the optimise steps are documented in docs/design/models.md so a model can be regenerated",
-            "A loader module loads GLB assets lazily after the tier is decided (never in the first-screen bundle, never on FALLBACK_2D), shares geometry / material / texture across instances and disposes them on unmount and zone switch",
-            "Every customizer option still maps to a model (appearance keys and stored data unchanged); river krathongs stay instanced; a full 80-item zone stays inside the tier budgets (draw calls, triangles and programs recorded like docs/perf/MFW-34.md)",
-            "LOW uses a lighter variant (fewer triangles / smaller textures) or keeps the procedural model; the choice is in performance.config.ts",
-            "Asset files are committed under public/ with a size budget enforced by a test; licences / generation terms are noted in docs/design/models.md"
+            "The five owner-supplied krathong models are decimated offline into per-LOD GLB files that fit KRATHONG_MAX_TRIANGLES_BY_LOD (a raised close-up budget is stated openly) and coloured by a committed script that assigns pastel vertex colours by region (base, leaves / petals, flowers, candle) matching the owner's reference images; the model's own flame is replaced by the existing procedural flame (glow and flicker kept); krathongs saved with any existing appearance keys render as the first design without error until 14.4 (stored data unchanged); no textures; at most one extra built-in program variant for vertex colours and LOW stays within E2E_MAX_SHADER_PROGRAMS (stated openly); sources, commands and the owner's non-commercial licence note are in docs/design/models.md",
+            "A loader loads the GLB assets lazily after the tier is decided, shares geometry and material across instances, keeps river krathongs instanced per design and LOD, and disposes on unmount and zone switch; a full 80-item zone stays within the tier budgets (draw calls, triangles, programs recorded in docs/perf); committed asset files have a size budget enforced by a test; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -841,14 +838,10 @@
         },
         {
           "id": "13.2",
-          "summary": "Generated models for houses, lamps and fireworks; silhouette villagers",
-          "goal": "The riverside props look as rich as the reference instead of flat boxes.",
+          "summary": "Owner-supplied house model on the riverside",
+          "goal": "Owner (2026-11-26): use the house model the owner supplied (House by Poly by Google, about 1,300 triangles in 49 parts) on the riverside; the procedural trees stay (the supplied tree pack is too heavy for the mobile budget — loop assessment); lamps, fireworks and silhouette villagers were delivered by 11.4 and 9.4.",
           "ac": [
-            "Houses and riverside lamps use generated GLB models (13.1 pipeline) placed by the existing layout; repeated props are instanced; windows / lamp heads still light up in the night preset",
-            "Fireworks: a pooled burst effect (ObjectPoolManager, fixed cap) with a generated or stylised model / sprite, launched by the sky tap of 11.4; flashes stay within WCAG 2.3.1 and are static under reduced motion",
-            "Villagers are simple dark silhouettes (owner: \"คนอาจจะแค่เป็นเงาๆก็พอ\") walking the riverside paths of 9.4; no faces or detail",
-            "Tier budgets hold on HIGH / MEDIUM / LOW with before / after numbers; everything is disposed on zone switch; r3f-perf-reviewer PASS",
-            "Before / after screenshots at phone and desktop size, day and night, are attached to the PR"
+            "Riverside houses use the owner-supplied house model, merged into a few instanced parts and recoloured to the clay pastel palette (vertex colours, no textures), placed by the existing layout; windows still light up at night and on a house tap; environment budgets kept (any raise stated openly); licence / attribution noted in docs/design/models.md; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -858,9 +851,7 @@
             "dev-opus"
           ],
           "blockedBy": [
-            "13.1",
-            "9.3",
-            "9.4"
+            "13.1"
           ]
         },
         {
@@ -951,6 +942,24 @@
           "blockedBy": [
             "9.3"
           ]
+        },
+        {
+          "id": "13.7",
+          "summary": "Owner-supplied krathong models — the other four designs",
+          "goal": "Owner (2026-11-26): all five supplied krathong designs are available (split from 13.1 by the loop lead, 2026-11-26).",
+          "ac": [
+            "The four remaining owner-supplied designs go through the 13.1 pipeline (decimated per LOD, coloured by the committed script from the owner's reference images, flames replaced by the procedural flame, as in 13.1) within the same per-LOD budgets and asset size test; before / after screenshots of all five designs at the customize close-up and at river distance, DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "13.1"
+          ]
         }
       ]
     },
@@ -967,14 +976,13 @@
       "stories": [
         {
           "id": "14.1",
-          "summary": "Minimal UI — krathong picker, fading wish bubble, day/night toggle, camera button top left",
-          "goal": "Owner (2026-11-26): the UI shows less text and fewer panels; the scene and the krathongs carry the experience.",
+          "summary": "Minimal HUD — krathong picker, day/night toggle, camera button top left",
+          "goal": "Owner (2026-11-26): the UI shows less text and fewer panels; the scene and the krathongs carry the experience. Split by the loop lead on 2026-11-26: the fading wish bubble is 14.6.",
           "ac": [
-            "Find My is one round icon button; tapping it opens a compact picker of the user's own krathongs (small krathong thumbnail plus a short Thai date such as \"26 พ.ย. 69\" and the time — no weekday names such as MON / TUE, no explanatory text); choosing one brings that krathong into view (reduced motion: instant cut) and closes the picker; with one krathong the button goes straight to it (the picker layout and the one-krathong shortcut are loop decisions recorded for the owner)",
-            "Tapping another person's krathong shows only a speech bubble with its public wish text floating above that krathong in the scene, following it as it drifts, and fading out after a few seconds (duration DRAFT); the old text panel is removed; private wish text never appears (invariant C); the bubble position is derived from the stored coord (invariant A)",
+            "Find My is one round icon button; tapping it opens a compact picker of the user's own krathongs (small krathong thumbnail plus a short date such as \"26 NOV 2026\" and the time — no weekday names such as MON / TUE, no explanatory text); choosing one brings that krathong into view (reduced motion: instant cut) and closes the picker; with one krathong the button goes straight to it (the picker layout and the one-krathong shortcut are loop decisions recorded for the owner)",
             "The day / night control is one toggle button showing a coloured sun or moon symbol and no text; tapping it switches DAY ↔ NIGHT; until the user touches it the scene keeps following the real time of day (owner decision, open question 32); how the user returns to the real-time default is a loop decision recorded for the owner; the button has an accessible Thai label",
             "The camera-rotate button moves to the top left with the other round buttons; behaviour unchanged; every button keeps MIN_TOUCH_TARGET_PX and does not cover the river at 390×844, 360×640 and 1440×900",
-            "e2e covers the picker (choose a krathong → it comes into view), the bubble (appears, follows, fades, no panel), the toggle (DAY ↔ NIGHT) and the rotate button position; before / after screenshots at phone and desktop sizes, DAY and NIGHT"
+            "e2e covers the picker (choose a krathong → it comes into view), the toggle (DAY ↔ NIGHT) and the rotate button position; before / after screenshots at phone and desktop sizes, DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -987,25 +995,96 @@
         },
         {
           "id": "14.2",
-          "summary": "Scene polish — fuller village, lamp lights up, random firework or sky lantern, second flower type, deeper waves",
-          "goal": "Owner (2026-11-26): the world should look full and alive, and every tap should feel natural. The lead may split this card if it is too large for one reviewable PR (each slice shippable on its own).",
+          "summary": "Lamp lights up; empty-ground tap launches a firework or a sky lantern at random",
+          "goal": "Owner (2026-11-26): every tap feels natural — a lamp tap simply turns the lamp on, and the sky tap is a surprise. Split by the loop lead on 2026-11-26 from the larger scene-polish card (fuller village 14.3, second flower type 14.4, deeper water 14.5).",
           "ac": [
-            "More houses (and matching props) along both banks so the scene looks full at the default framing on phone and desktop, DAY and NIGHT; scenery repeats per stretch as in 11.2; per-tier render budgets are kept (any raise is stated openly with the reason); repeated parts stay instanced (invariant E)",
-            "Tapping a lamp turns its light on (the lamp head glows and warm light falls on the ground around it, no ring or halo) and nothing rises from it — the sky lantern is no longer launched from a lamp; reduced motion: the light switches on instantly",
-            "Tapping empty ground / bank (the \"sky\" tap of 11.4) launches either a firework or a sky lantern at random (both pooled with fixed caps; the random choice is seeded so tests are deterministic; the split between the two is DRAFT)",
-            "The krathong model gets a second flower type so the bare areas of the base look full, and the customizer lets the user choose between the two flower types; krathongs saved before this card still render exactly as before (stored appearance stays compatible) and any server-side appearance allowlist accepts the new key",
-            "The river water shows more depth (e.g. gentle wave shading and highlights that move with the flow), within the tier budgets and without a new shader program on LOW (E2E_MAX_SHADER_PROGRAMS); unit tests and e2e cover the lamp, the random sky tap and the flower choice; before / after screenshots DAY and NIGHT"
+            "Tapping a lamp turns its light on (the lamp head glows; any warm light on the ground must not read as a ring, halo or disc) and nothing rises from it — no sky lantern from a lamp; reduced motion: the light switches on instantly",
+            "Tapping empty ground / bank launches either a firework or a sky lantern at random (both pooled with fixed caps; the generator is seeded so tests are deterministic; the split is DRAFT); unit tests and e2e cover the lamp and the random sky tap; no new shader program on LOW; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
             "3d",
-            "art",
             "interaction",
             "perf",
             "dev-opus"
           ],
           "blockedBy": [
             "11.6"
+          ]
+        },
+        {
+          "id": "14.3",
+          "summary": "Fuller village along both banks",
+          "goal": "Owner (2026-11-26): the village should fill the scene (split from 14.2).",
+          "ac": [
+            "More houses and matching props along both banks so the scene looks full at the default framing on phone and desktop, DAY and NIGHT; scenery repeats per stretch as in 11.2; repeated parts stay instanced; per-tier render budgets kept (any raise stated openly) and the environment budget test covers the new props; before / after screenshots"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "14.2"
+          ]
+        },
+        {
+          "id": "14.4",
+          "summary": "Customizer — choose one of the five krathong designs",
+          "goal": "Owner (2026-11-26): the krathong is customised by choosing one of the five supplied designs (the models are one piece, so parts are not mixed). Replaces the earlier second-flower-type card.",
+          "ac": [
+            "The customizer lets the user choose one of the five krathong designs (thumbnails, no long text); the choice is stored as an appearance key the server-side appearance parser accepts, and the river shows each krathong in its chosen design",
+            "Krathongs saved before this card still render (mapped to a default design, fixture test); unit tests and e2e cover choosing a design and seeing it on the river; before / after screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "ui",
+            "privacy",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "13.7"
+          ]
+        },
+        {
+          "id": "14.5",
+          "summary": "Water with more depth",
+          "goal": "Owner (2026-11-26): the river waves should look more three-dimensional (split from 14.2).",
+          "ac": [
+            "The river water shows more depth (gentle wave shading and highlights that move with the flow) within the per-tier budgets and without a new shader program on LOW (E2E_MAX_SHADER_PROGRAMS); reduced motion keeps the water still; before / after screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "14.3"
+          ]
+        },
+        {
+          "id": "14.6",
+          "summary": "Fading wish bubble over another person's krathong",
+          "goal": "Owner (2026-11-26): tapping someone else's krathong shows only a short-lived speech bubble, no text panel (split from 14.1).",
+          "ac": [
+            "Tapping another person's krathong shows only a speech bubble with its public wish text floating above that krathong in the scene, following it as it drifts, and fading out after a few seconds (duration DRAFT); the old text panel is removed; private wish text never appears (invariant C); the bubble position is derived from the stored coord (invariant A)",
+            "e2e covers the bubble (appears over the tapped krathong, follows it, fades, no panel); before / after screenshots at phone size, DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui",
+            "interaction",
+            "3d",
+            "privacy",
+            "perf"
+          ],
+          "blockedBy": [
+            "14.1"
           ]
         }
       ]
