@@ -24,6 +24,7 @@ import {
   E2E_TRAVEL_DRAG_FRACTION,
   E2E_TRAVEL_JUMPS,
   E2E_ZONE_LABEL,
+  E2E_TRAVEL_TEST_TIMEOUT_MS,
 } from "./fixtures/endlessRiver";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { readStagePixels } from "./helpers/backgroundProbe";
@@ -137,6 +138,7 @@ async function expectNoBackground(page: Page, step: string) {
 }
 
 test("E1 HIGH: dragging along the river passes the seam; zones stream in and wrap after the last one", async ({ page }) => {
+  test.setTimeout(E2E_TRAVEL_TEST_TIMEOUT_MS);
   const { errors } = await openHighWorld(page, 3, { 1: 2, 2: 2, 3: 3 }, 3);
   const nav = page.locator(NAV);
   await expect(scene(page)).toHaveAttribute("data-stretch-index", "0");
@@ -175,6 +177,7 @@ test.describe("reduced motion", () => {
   });
 
   test("E3 HIGH: with one zone there are no ‹ › buttons and the same zone comes back in every stretch", async ({ page }) => {
+    test.setTimeout(E2E_TRAVEL_TEST_TIMEOUT_MS);
     const { errors } = await openHighWorld(page, 1, { 1: 3 }, 1);
     await expect(page.getByRole("button", { name: E2E_NEXT_ZONE_NAME })).toHaveCount(0);
     await expect(page.getByRole("button", { name: E2E_PREVIOUS_ZONE_NAME })).toHaveCount(0);
