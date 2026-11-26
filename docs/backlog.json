@@ -808,7 +808,7 @@
     {
       "id": "L13",
       "summary": "Loop 13 — Generated 3D Models, Natural Look & Bigger Scene",
-      "description": "Owner request 2026-11-25 (second review): the procedural models still look flat. Use generated 3D models (Higgsfield image/text-to-3D → GLB) made from docs/spec/assets/loy-krathong-look-ref.png for the krathong, houses, lamps and fireworks; people can be simple silhouettes. No yellow rings around objects — the scene should look natural; anything in the scene can be interacted with; the scene should fill the screen (it looks small).",
+      "description": "Owner request 2026-11-25 (second review): the procedural models still look flat. Use generated 3D models (Higgsfield image/text-to-3D → GLB) made from docs/spec/assets/loy-krathong-look-ref.png for the krathong, houses, lamps and fireworks; people can be simple silhouettes. No yellow rings around objects — the scene should look natural; anything in the scene can be interacted with; the scene should fill the screen (it looks small). Update 2026-11-26 (owner): the owner supplied the krathong and house models, so 13.1 / 13.2 / 13.7 use them instead of Higgsfield.",
       "labels": [
         "loop-13",
         "loy-krathong",
@@ -822,7 +822,7 @@
           "summary": "Owner-supplied krathong models — GLB pipeline, colouring script and the first design",
           "goal": "Owner (2026-11-26): use the five krathong models the owner supplied (models_and_refs.zip: hy3d-model*.glb, one-piece, uncoloured, about 20,000 triangles each) instead of Higgsfield-generated ones. The loop colours them by script from the owner's colour reference images; non-commercial use (owner).",
           "ac": [
-            "The five owner-supplied krathong models are decimated offline into per-LOD GLB files that fit KRATHONG_MAX_TRIANGLES_BY_LOD (a raised close-up budget is stated openly) and coloured by a committed script that assigns pastel vertex colours by region (base, leaves / petals, flowers, candle, flame) matching the owner's reference images; no textures; at most one extra built-in program variant for vertex colours and LOW stays within E2E_MAX_SHADER_PROGRAMS (stated openly); sources, commands and the owner's non-commercial licence note are in docs/design/models.md",
+            "The five owner-supplied krathong models are decimated offline into per-LOD GLB files that fit KRATHONG_MAX_TRIANGLES_BY_LOD (a raised close-up budget is stated openly) and coloured by a committed script that assigns pastel vertex colours by region (base, leaves / petals, flowers, candle) matching the owner's reference images; the model's own flame is replaced by the existing procedural flame (glow and flicker kept); krathongs saved with any existing appearance keys render as the first design without error until 14.4 (stored data unchanged); no textures; at most one extra built-in program variant for vertex colours and LOW stays within E2E_MAX_SHADER_PROGRAMS (stated openly); sources, commands and the owner's non-commercial licence note are in docs/design/models.md",
             "A loader loads the GLB assets lazily after the tier is decided, shares geometry and material across instances, keeps river krathongs instanced per design and LOD, and disposes on unmount and zone switch; a full 80-item zone stays within the tier budgets (draw calls, triangles, programs recorded in docs/perf); committed asset files have a size budget enforced by a test; before / after screenshots DAY and NIGHT"
           ],
           "labels": [
@@ -948,7 +948,7 @@
           "summary": "Owner-supplied krathong models — the other four designs",
           "goal": "Owner (2026-11-26): all five supplied krathong designs are available (split from 13.1 by the loop lead, 2026-11-26).",
           "ac": [
-            "The four remaining owner-supplied designs go through the 13.1 pipeline (decimated per LOD, coloured by the committed script from the owner's reference images, flames replaced by the procedural flame) within the same per-LOD budgets and asset size test; before / after screenshots of all five designs at the customize close-up and at river distance, DAY and NIGHT"
+            "The four remaining owner-supplied designs go through the 13.1 pipeline (decimated per LOD, coloured by the committed script from the owner's reference images, flames replaced by the procedural flame, as in 13.1) within the same per-LOD budgets and asset size test; before / after screenshots of all five designs at the customize close-up and at river distance, DAY and NIGHT"
           ],
           "labels": [
             "loy-krathong",
@@ -1079,7 +1079,9 @@
             "loy-krathong",
             "ui",
             "interaction",
-            "3d"
+            "3d",
+            "privacy",
+            "perf"
           ],
           "blockedBy": [
             "14.1"
