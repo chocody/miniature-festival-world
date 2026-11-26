@@ -229,7 +229,7 @@ Prompt: "Brief <path>, spec <path>; implement in <WT>; write your report to <dev
 paths (`git -C <WT> status --porcelain --untracked-files=all` — nothing is committed yet), using the table in
 `CLAUDE.md`: `privacy-auditor` for `src/services/**`, `supabase/**`, `src/app/api/**`, wish text, owner token /
 ownership, moderation, reporting, or label `privacy`; `r3f-perf-reviewer` for `src/components/canvas3d/**`,
-`src/components/models/**`, `src/core/effects/**`, `src/core/world/**`, `src/core/fallback2d/**`, or labels
+`src/components/models/**`, `src/core/effects/**`, `src/core/world/**`, or labels
 `perf` / `3d`. Each gets the brief, spec and dev-report paths, `WT`, and `BASE` ("the diff is the uncommitted
 working tree of <WT> against <BASE>"); qa also gets `QA_PORT` and `SCRATCH`.
 

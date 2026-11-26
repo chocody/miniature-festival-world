@@ -6,7 +6,7 @@ import { Matrix4, Vector3, type Group } from "three";
 import { planKrathongInstances, RiverKrathongBatch, type RiverKrathongBatchHandle } from "@/components/models/loyKrathong";
 import { RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config";
 import { RIVER_KRATHONG_BLOB_SHADOW_RADIUS } from "@/config/look.config";
-import { TIER_BUDGETS, WATER_EFFECT_TIERS, type RenderTier } from "@/config/performance.config";
+import { TIER_BUDGETS, WATER_EFFECT_TIERS } from "@/config/performance.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { RiverLaneSet, SplinePathCoord } from "@/core/coordinates";
@@ -75,12 +75,12 @@ export const RiverFlow = memo(function RiverFlow({
 }: RiverFlowProps) {
   const invalidate = useThree((state) => state.invalidate);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
-  const budget = qualityTier === "FALLBACK_2D" ? null : TIER_BUDGETS[qualityTier];
-  const visibleCap = budget === null ? 0 : Math.min(ZONE_ITEM_CAP, budget.riverItemCap); // perf gate (a) + (b)
-  const castShadow = shadows && budget !== null && budget.riverItemCastShadow;
+  const budget = TIER_BUDGETS[qualityTier];
+  const visibleCap = Math.min(ZONE_ITEM_CAP, budget.riverItemCap); // perf gate (a) + (b)
+  const castShadow = shadows && budget.riverItemCastShadow;
   // Soft ripple ring around each krathong (MFW-49 AC4): HIGH/MEDIUM only (LOW = the cheap water variant), on the water surface.
   const ripplesOn =
-    shadowSurfaceY !== undefined && budget !== null && WATER_EFFECT_TIERS[qualityTier as RenderTier].krathongRipples;
+    shadowSurfaceY !== undefined && WATER_EFFECT_TIERS[qualityTier].krathongRipples;
   const prepared = useMemo(() => prepareRiverItems(items, lanes), [items, lanes]);
   const visible = useMemo(
     () => selectVisibleRiverItems(prepared, visibleCap, pinnedIds),

@@ -1,14 +1,14 @@
 import {
-  FALLBACK_FPS_THRESHOLD,
+  DROP_TO_LOW_FPS_THRESHOLD,
+  FLOOR_QUALITY_TIER,
   FPS_SUSTAIN_MS,
   STEP_DOWN_FPS_THRESHOLD,
   TIER_SETTLE_MS,
   type QualityTier,
-  type RenderTier,
 } from "@/config/performance.config";
 import type { FpsSample } from "./fpsMeter";
 
-export type TierChangeReason = "FPS_BELOW_STEP_DOWN_THRESHOLD" | "FPS_BELOW_FALLBACK_THRESHOLD";
+export type TierChangeReason = "FPS_BELOW_STEP_DOWN_THRESHOLD" | "FPS_BELOW_DROP_TO_LOW_THRESHOLD";
 export interface TierDecision {
   from: QualityTier;
   to: QualityTier;
@@ -16,13 +16,13 @@ export interface TierDecision {
   atMs: number;
 }
 export interface TierControllerConfig {
-  fallbackFps: number;
-  stepDownFps: Readonly<Record<RenderTier, number | null>>;
+  dropToLowFps: number;
+  stepDownFps: Readonly<Record<QualityTier, number | null>>;
   sustainMs: number;
   settleMs: number;
 }
 export const DEFAULT_TIER_CONTROLLER_CONFIG: TierControllerConfig = {
-  fallbackFps: FALLBACK_FPS_THRESHOLD,
+  dropToLowFps: DROP_TO_LOW_FPS_THRESHOLD,
   stepDownFps: STEP_DOWN_FPS_THRESHOLD,
   sustainMs: FPS_SUSTAIN_MS,
   settleMs: TIER_SETTLE_MS,
@@ -33,23 +33,23 @@ export interface TierController {
   reset(): void;
 }
 
-const NEXT_LOWER: Record<"HIGH" | "MEDIUM", RenderTier> = { HIGH: "MEDIUM", MEDIUM: "LOW" };
+const NEXT_LOWER: Record<"HIGH" | "MEDIUM", QualityTier> = { HIGH: "MEDIUM", MEDIUM: "LOW" };
 
 /**
- * Decides tier changes from FPS samples. Steps down only (never up); FALLBACK_2D is sticky.
- * Fallback takes precedence over a step-down.
+ * Decides tier changes from FPS samples. Steps down only (never up); LOW is final.
+ * Dropping straight to LOW takes precedence over a one-tier step-down.
  */
 export function createTierController(
   initialTier: QualityTier,
   config: TierControllerConfig = DEFAULT_TIER_CONTROLLER_CONFIG,
 ): TierController {
   let tier = initialTier;
-  let fallbackStart: number | null = null;
+  let dropStart: number | null = null;
   let stepStart: number | null = null;
   let settleUntil = -Infinity;
 
   function clearStreaks() {
-    fallbackStart = null;
+    dropStart = null;
     stepStart = null;
   }
 
@@ -58,21 +58,21 @@ export function createTierController(
       return tier;
     },
     onSample(s) {
-      if (tier === "FALLBACK_2D") return null;
+      if (tier === FLOOR_QUALITY_TIER) return null;
       if (!Number.isFinite(s.fps)) return null;
       if (s.startMs < settleUntil) return null;
 
-      if (s.fps < config.fallbackFps) fallbackStart ??= s.startMs;
-      else fallbackStart = null;
+      if (s.fps < config.dropToLowFps) dropStart ??= s.startMs;
+      else dropStart = null;
 
       const threshold = config.stepDownFps[tier];
       if (threshold !== null && s.fps < threshold) stepStart ??= s.startMs;
       else stepStart = null;
 
       let to: QualityTier | null = null;
-      let reason: TierChangeReason = "FPS_BELOW_FALLBACK_THRESHOLD";
-      if (fallbackStart !== null && s.endMs - fallbackStart >= config.sustainMs) {
-        to = "FALLBACK_2D";
+      let reason: TierChangeReason = "FPS_BELOW_DROP_TO_LOW_THRESHOLD";
+      if (dropStart !== null && s.endMs - dropStart >= config.sustainMs) {
+        to = FLOOR_QUALITY_TIER;
       } else if (
         stepStart !== null &&
         s.endMs - stepStart >= config.sustainMs &&

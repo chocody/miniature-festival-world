@@ -22,15 +22,11 @@ import { WISH_DIALOG_TITLE, completeWishStep } from "./helpers/wishStep";
  * full-screen SwiftShader canvas is never re-created mid-test.
  */
 
-/** String only the three.js renderer chunk contains in the production build (scene-gating.spec.ts proves it survives minification). */
-const WEBGL_CHUNK_MARKER = "WebGLRenderer";
 const PANEL = "แต่งกระทง";
 const RELEASE = "ปล่อยกระทง";
 const FIND_MY_BUTTON = "ค้นหาของฉัน";
 const CHIP = '[data-input-target="krathong"]';
 const PANEL_SLOT = '[data-overlay-slot="panel"]';
-const PREVIEW = '[data-testid="flat-krathong-preview"]';
-const RIVER = '[data-testid="flat-river-view"]';
 const PHONE = { width: 390, height: 844, wide: false } as const;
 const PHONE_LANDSCAPE = { width: 844, height: 390, wide: true } as const;
 const DESKTOP = { width: 1440, height: 900, wide: true } as const;
@@ -47,28 +43,6 @@ function collectPageErrors(page: Page): string[] {
   return errors;
 }
 
-function collectScriptBodies(page: Page): () => Promise<string[]> {
-  const bodies: Promise<string>[] = [];
-  page.on("response", (response) => {
-    const { pathname } = new URL(response.url());
-    if (pathname.startsWith("/_next/static/") && pathname.endsWith(".js")) bodies.push(response.text().catch(() => ""));
-  });
-  return async () => {
-    await page.waitForLoadState("networkidle");
-    return Promise.all(bodies);
-  };
-}
-
-async function webglOff(page: Page) {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-}
-
 async function expectCameraZoom(page: Page, width: number, height: number) {
   await expect.poll(async () => Number(await scene(page).getAttribute("data-camera-zoom"))).toBeCloseTo(e2eFramedZoom(width, height), 6);
 }
@@ -82,7 +56,7 @@ async function open3D(page: Page) {
   const errors = collectPageErrors(page);
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
-  await page.goto(E2E_PINNED_TIER_URL); // keeps forced LOW: CPU WebGL renders LOW below the FALLBACK_2D FPS threshold on a busy runner
+  await page.goto(E2E_PINNED_TIER_URL); // keeps forced LOW: CPU WebGL could step the tier down on a busy runner
   await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);
@@ -190,49 +164,6 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       expect(errors).toEqual([]);
     });
 
-    test("FALLBACK_2D: the flat view fills the viewport and never loads three", async ({ page }) => {
-      const errors = collectPageErrors(page);
-      await webglOff(page);
-      await mockCreateCreation(page);
-      const scriptBodies = collectScriptBodies(page);
-      await page.goto("/");
-      await waitForActiveEvent(page);
-      await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-
-      await expectFillsViewport(page, page.locator(PREVIEW));
-      await expectNoPageScroll(page);
-      await expectPanelPlacement(page.getByRole("region", { name: PANEL }), vp);
-      await expect(page.locator(".touch-none")).toHaveCount(0);
-
-      await page.getByRole("button", { name: "ถัดไป" }).click();
-      await completeWishStep(page);
-      await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
-      const expectRiverFills = async () => {
-        await expectFillsViewport(page, page.locator(RIVER));
-        await expectNoPageScroll(page);
-        await expect
-          .poll(() =>
-            page
-              .locator(RIVER)
-              .evaluate((el) => Number(el.querySelector("svg")?.getAttribute("height")) === Math.round(el.clientHeight)),
-          )
-          .toBe(true);
-      };
-      await expectRiverFills();
-      await expectPanelPlacement(page.locator(PANEL_SLOT), vp);
-      await expect(page.getByTestId("flat-own-krathong")).toBeInViewport(); // the pier stays centred at the stage height
-
-      await page.getByRole("button", { name: RELEASE }).click();
-      await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
-      await expectRiverFills();
-      await expectPanelPlacement(page.locator(PANEL_SLOT), vp);
-      await expectTopSlotPlacement(page, vp);
-      await expectTapHintUnoccluded(page);
-
-      expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(false);
-      await expect(page.locator("canvas")).toHaveCount(0);
-      expect(errors).toEqual([]);
-    });
   });
 }
 

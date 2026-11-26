@@ -1,8 +1,8 @@
 # Shared Miniature Festival World — project rules for agents
 
 A shared, anonymous, toy-like 3D world where people make a small festival object, write a wish,
-and release it into a world everyone sees. One core engine + per-festival config plugins, with a
-2D flat-vector fallback that reads the **same** data.
+and release it into a world everyone sees. One core engine + per-festival config plugins; 3D only (the 2D fallback
+was removed — owner, 2026-11-26).
 
 - **Phase 1 = Loy Krathong only** (make a krathong → wish → release onto a spline river).
   Every other festival (Christmas, New Year, CNY, Valentine's, Songkran, Mid-Autumn, Halloween)
@@ -27,7 +27,7 @@ using any Next.js API; this Next.js (16.x) differs from training data.
 
 Next.js App Router + TypeScript + Tailwind · Three.js + React Three Fiber + @react-three/drei ·
 @react-spring/three (procedural micro-animation, no physics; owner decision, open question 11) ·
-Zustand (separate UI / builder / world / device stores) · 2D fallback on HTML5 Canvas/SVG ·
+Zustand (separate UI / builder / world / device stores) ·
 Supabase (Postgres) · pnpm. Folder layout: follow [`docs/spec/03-structure.md`](docs/spec/03-structure.md)
 exactly (`src/config`, `src/core/*`, `src/components/*`, `src/services/*`, `src/store/*`).
 
@@ -44,11 +44,11 @@ World and screen positions are always *derived* at render time.
   `position`, `x:`, `Vector3`, `.toArray()` reaching `src/services/**`, `src/app/api/**`, `supabase/**`
   or `localStorage`. Any write path must accept only the coord union.
 
-**B. 3D and 2D read one coord set.** The 3D scene and `src/core/fallback2d/` both convert from the same
-stored coord; no 2D-only or 3D-only position field. Spline position is deterministic:
+**B. 3D reads the stored coord; positions are derived at render time.** The 3D scene converts every placement from the
+stored coord; there is no separate position field (the 2D fallback was removed — owner, 2026-11-26). Spline position is deterministic:
 `CurrentProgress(t) = (spawnProgress + (now − createdAt) × speedFactor) % 1.0`.
-- Check: every converter in `src/core/coordinates/` and `src/core/fallback2d/` has round-trip unit tests
-  (parametric ↔ 3D world ↔ 2D canvas, within a stated tolerance). New converter without one = not done.
+- Check: every converter in `src/core/coordinates/` has round-trip unit tests
+  (parametric ↔ 3D world, within a stated tolerance). New converter without one = not done.
 
 **C. No private data on public paths.** `creations_public` rows, every public API response
 (e.g. `GET /api/creations`), and every client store fed from a public endpoint must never contain
@@ -76,9 +76,9 @@ zone switch and unmount. Repeated parts (flowers, leaves, riverside trees) use `
   disposes what it created; `r3f-perf-reviewer` passes.
 
 **F. Reduced motion + quality tiers.** Honor `prefers-reduced-motion` (e.g. camera fly-to becomes an
-instant cut, bounce animations off) and the tiers `HIGH | MEDIUM | LOW | FALLBACK_2D` from
-`useDeviceStore` / `performance.config.ts`. FALLBACK_2D is used when WebGL is unavailable or FPS stays
-below threshold. The FPS threshold and per-tier budgets were decided by the owner (open question 5, MFW-9)
+instant cut, bounce animations off) and the tiers `HIGH | MEDIUM | LOW` from
+`useDeviceStore` / `performance.config.ts`. Sustained low FPS steps a tier down and ends on LOW, which stays (no 2D
+fallback — owner, 2026-11-26). Without WebGL the stage shows a short Thai notice instead of the scene (loop decision, not yet reviewed by the owner). The FPS threshold and per-tier budgets were decided by the owner (open question 5, MFW-9)
 and live in `performance.config.ts` (`TIER_BUDGETS` etc.) — read them from there, never inline magic numbers.
 - Check: new animated/3D code reads `reducedMotion` and `qualityTier` from the store; tests cover
   the reduced-motion branch.
@@ -104,7 +104,7 @@ profanity are blocked from `public_wish_text` (rules in `src/config/moderation.c
 | `pnpm typecheck` | `next typegen && tsc --noEmit` |
 | `pnpm lint` | `eslint` |
 | `pnpm test` | `vitest run` (colocated `src/**/*.test.ts(x)` and `tests/unit/**`) |
-| `pnpm e2e` | `playwright test` (`tests/e2e/`, prod build on :3100, WebGL via SwiftShader; add a FALLBACK_2D e2e once tickets 1.3 / 8.1 land) · `E2E_PORT` / `PW_CHROMIUM_PATH` override port / browser |
+| `pnpm e2e` | `playwright test` (`tests/e2e/`, prod build on :3100, WebGL via SwiftShader) · `E2E_PORT` / `PW_CHROMIUM_PATH` override port / browser |
 
 **Definition of done:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm e2e` all green
 locally, every testable AC of the ticket has a test, and the `ci` check on the PR is SUCCESS.
@@ -126,7 +126,7 @@ The project agents `lead`, `dev`, `reviewer`, `qa` (`.claude/agents/`) run on ev
 | Agent | Add when the diff touches |
 |---|---|
 | `privacy-auditor` | `src/services/**`, `supabase/**`, `src/app/api/**`, anything touching wish text, owner token / ownership, moderation or reporting, or the ticket has label `privacy` |
-| `r3f-perf-reviewer` | `src/components/canvas3d/**`, `src/components/models/**`, `src/core/effects/**`, `src/core/world/**`, `src/core/fallback2d/**`, or label `perf` / `3d` |
+| `r3f-perf-reviewer` | `src/components/canvas3d/**`, `src/components/models/**`, `src/core/effects/**`, `src/core/world/**`, or label `perf` / `3d` |
 
 Both are read-only and report PASS / FIX FIRST. A FIX FIRST blocks the merge like a failing check.
 

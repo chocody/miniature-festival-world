@@ -43,3 +43,5 @@ src/
     ├── useBuilderStore.ts      # เก็บข้อมูลชิ้นงานที่กำลังแต่ง
     └── useDeviceStore.ts       # เก็บสถานะ FPS, Quality Tier, Reduced Motion, IsFallback2D
 ```
+
+> Note (owner, 2026-11-26, MFW-71): "เอา 2d ออกไปเลย" — the 2D fallback is removed; only the 3D scene (HIGH | MEDIUM | LOW) remains. See open-questions row 46.

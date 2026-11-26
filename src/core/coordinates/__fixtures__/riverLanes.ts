@@ -35,19 +35,13 @@ export const LOOP_LANE_DEF: RiverLaneDefinition = {
 
 export const PROGRESS_SAMPLES = [0, 0.00001, 0.001, 0.1, 0.25, 0.5, 0.75, 0.999, 0.99999] as const;
 export const LATERAL_SAMPLES = [-0.5, -0.25, 0, 0.25, 0.5] as const;
-export const VIEWPORTS = [
-  { width: 390, height: 844, paddingPx: 16 },
-  { width: 1280, height: 720, paddingPx: 0 },
-] as const;
 
-/** Measured errors are about 1e-14; boundsPx covers centerline extremes between the 256 bound samples. */
+/** Measured errors are about 1e-14. */
 export const TOLERANCE = {
   progress: 1e-9,
   lateral: 1e-9,
   worldUnits: 1e-9,
-  canvasPx: 1e-9,
   analyticWorldUnits: 1e-6,
-  boundsPx: 0.5,
 } as const;
 
 /** Distance on the unit circle [0, 1). */

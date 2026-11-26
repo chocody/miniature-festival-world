@@ -49,8 +49,8 @@ describe("RiversideFoliage (MFW-70)", () => {
     expect(plants.sway).toBe(RIVER_FOLIAGE_SWAY.riversidePlant);
   });
 
-  it.each(["LOW", "FALLBACK_2D"] as const)("V2 %s: LIGHT parts, the keepOnLow clumps, static", (tier) => {
-    const { trunk, clumps, plants } = renderAt(tier);
+  it("V2 LOW: LIGHT parts, the keepOnLow clumps, static", () => {
+    const { trunk, clumps, plants } = renderAt("LOW");
     expect(trunk.part).toBe(RIVER_FOLIAGE_PARTS.LIGHT.treeTrunk);
     expect(clumps.part).toBe(RIVER_FOLIAGE_PARTS.LIGHT.leafClump);
     expect(clumps.instances).toBe(foliage.clumpsLow);

@@ -25,11 +25,10 @@ export interface BlobShadowAssets {
 
 /**
  * Tier geometry (LOW = cheap 10×2 fan) and the shared blob material; both disposed on tier change and unmount.
- * FALLBACK_2D never renders a 3D scene; it is treated as LOW. Nothing animates, so reduced motion changes nothing.
+ * Nothing animates, so reduced motion changes nothing.
  */
 export function useBlobShadowAssets(): BlobShadowAssets {
-  const qualityTier = useDeviceStore((s) => s.qualityTier);
-  const tier: RenderTier = qualityTier === "FALLBACK_2D" ? "LOW" : qualityTier;
+  const tier: RenderTier = useDeviceStore((s) => s.qualityTier);
   const geometry = useMemo(() => createBlobShadowGeometry({ ...BLOB_SHADOW_TIER_GEOMETRY[tier], falloffExponent: BLOB_SHADOW_LOOK.falloffExponent }), [tier]);
   const material = useMemo(() => createBlobShadowMaterial(), []);
   useEffect(() => () => geometry.dispose(), [geometry]);

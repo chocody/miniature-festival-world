@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const ROOTS = ["src/components/canvas3d", "src/components/models", "src/components/canvas2d"];
+const ROOTS = ["src/components/canvas3d", "src/components/models"];
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/;
 const DECIMAL_LITERAL = /(?<![\w.$])\d+\.\d+/;
 const TEXTURE_API = /TextureLoader|useTexture|CanvasTexture|DataTexture|VideoTexture/;

@@ -18,3 +18,5 @@
 
 - สร้างตัววัด FPS และตรวจจับสเปคเครื่อง + prefers-reduced-motion
 - ตั้งค่าระดับกราฟิกอัตโนมัติ: HIGH, MEDIUM, LOW, และสลับเข้า FALLBACK_2D เมื่อ WebGL ไม่รองรับหรือ FPS ต่ำกว่าเกณฑ์
+
+> Note (owner, 2026-11-26, MFW-71): "เอา 2d ออกไปเลย" — the 2D fallback is removed; only the 3D scene (HIGH | MEDIUM | LOW) remains. See open-questions row 46.

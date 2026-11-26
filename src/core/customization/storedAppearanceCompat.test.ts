@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { FLAT_KRATHONG_VIEW_AZIMUTH_RAD, FLAT_KRATHONG_VIEW_ELEVATION_RAD } from "@/config/fallback2d.config";
-import { buildKrathongLayers2D } from "@/core/fallback2d/krathongLayers2d";
 import {
   CANDLE_COLOR_PALETTE,
   FLOWER_KINDS,
@@ -51,15 +49,5 @@ describe("stored appearance compatibility (MFW-48)", () => {
       expect(() => materialSpecFor(part.materialKey), part.id).not.toThrow();
       expect(krathongInstanceBucketIndex(part.geometryKey, part.materialKey), part.id).not.toBeNull();
     }
-  });
-
-  it.each(FIXTURES)("the 2D fallback reads the same assembly: one flower-centre layer per flower: %s", (json) => {
-    const parsed = parseKrathongAppearance(JSON.parse(json));
-    if (!parsed.ok) throw new Error(parsed.reason);
-    const view = { azimuthRad: FLAT_KRATHONG_VIEW_AZIMUTH_RAD, elevationRad: FLAT_KRATHONG_VIEW_ELEVATION_RAD, modelYawRad: 0 };
-    const layers = buildKrathongLayers2D(parsed.appearance, view);
-    const flowers = parsed.appearance.flowers.filter((f) => f !== null).length;
-    expect(layers.filter((l) => l.role === "flowerCentre")).toHaveLength(flowers);
-    expect(layers.filter((l) => l.role === "flower")).toHaveLength(flowers);
   });
 });

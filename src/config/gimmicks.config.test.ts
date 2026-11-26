@@ -86,7 +86,6 @@ describe("gimmick config", () => {
   it("hint constants", () => {
     expect(SCENE_TAP_HINT_STORAGE_KEY).toMatch(/^mfw:[A-Za-z]+:v\d+$/);
     expect(SCENE_TAP_HINT_COPY.scene3d.length).toBeGreaterThan(0);
-    expect(SCENE_TAP_HINT_COPY.flat2d.length).toBeGreaterThan(0);
   });
 });
 

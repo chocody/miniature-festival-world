@@ -21,7 +21,7 @@ export const BYTES_PER_MEBIBYTE = 1_048_576;
 
 /**
  * Test/diagnostic flag: with ?pinTier=1 the device profiler picks the initial tier as usual but does not watch FPS, so the
- * tier never steps down or falls back to 2D at runtime. Lead decision (technical, not a product number): e2e that prove
+ * tier never steps down at runtime. Lead decision (technical, not a product number): e2e that prove
  * per-tier behaviour on CPU-rendered SwiftShader runners use it, because those runners render below the 20 FPS fallback
  * threshold. Opt-in through the URL only; it reads and stores nothing.
  */

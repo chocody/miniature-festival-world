@@ -92,10 +92,9 @@ describe("living-world settings (MFW-50 AC2, AC4)", () => {
     expect(rm.moteCount).toBe(row.moteCount);
   });
 
-  it("A2 LOW never ticks; FALLBACK_2D gets the LOW numbers", () => {
+  it("A2 LOW never ticks", () => {
     expect(resolveLivingWorldSettings("LOW", false).idleRedrawIntervalMs).toBeNull();
     expect(resolveLivingWorldSettings("LOW", true).idleRedrawIntervalMs).toBeNull();
-    expect(resolveLivingWorldSettings("FALLBACK_2D", false)).toEqual(resolveLivingWorldSettings("LOW", false));
     expect(resolveLivingWorldSettings("MEDIUM", false).idleRedrawIntervalMs).toBe(LIVING_WORLD_TIERS.MEDIUM.idleRedrawIntervalMs);
   });
 });

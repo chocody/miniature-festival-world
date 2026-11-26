@@ -22,7 +22,7 @@ import {
   SCENE_CAMERA_NEAR,
   SCENE_CAMERA_ZOOM,
 } from "@/config/camera.config";
-import type { EffectPoolCaps, QualityTier, RenderTier } from "@/config/performance.config";
+import type { EffectPoolCaps, RenderTier } from "@/config/performance.config";
 import { EFFECT_POOL_CAPS, FIREWORK_SPARKS_PER_BURST, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
 import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
@@ -401,6 +401,7 @@ export function SceneViewport({
   riverItems?: readonly RiverFlowItem[];
 }) {
   const profiled = useDeviceStore((state) => state.profiled);
+  const webglAvailable = useDeviceStore((state) => state.webglAvailable);
   const qualityTier = useDeviceStore((state) => state.qualityTier);
   const reducedMotion = useDeviceStore((state) => state.reducedMotion);
   const lightPreset = useResolvedLightPreset();
@@ -799,9 +800,9 @@ export function SceneViewport({
     }
   }
 
-  const sceneShown = profiled && qualityTier !== "FALLBACK_2D";
+  const sceneShown = profiled && webglAvailable;
 
-  // MFW-58: the 3D scene streams the zones of ZONE_STREAM_LOAD_RADIUS stretches on each side (the 2D fallback uses 0).
+  // MFW-58: the 3D scene streams the zones of ZONE_STREAM_LOAD_RADIUS stretches on each side (0 while no scene is mounted).
   useEffect(() => {
     if (!sceneShown) return;
     const pagination = getZonePagination();
@@ -851,15 +852,15 @@ export function SceneViewport({
   const canvasDpr = useMemo(
     () =>
       sceneShown
-        ? getCanvasDprRange(qualityTier as RenderTier, typeof screen === "undefined" ? 0 : screen.width * screen.height)
+        ? getCanvasDprRange(qualityTier, typeof screen === "undefined" ? 0 : screen.width * screen.height)
         : null,
     [sceneShown, qualityTier],
   );
 
   if (!sceneShown) return null;
 
-  const settings = getSceneRenderSettings(qualityTier as Exclude<QualityTier, "FALLBACK_2D">);
-  const effectCaps = EFFECT_POOL_CAPS[qualityTier as RenderTier];
+  const settings = getSceneRenderSettings(qualityTier);
+  const effectCaps = EFFECT_POOL_CAPS[qualityTier];
 
   return (
     <>
@@ -943,7 +944,7 @@ export function SceneViewport({
             findMyAnchorRef={findMyAnchorRef}
             ownMarked={ownMarked}
             livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
-            fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier as RenderTier]}
+            fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier]}
             onPropTapped={mode === "WORLD_EXPLORE" ? onPropTapped : undefined}
           />
           <CameraRig

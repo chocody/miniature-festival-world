@@ -2,7 +2,7 @@ import { RIVER_STRETCH_RENDER_RADIUS, ZONE_ID_MIN } from "@/config/world.config"
 import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 
 /*
- * MFW-58 (three-free; shared by the 3D slots and the 2D navigator paging, invariant B): which zone each stretch of the endless river
+ * MFW-58 (three-free; the 3D slots and the zone navigator read it, invariant B): which zone each stretch of the endless river
  * shows. zone(s) = ((anchor.zoneId − 1 + (s − anchor.stretchIndex)) mod N + N) mod N + 1 with N = max(zoneCount ?? 1, anchor.zoneId):
  * with one zone every stretch shows zone 1; after the last zone comes zone 1 again (open question 37). Render-time only, NEVER
  * persisted (invariant A).

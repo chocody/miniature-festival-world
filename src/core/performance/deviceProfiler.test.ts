@@ -15,7 +15,7 @@ function setup(
   const sched = fakeScheduler();
   const mql = fakeMql(o.reduced ?? false);
   const doc = fakeDoc(o.visibility ?? "visible");
-  const sink = { setFps: vi.fn(), setQualityTier: vi.fn(), setReducedMotion: vi.fn() };
+  const sink = { setFps: vi.fn(), setWebglAvailable: vi.fn(), setQualityTier: vi.fn(), setReducedMotion: vi.fn() };
   const env: ProfilerEnv = {
     navigator: { deviceMemory: o.memory, hardwareConcurrency: o.cores },
     createCanvas: () => fakeCanvas({ webgl2: o.webgl ?? true }).canvas,
@@ -33,7 +33,7 @@ describe("tier pin (?pinTier=1)", () => {
     for (const s of ["", "?pinTier=0", "?pinTier=true", "?PinTier=1", "?pintier=1"]) expect(isTierPinRequested(s)).toBe(false);
   });
 
-  it("watchFps false keeps the initial tier: no meter, no step-down, no 2D fallback", () => {
+  it("watchFps false keeps the initial tier: no meter, no step-down", () => {
     const { sched, sink, env } = setup({ memory: 8, cores: 8 });
     startDeviceProfiler(sink, env, { watchFps: false });
     expect(sink.setQualityTier).toHaveBeenCalledTimes(1);
@@ -44,10 +44,10 @@ describe("tier pin (?pinTier=1)", () => {
     expect(sink.setFps).not.toHaveBeenCalled();
   });
 
-  it("watchFps false still honours no WebGL and reduced motion", () => {
+  it("P2: watchFps false with no WebGL still tracks reduced motion", () => {
     const { mql, sink, env } = setup({ webgl: false, reduced: true });
     startDeviceProfiler(sink, env, { watchFps: false });
-    expect(sink.setQualityTier).toHaveBeenCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).toHaveBeenCalledWith("LOW");
     expect(sink.setReducedMotion).toHaveBeenCalledWith(true);
     mql.emit(false);
     expect(sink.setReducedMotion).toHaveBeenLastCalledWith(false);
@@ -55,12 +55,31 @@ describe("tier pin (?pinTier=1)", () => {
 });
 
 describe("startDeviceProfiler", () => {
-  it("no WebGL -> FALLBACK_2D, meter never starts", () => {
-    const { sched, sink, env } = setup({ webgl: false, memory: 8, cores: 8 });
+  it("P1: no WebGL -> setWebglAvailable(false) before setQualityTier(LOW), meter never starts", () => {
+    const { sched, doc, sink, env } = setup({ webgl: false, memory: 8, cores: 8 });
     startDeviceProfiler(sink, env);
+    expect(sink.setWebglAvailable).toHaveBeenCalledTimes(1);
+    expect(sink.setWebglAvailable).toHaveBeenCalledWith(false);
     expect(sink.setQualityTier).toHaveBeenCalledTimes(1);
-    expect(sink.setQualityTier).toHaveBeenCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).toHaveBeenCalledWith("LOW");
+    expect(sink.setWebglAvailable.mock.invocationCallOrder[0]!).toBeLessThan(sink.setQualityTier.mock.invocationCallOrder[0]!);
     expect(sched.pending).toBe(0);
+    expect(doc.listeners.size).toBe(0);
+  });
+
+  it("with WebGL setWebglAvailable(true) comes first", () => {
+    const { sink, env } = setup({ memory: 8, cores: 8 });
+    startDeviceProfiler(sink, env);
+    expect(sink.setWebglAvailable).toHaveBeenCalledWith(true);
+    expect(sink.setWebglAvailable.mock.invocationCallOrder[0]!).toBeLessThan(sink.setQualityTier.mock.invocationCallOrder[0]!);
+  });
+
+  it("P3: memory 2 -> LOW at start: no meter, no visibility listener", () => {
+    const { sched, doc, sink, env } = setup({ memory: 2, cores: 8 });
+    startDeviceProfiler(sink, env);
+    expect(sink.setQualityTier).toHaveBeenCalledWith("LOW");
+    expect(sched.pending).toBe(0);
+    expect(doc.listeners.size).toBe(0);
   });
 
   it("strong hints -> HIGH and meter pending", () => {
@@ -97,12 +116,12 @@ describe("startDeviceProfiler", () => {
     expect(sink.setQualityTier).toHaveBeenCalledWith("MEDIUM");
   });
 
-  it("10 fps on LOW -> FALLBACK_2D, meter stops, visibility no longer restarts it", () => {
-    const { sched, doc, sink, env } = setup({ memory: 2, cores: 8 });
+  it("P4: 10 fps on HIGH -> LOW, meter stops, visibility no longer restarts it", () => {
+    const { sched, doc, sink, env } = setup({ memory: 8, cores: 8 });
     startDeviceProfiler(sink, env);
-    expect(sink.setQualityTier).toHaveBeenCalledWith("LOW");
+    expect(sink.setQualityTier).toHaveBeenCalledWith("HIGH");
     runFrames(sched, 0, 10_000, 10);
-    expect(sink.setQualityTier).toHaveBeenLastCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).toHaveBeenLastCalledWith("LOW");
     expect(sched.pending).toBe(0);
     expect(doc.listeners.size).toBe(0);
     doc.set("visible");
@@ -148,7 +167,7 @@ describe("startDeviceProfiler", () => {
     expect(() => stop()).not.toThrow();
   });
 
-  it("a single long stall does not trigger a step-down or fallback", () => {
+  it("a single long stall does not trigger a step-down", () => {
     const { sched, sink, env } = setup({ memory: 8, cores: 8 });
     startDeviceProfiler(sink, env);
     runFrames(sched, 0, 6000, 60);
@@ -170,19 +189,19 @@ describe("startDeviceProfiler", () => {
     expect(sink.setQualityTier).toHaveBeenCalledTimes(1);
   });
 
-  it("genuine 10 fps (100 ms gaps) still falls back at the same time", () => {
-    const { sched, sink, env } = setup({ memory: 2, cores: 8 });
+  it("P5: genuine 10 fps (100 ms gaps) still drops to LOW at the same time", () => {
+    const { sched, sink, env } = setup({ memory: 8, cores: 8 });
     startDeviceProfiler(sink, env);
     runFrames(sched, 0, 6990, 10);
-    expect(sink.setQualityTier).not.toHaveBeenCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).not.toHaveBeenCalledWith("LOW");
     runFrames(sched, 7000, 8000, 10);
-    expect(sink.setQualityTier).toHaveBeenLastCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).toHaveBeenLastCalledWith("LOW");
   });
 
-  it("~1.5 fps (667 ms gaps) is low FPS, not a stall, and falls back", () => {
-    const { sched, sink, env } = setup({ memory: 2, cores: 8 });
+  it("P5: ~1.5 fps (667 ms gaps) is low FPS, not a stall, and drops to LOW", () => {
+    const { sched, sink, env } = setup({ memory: 8, cores: 8 });
     startDeviceProfiler(sink, env);
     runFrames(sched, 0, 20_000, 1.5);
-    expect(sink.setQualityTier).toHaveBeenLastCalledWith("FALLBACK_2D");
+    expect(sink.setQualityTier).toHaveBeenLastCalledWith("LOW");
   });
 });

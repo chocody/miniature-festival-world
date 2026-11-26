@@ -25,7 +25,7 @@ import {
 /**
  * MFW-57 (backlog 11.1): in WORLD_EXPLORE a one-finger / mouse drag moves the camera and the world under the pointer follows
  * it; taps still interact after the pan; wheel zooms; the rotate button turns the view. HIGH tier at the SwiftShader viewport,
- * on the pinned-tier URL (the CI runner is below the FALLBACK_2D FPS threshold).
+ * on the pinned-tier URL (the CI runner is below the step-down FPS thresholds).
  *
  * The drag goes straight down from a water point: at the yaw-0 release view (camera on the pier side, +z) this moves the focus
  * toward the river centre, away from the pier-side bound, so no edge resistance applies to the follow check.

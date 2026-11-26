@@ -45,7 +45,7 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
   });
-  await page.goto(E2E_PINNED_TIER_URL); // keep the forced HIGH tier on slow SwiftShader runners (no runtime 2D fallback)
+  await page.goto(E2E_PINNED_TIER_URL); // keep the forced HIGH tier on slow SwiftShader runners (no runtime step-down)
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);
@@ -70,34 +70,4 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
   await expect(page.locator("canvas")).toHaveCount(1);
   await page.touchscreen.tap(tap.x, tap.y);
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-selected-target", /^(krathong|water|lamp)$/);
-});
-
-test("FALLBACK_2D: no canvas and no WebGL chunk across the whole flow", async ({ page }) => {
-  await mockCreateCreation(page);
-  const scriptBodies = collectScriptBodies(page);
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-  await page.goto("/");
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await expectNoScene(page);
-
-  await waitForActiveEvent(page);
-  await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
-  await expectNoScene(page);
-
-  await page.getByRole("button", { name: "ถัดไป" }).click();
-  await completeWishStep(page);
-  await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
-  await expectNoScene(page);
-
-  await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
-  await expectNoScene(page);
-
-  expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(false);
 });

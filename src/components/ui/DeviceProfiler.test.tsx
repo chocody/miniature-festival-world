@@ -45,14 +45,15 @@ describe("DeviceProfiler", () => {
     const s = useDeviceStore.getState();
     expect(s.qualityTier).toBe("HIGH");
     expect(s.reducedMotion).toBe(true);
-    expect(s.isFallback2D).toBe(false);
+    expect(s.webglAvailable).toBe(true);
   });
-  it("no WebGL -> FALLBACK_2D", () => {
+  it("D1: no WebGL -> LOW and webglAvailable false", () => {
     vi.restoreAllMocks();
     stubWebGL(false);
     render(<DeviceProfiler />);
-    expect(useDeviceStore.getState().qualityTier).toBe("FALLBACK_2D");
-    expect(useDeviceStore.getState().isFallback2D).toBe(true);
+    expect(useDeviceStore.getState().qualityTier).toBe("LOW");
+    expect(useDeviceStore.getState().webglAvailable).toBe(false);
+    expect(useDeviceStore.getState().profiled).toBe(true);
   });
   it("follows reduced-motion changes", () => {
     render(<DeviceProfiler />);

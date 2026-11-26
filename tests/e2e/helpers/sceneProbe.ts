@@ -14,7 +14,7 @@ export const E2E_TAP_HINT_SEEN_VALUE = "1"; // = SCENE_TAP_HINT_SEEN_VALUE
 export const E2E_INSPECT_DIALOG_TITLE = "กระทงในสายน้ำ"; // = INSPECT_POPUP_COPY.dialogTitle
 /**
  * Start URL that keeps the tier the test forced (= `/?${TIER_PIN_QUERY_PARAM}=${TIER_PIN_QUERY_VALUE}`). CI's SwiftShader
- * renders the world at 12–20 FPS, so without it the FPS profiler (correctly) falls back to 2D mid-test.
+ * renders the world at 12–20 FPS, so without it the FPS profiler (correctly) steps the tier down mid-test.
  */
 export const E2E_PINNED_TIER_URL = "/?pinTier=1";
 export const E2E_TAP_RIPPLE_NAME = "scene-ripples"; // = SCENE_OBJECT_NAMES.ripples
@@ -310,6 +310,45 @@ export async function locateStableTarget<K extends keyof SceneTargets>(page: Pag
     })
     .toBe(true);
   return found as unknown as NonNullable<SceneTargets[K]>;
+}
+
+/**
+ * MFW-71: the screen point of the river krathong with this creation id (its `river-hit-<id>` proxy), or null while it is off the canvas
+ * or not rendered yet. Re-read until stable (a camera flight moves it), then tap.
+ */
+export async function locateKrathongById(page: Page, creationId: string): Promise<ScreenPoint> {
+  let found: ScreenPoint | null = null;
+  const read = () =>
+    page.evaluate(
+      ({ name }) => {
+        const probe = (window as unknown as ProbeWindow).__mfwProbe;
+        const canvas = document.querySelector("canvas");
+        if (!probe || !probe.scene || !probe.camera || !canvas) return null;
+        const camera = probe.camera;
+        const rect = canvas.getBoundingClientRect();
+        // The endless river draws one copy of each krathong per stretch slot (same name): take the copy on the canvas.
+        const points: { x: number; y: number }[] = [];
+        probe.scene.traverse((o) => {
+          if (o.name !== name || points.length > 0) return;
+          const p = o.getWorldPosition(camera.position.clone()).project(camera);
+          const x = rect.left + ((p.x + 1) / 2) * rect.width;
+          const y = rect.top + ((1 - p.y) / 2) * rect.height;
+          const inside = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+          if (inside && document.elementFromPoint(x, y) === canvas) points.push({ x, y });
+        });
+        return points[0] ?? null;
+      },
+      { name: `${E2E_RIVER_HIT_PREFIX}${creationId}` },
+    );
+  await expect
+    .poll(async () => {
+      const a = await read();
+      const b = await read();
+      found = a !== null && b !== null && Math.hypot(a.x - b.x, a.y - b.y) <= STABLE_TARGET_TOLERANCE_PX ? b : null;
+      return found !== null;
+    })
+    .toBe(true);
+  return found as unknown as ScreenPoint;
 }
 
 /**

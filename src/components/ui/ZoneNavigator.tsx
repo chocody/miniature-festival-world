@@ -22,7 +22,7 @@ export interface ZoneNavigatorProps {
 
 /**
  * MFW-58: the position indicator of the endless river — the zone under the camera, updated live as the camera crosses a stretch
- * seam — and a jump shortcut: ‹ › travel one stretch (3D: a camera flight; 2D: the next page), wrapping after the last zone. The
+ * seam — and a jump shortcut: ‹ › travel one stretch (a camera flight), wrapping after the last zone. The
  * buttons exist only when there is another zone (none with one zone: the same zone repeats along the river).
  */
 export function ZoneNavigator({ pagination }: ZoneNavigatorProps) {

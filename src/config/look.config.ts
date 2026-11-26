@@ -4,7 +4,7 @@ import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 /**
  * Shared look v2 (MFW-47, backlog 9.1): palette, light presets and soft shadows taken from
  * docs/spec/assets/loy-krathong-look-ref.png. Documented in docs/design/loy-krathong-look.md (config wins).
- * Three-free and React-free so every model / scene card (9.2–9.5) and the 2D fallback can import it.
+ * Three-free and React-free so every model / scene card (9.2–9.5) can import it.
  */
 
 /**
