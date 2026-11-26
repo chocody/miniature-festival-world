@@ -6,7 +6,7 @@ import {
   FLAT_KRATHONG_VIEW_AZIMUTH_RAD,
   FLAT_KRATHONG_VIEW_ELEVATION_RAD,
   FLAT_RIVER_FRAME_INTERVAL_MS,
-  FLAT_RIVER_HIGHLIGHT,
+  FLAT_RIVER_MARK_SCALE,
   FLAT_RIVER_PADDING_PX,
   FLAT_RIVER_PROP_SIZES,
   FLAT_RIVER_SPRITE_SCALE,
@@ -209,8 +209,6 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   const clockOffsetMs = saved?.serverClockOffsetMs ?? 0;
   const spritePx = FLAT_RIVER_SPRITE_SCALE * projection.scale;
   const tapPx = Math.max(FLAT_RIVER_TAP_RADIUS * projection.scale, FLAT_MIN_TAP_RADIUS_PX);
-  const ringRadiusPx = ((FLAT_RIVER_HIGHLIGHT.innerRadius + FLAT_RIVER_HIGHLIGHT.outerRadius) / HALF) * projection.scale;
-  const ringStrokePx = (FLAT_RIVER_HIGHLIGHT.outerRadius - FLAT_RIVER_HIGHLIGHT.innerRadius) * projection.scale;
 
   const pools = useMemo(() => createObjectPoolManager(FALLBACK_2D_EFFECT_POOL_CAPS), []);
   const rippleSlots = useMemo(() => Array.from({ length: pools.ripple.capacity }, (_, slot) => slot), [pools]);
@@ -236,7 +234,6 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
   const sectionRef = useRef<HTMLElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const ringRef = useRef<SVGCircleElement | null>(null);
   const rippleEls = useRef<(SVGCircleElement | null)[]>([]);
   const scratch = useRef(createFlatCanvasScratch());
   const canvasPoint = useRef(createCanvasPointOut());
@@ -253,27 +250,17 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
       const { items: list, clockOffsetMs: offset, reducedMotion: reduced, focusId: focused } = latest.current;
       const out = canvasPoint.current;
       const riverNow = tMs + offset;
-      let ringX = 0;
-      let ringY = 0;
-      let ringShown = false;
       for (const it of list) {
         const el = elements.get(it.id);
         if (!el) continue;
         flatCoordToCanvasInto(it.coord, it.lane, it.createdAtMs, riverNow, projection, out, scratch.current);
-        el.setAttribute("transform", "translate(" + out.x + " " + out.y + ")");
-        if (it.id === focused) {
-          ringX = out.x;
-          ringY = out.y;
-          ringShown = true;
-        }
-      }
-      const ring = ringRef.current;
-      if (ring) {
-        if (ringShown) {
-          ring.setAttribute("cx", String(ringX));
-          ring.setAttribute("cy", String(ringY));
-          ring.setAttribute("visibility", "visible");
-        } else ring.setAttribute("visibility", "hidden");
+        // Find My cue (MFW-67): the focused sprite is drawn FLAT_RIVER_MARK_SCALE × its size, no ring.
+        el.setAttribute(
+          "transform",
+          it.id === focused
+            ? "translate(" + out.x + " " + out.y + ") scale(" + FLAT_RIVER_MARK_SCALE + ")"
+            : "translate(" + out.x + " " + out.y + ")",
+        );
       }
       const frame = rippleFrame.current;
       for (let slot = 0; slot < pools.ripple.capacity; slot++) {
@@ -548,7 +535,14 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
               </g>
             )}
             {items.map((it) => (
-              <g key={it.id} ref={it.setElement} data-testid="flat-river-item" data-creation-id={it.id} data-own={it.own ? "true" : undefined}>
+              <g
+                key={it.id}
+                ref={it.setElement}
+                data-testid="flat-river-item"
+                data-creation-id={it.id}
+                data-own={it.own ? "true" : undefined}
+                data-marked={it.id === focusId ? "true" : undefined}
+              >
                 <g transform={`scale(${spritePx})`}>
                   <FlatKrathongShapes layers={it.layers} />
                 </g>
@@ -557,17 +551,6 @@ export function FlatRiverView({ mode, now = defaultNow, frames = defaultFrames }
                 )}
               </g>
             ))}
-            <circle
-              ref={ringRef}
-              data-testid="flat-focus-ring"
-              visibility="hidden"
-              fill="none"
-              stroke={FLAT_RIVER_HIGHLIGHT.color}
-              strokeOpacity={FLAT_RIVER_HIGHLIGHT.opacity}
-              strokeWidth={ringStrokePx}
-              r={ringRadiusPx}
-              pointerEvents="none"
-            />
           </svg>
         </div>
         {tapHint.visible && (

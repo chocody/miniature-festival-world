@@ -12,6 +12,7 @@ import {
   E2E_TAP_HINT_SEEN_VALUE,
   E2E_TAP_HINT_STORAGE_KEY,
   installSceneProbe,
+  listRingAndHaloMeshes,
   locateStableTarget,
   waitForCameraRest,
   type ScreenPoint,
@@ -28,8 +29,8 @@ const nextFrames = (page: Page) =>
 /**
  * MFW-54: the scene fills the viewport. LOW runs at 390×844 (a backlog 10.2 AC viewport, framed at zoom ≥ SCENE_CAMERA_ZOOM): it
  * is the full 44 px disc proof of MFW-59 AC3. HIGH / MEDIUM run at E2E_SWIFTSHADER_3D_VIEWPORT (360×640): SwiftShader cannot keep
- * them above the FPS fallback on a bigger full-screen canvas under load. There the framed zoom is 50, so the proxy discs are
- * ≈ 42.3 px, still wider than the probe ring (44 px − 2 × RING_INSET_PX); the 360-px shortfall is a follow-up (docs/follow-ups.md).
+ * them above the FPS fallback on a bigger full-screen canvas under load. Since MFW-68 360×640 is framed at zoom ≈ 66.7, so the
+ * proxy discs are ≥ 44 px there too, and the full-ring assertion is the MFW-68 AC3 proof at 360 px wide.
  */
 const TIERS = [
   { tier: "HIGH", memory: 8, cores: 8, viewport: E2E_SWIFTSHADER_3D_VIEWPORT },
@@ -37,10 +38,11 @@ const TIERS = [
   { tier: "LOW", memory: 2, cores: 2, viewport: { width: 390, height: 844 } },
 ] as const;
 /**
- * Upstream of the pier view: after the lamp flight (which now starts from the pier view, since a water tap no longer moves the
- * camera, MFW-69) these krathongs stay inside the 360-px frame while they drift downstream (0.35 / 0.5 / 0.65 drifted out).
+ * Measured on the MFW-68 framing (zoom 66.7 at 360 px): at the start these krathongs sit downstream (right) of the probe's first
+ * water point and drift away from it; after the lamp flight (which starts from the pier view, since a water tap no longer moves
+ * the camera, MFW-69) they stay inside the 360-px frame. 0.35 / 0.5 / 0.65 drifted out of it; 0.15 / 0.2 drifted into the water point.
  */
-const SPAWN_PROGRESS = [0.15, 0.2, 0.25];
+const SPAWN_PROGRESS = [0.25, 0.28, 0.31];
 const TOUCH_VIEWPORT = { width: 390, height: 844 };
 
 async function routeZone(page: Page) {
@@ -131,6 +133,8 @@ function defineTierTests(pointer: Pointer) {
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "lamp-glow");
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
       await expect(scene(page)).toHaveAttribute("data-selected-target", "lamp");
+      // MFW-67: the lamp lights up without a highlight ring or any other halo.
+      await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
 
       // River krathong
       await waitForCameraRest(page);

@@ -41,10 +41,10 @@ import {
   twistCameraRig,
   type CameraRigState,
 } from "@/core/camera";
-import { HIGHLIGHT_RING_SIZES, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT } from "@/config/events/loyKrathong.river.config";
 import { serializeKrathongAppearance } from "@/core/customization";
-import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
+import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
 import { FLAME_FLICKER_REDRAW_INTERVAL_MS } from "@/config/krathongModel.config";
@@ -116,9 +116,9 @@ vi.mock("@/core/ritual/releaseMotion", async (importOriginal) => {
   };
 });
 
-const riverRenders = vi.hoisted(() => ({ count: 0 }));
+const riverRenders = vi.hoisted(() => ({ count: 0, last: null as Record<string, unknown> | null }));
 
-/** Counts how often the scene re-renders RiverFlow (memoised: a drag must not do it per pointer-move). */
+/** Counts how often the scene re-renders RiverFlow (memoised: a drag must not do it per pointer-move); keeps its last props. */
 vi.mock("./RiverFlow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./RiverFlow")>();
   const React = await import("react");
@@ -126,7 +126,23 @@ vi.mock("./RiverFlow", async (importOriginal) => {
     ...actual,
     RiverFlow: (props: React.ComponentProps<typeof actual.RiverFlow>) => {
       riverRenders.count += 1;
+      riverRenders.last = props as unknown as Record<string, unknown>;
       return React.createElement(actual.RiverFlow, props);
+    },
+  };
+});
+
+const ownRenders = vi.hoisted(() => ({ last: null as Record<string, unknown> | null }));
+
+/** Keeps the real OwnKrathong and records its last props (MFW-67 mark cue). */
+vi.mock("./OwnKrathong", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./OwnKrathong")>();
+  const React = await import("react");
+  return {
+    ...actual,
+    OwnKrathong: (props: React.ComponentProps<typeof actual.OwnKrathong>) => {
+      ownRenders.last = props as unknown as Record<string, unknown>;
+      return React.createElement(actual.OwnKrathong, props);
     },
   };
 });
@@ -272,6 +288,8 @@ beforeEach(() => {
   useUIStore.setState(useUIStore.getInitialState(), true);
   release.starts.length = 0;
   riverRenders.count = 0;
+  riverRenders.last = null;
+  ownRenders.last = null;
   assets.created = 0;
   assets.disposed = 0;
   r3f.cameraProps.length = 0;
@@ -485,7 +503,7 @@ describe("scene pointer flow (stub R3F context)", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
-    expect(container.querySelector("ringGeometry")).not.toBeNull();
+    expect(container.querySelector("ringGeometry")).toBeNull();
     expect(r3f.flightStarts).toHaveLength(0);
     fireEvent.click(lampMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
@@ -501,7 +519,6 @@ describe("scene pointer flow (stub R3F context)", () => {
     expect(r3f.flightStarts).toHaveLength(1);
     for (let i = 0; i < 5; i++) fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
-    expect(container.querySelector("ringGeometry")).not.toBeNull();
     expect(r3f.flightStarts).toHaveLength(1);
     fireEvent.click(lampMesh(container));
     expect(r3f.flightStarts).toHaveLength(2);
@@ -1201,18 +1218,19 @@ describe("Find My (MFW-30)", () => {
     expect(r3f.flightStarts).toHaveLength(before + 2);
   });
 
-  it("the highlight targets the focused krathong", () => {
+  it("Find My marks the focused krathong without a ring", () => {
     const items = [storeItem(2, 1), storeItem(2, 2)];
     setWorld(2, items);
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
-    expect(container.querySelector("ringgeometry")).toBeNull();
+    expect(riverRenders.last!.markedId).toBeNull();
     focus(items[1].id, 1);
     expect(viewport()).toHaveAttribute("data-selected-target", "riverKrathong");
-    const ring = container.querySelector("ringgeometry")!;
-    const { innerRadius, outerRadius } = HIGHLIGHT_RING_SIZES.riverKrathong;
-    expect(ring.getAttribute("args")!.startsWith(`${innerRadius},${outerRadius},`)).toBe(true);
+    expect(riverRenders.last!.markedId).toBe(items[1].id);
+    expect(ownRenders.last!.marked).toBe(false);
+    expect(container.querySelector("ringgeometry")).toBeNull();
     fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
+    expect(riverRenders.last!.markedId).toBeNull();
     expect(viewport()).not.toHaveAttribute("data-find-my");
     expect(container.querySelector(`[name="river-item-${items[1].id}"]`)).not.toBeNull();
   });
@@ -1761,7 +1779,7 @@ describe("camera drag-to-travel (MFW-57)", () => {
     expect(r3f.flightStarts.at(-1)!.to).toMatchObject({ yawRad: expect.closeTo(0.25, 9) });
   });
 
-  it("water tap after a pan ripples and shows the ring without moving the camera (MFW-69 decision)", () => {
+  it("water tap after a pan ripples without moving the camera and draws no ring", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     drag([100, 100], [[160, 140]]);
     const flights = r3f.flightStarts.length;
@@ -1772,7 +1790,7 @@ describe("camera drag-to-travel (MFW-57)", () => {
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
     expect(r3f.flightStarts).toHaveLength(flights);
     expect(r3f.camera!.position.distanceTo(panned)).toBeLessThan(1e-9);
-    expect(container.querySelector("ringGeometry")).not.toBeNull();
+    expect(container.querySelector("ringGeometry")).toBeNull();
   });
 
   it("rotate button only in WORLD_EXPLORE, outside the section", () => {
@@ -1867,5 +1885,57 @@ describe("camera drag-to-travel (MFW-57)", () => {
     act(() => useDeviceStore.getState().setQualityTier("LOW"));
     expect(r3f.camera).not.toBe(before);
     expectCameraAt(expectedAfterDrag([100, 100], moves));
+  });
+});
+
+describe("natural look, no rings (MFW-67)", () => {
+  const chip = () => screen.getByRole("img", { name: "กระทง ลากลงน้ำ" });
+  const candle = (c: HTMLElement) => c.querySelector('[name="scene-krathong"] pointLight')!;
+
+  it("no ring and no basic material on any selection (MFW-67)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    for (const [hit, target] of [
+      [waterMesh, "water"],
+      [lampMesh, "lamp"],
+      [krathongMesh, "krathong"],
+    ] as const) {
+      fireEvent.click(hit(container));
+      expect(viewport()).toHaveAttribute("data-selected-target", target);
+      expect(container.querySelector("ringGeometry")).toBeNull();
+      expect(container.querySelector("meshBasicMaterial")).toBeNull();
+    }
+  });
+
+  it("tapping the own krathong marks it", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expect(ownRenders.last!.marked).toBe(false);
+    fireEvent.click(krathongMesh(container));
+    expect(ownRenders.last!.marked).toBe(true);
+    expect(riverRenders.last!.markedId).toBeNull();
+    expect(container.querySelector(`[name="${SCENE_OBJECT_NAMES.krathongMarkCue}"]`)).not.toBeNull();
+    fireEvent.click(waterMesh(container));
+    expect(ownRenders.last!.marked).toBe(false);
+  });
+
+  it("candle light scales with the pose (MFW-67)", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const { container } = render(<SceneViewport mode="CUSTOMIZE" />);
+    expect(candle(container)).toHaveAttribute("distance", String(TOY_SCENE_LIGHTING.candle.distance));
+    expect(candle(container)).toHaveAttribute("decay", "2");
+    cleanup();
+    const pier = render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "PIER");
+    expect(candle(pier.container)).toHaveAttribute(
+      "distance",
+      String(TOY_SCENE_LIGHTING.candle.distance * RIVER_KRATHONG_SCALE),
+    );
+  });
+
+  it("the drag chip draws no ring", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    render(<SceneViewport mode="RITUAL_RELEASE" />);
+    expect(chip().className).not.toMatch(/\b(border|shadow|ring|outline)(-|\b)/);
   });
 });

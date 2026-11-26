@@ -9,6 +9,7 @@ import { RELEASE_BUMP, RELEASE_MOTION_START } from "@/config/ritual.config";
 import { TOY_SCENE_LIGHTING } from "@/config/scene.config";
 import type { RiverLaneSet, WorldXZ } from "@/core/coordinates";
 import type { KrathongAppearance } from "@/core/customization";
+import { createBounceFrame, createMarkCueState } from "@/core/effects";
 import {
   createReleaseMotion,
   isRitualBumped,
@@ -20,7 +21,15 @@ import {
 import { prepareRiverItems } from "@/core/world";
 import { KrathongBlobShadow } from "./BlobShadows";
 import { PartChangeBounce } from "./PartChangeBounce";
-import { createOwnPoseScratch, ritualTouchdownXZ, writeOwnKrathongPose } from "./ownKrathongPose";
+import {
+  candleLightDistance,
+  candleLightIntensity,
+  createOwnPoseScratch,
+  ownKrathongPoseScale,
+  ritualTouchdownXZ,
+  writeMarkCueScale,
+  writeOwnKrathongPose,
+} from "./ownKrathongPose";
 import type { RitualSite } from "./ritualSite";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 
@@ -42,6 +51,8 @@ export interface OwnKrathongProps {
   readonly onSettled: (attempt: number) => void;
   /** LIGHT_PRESETS[preset].candle.intensityScale: scales the candle light without recreating the release motion (MFW-47). */
   readonly candleIntensityScale: number;
+  /** Selection / Find My cue on the own krathong (MFW-67): one bounce, then a steady size-up while true. */
+  readonly marked: boolean;
 }
 
 type ScalarRef = SpringRef<{ value: number }>;
@@ -66,6 +77,8 @@ const NO_ATTEMPT = -1;
 const START_VALUE: number = RELEASE_MOTION_START;
 const REST_VALUE: number = RELEASE_BUMP.restValue;
 const CANDLE_BASE: number = TOY_SCENE_LIGHTING.candle.intensity;
+/** Key the mark cue tracks for the own krathong: a stable string, not data. */
+const OWN_MARK_ID = "own";
 
 /** The user's own krathong across modes: origin (CUSTOMIZE), pier (ritual), release motion, live river pose (MFW-23). */
 export function OwnKrathong({
@@ -85,6 +98,7 @@ export function OwnKrathong({
   onTouchedDown,
   onSettled,
   candleIntensityScale,
+  marked,
 }: OwnKrathongProps) {
   const invalidate = useThree((s) => s.invalidate);
   const [lowerS, lowerApi] = useSpring(() => ({ value: START_VALUE, onChange: invalidate }));
@@ -100,9 +114,10 @@ export function OwnKrathong({
       ),
     [lowerApi, settleApi, bumpApi, candleApi, reducedMotion],
   );
+  const poseScale = ownKrathongPoseScale(poseKind);
   const candleIntensity = useMemo(
-    () => candleS.value.to((v) => v * candleIntensityScale),
-    [candleS.value, candleIntensityScale],
+    () => candleS.value.to((v) => candleLightIntensity(v, candleIntensityScale, poseScale)),
+    [candleS.value, candleIntensityScale, poseScale],
   );
   const own = useMemo(
     () =>
@@ -160,7 +175,12 @@ export function OwnKrathong({
 
   const poseRef = useRef<Group | null>(null);
   const scratch = useRef(createOwnPoseScratch());
+  const markRef = useRef<Group | null>(null);
+  const markState = useRef(createMarkCueState());
+  const markOut = useRef(createBounceFrame());
+  useEffect(() => invalidate(), [marked, invalidate]); // draw the first marked / unmarked frame on the demand canvas
   useFrame(() => {
+    const nowMs = now();
     const g = poseRef.current;
     if (!g) return;
     writeOwnKrathongPose(
@@ -174,12 +194,15 @@ export function OwnKrathong({
         lower: lowerS.value.get(),
         settle: settleS.value.get(),
         bump: bumpS.value.get(),
-        nowMs: now(),
+        nowMs,
         reducedMotion,
       },
       scratch.current,
     );
-    if (poseKind === "RELEASING" || poseKind === "RIVER" || poseKind === "DRAG") invalidate();
+    const m = markRef.current;
+    const marking =
+      m !== null && writeMarkCueScale(m, marked ? OWN_MARK_ID : null, nowMs, reducedMotion, markState.current, markOut.current);
+    if (marking || poseKind === "RELEASING" || poseKind === "RIVER" || poseKind === "DRAG") invalidate();
   });
 
   return (
@@ -196,13 +219,16 @@ export function OwnKrathong({
         <animated.pointLight
           color={TOY_SCENE_LIGHTING.candle.color}
           intensity={candleIntensity}
-          distance={TOY_SCENE_LIGHTING.candle.distance}
+          distance={candleLightDistance(poseScale)}
+          decay={TOY_SCENE_LIGHTING.candle.decay}
           position={TOY_SCENE_LIGHTING.candle.position}
         />
         <KrathongBlobShadow />
-        <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
-          <KrathongModel appearance={appearance} shadows={shadows} />
-        </PartChangeBounce>
+        <group ref={markRef} name={SCENE_OBJECT_NAMES.krathongMarkCue}>
+          <PartChangeBounce changeKey={appearance} reducedMotion={reducedMotion}>
+            <KrathongModel appearance={appearance} shadows={shadows} />
+          </PartChangeBounce>
+        </group>
       </group>
     </group>
   );

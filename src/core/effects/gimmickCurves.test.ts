@@ -1,12 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { GIMMICK_BOUNCE, LAMP_GLOW_LOOK, RIPPLE_LOOK } from "@/config/gimmicks.config";
+import { GIMMICK_BOUNCE, KRATHONG_MARK_CUE, LAMP_GLOW_LOOK, RIPPLE_LOOK } from "@/config/gimmicks.config";
 import {
   createBounceFrame,
   createLampGlowFrame,
+  createMarkCueState,
   createRippleFrame,
+  trackMarkCue,
   writeBounceAt,
   writeLampGlowFrameAt,
+  writeMarkCueAt,
   writeRippleFrameAt,
 } from "./gimmickCurves";
 
@@ -100,5 +103,47 @@ describe("writeLampGlowFrameAt", () => {
     expect(f.intensity).toBe(0);
     expect(f.scale).toBe(1);
     expect(writeLampGlowFrameAt(333, false, createLampGlowFrame())).toEqual(writeLampGlowFrameAt(333, false, createLampGlowFrame()));
+  });
+});
+
+describe("mark cue (MFW-67)", () => {
+  const P = GIMMICK_BOUNCE.periodMs;
+  const cue = KRATHONG_MARK_CUE.scale;
+
+  it("starts at the cue size (the bounce starts at 1)", () => {
+    const f = writeMarkCueAt(0, false, createBounceFrame());
+    expect(f.scale).toBe(cue);
+    expect(f.done).toBe(false);
+  });
+
+  it("bounces on top of the cue, then rests exactly at the cue", () => {
+    const f = writeMarkCueAt(P / 4, false, createBounceFrame());
+    expect(f.scale).toBe(cue * writeBounceAt(P / 4, false, createBounceFrame()).scale);
+    expect(f.scale).toBeGreaterThan(cue);
+    expect(f.done).toBe(false);
+    const end = writeMarkCueAt(GIMMICK_BOUNCE.durationMs, false, createBounceFrame());
+    expect(end.scale).toBe(cue);
+    expect(end.done).toBe(true);
+  });
+
+  it("reduced motion: the steady size-up at once, no bounce", () => {
+    for (const t of [0, P / 4, P / 2]) {
+      const f = writeMarkCueAt(t, true, createBounceFrame());
+      expect(f.scale).toBe(cue);
+      expect(f.done).toBe(true);
+    }
+  });
+
+  it("trackMarkCue restarts only when the marked id changes", () => {
+    const state = createMarkCueState();
+    expect(state).toEqual({ markedId: null, startedAtMs: 0 });
+    expect(trackMarkCue(state, "a", 100)).toBe(state);
+    expect(state.startedAtMs).toBe(100);
+    trackMarkCue(state, "a", 500);
+    expect(state.startedAtMs).toBe(100);
+    trackMarkCue(state, "b", 600);
+    expect(state).toEqual({ markedId: "b", startedAtMs: 600 });
+    trackMarkCue(state, null, 700);
+    expect(state.markedId).toBeNull();
   });
 });

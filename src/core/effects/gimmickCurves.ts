@@ -1,4 +1,4 @@
-import { GIMMICK_BOUNCE, LAMP_GLOW_LOOK, RIPPLE_LOOK } from "@/config/gimmicks.config";
+import { GIMMICK_BOUNCE, KRATHONG_MARK_CUE, LAMP_GLOW_LOOK, RIPPLE_LOOK } from "@/config/gimmicks.config";
 
 export interface RippleFrame {
   radius: number;
@@ -13,6 +13,11 @@ export interface LampGlowFrame {
 export interface BounceFrame {
   scale: number;
   done: boolean;
+}
+/** Which object carries the selection / Find My cue and since when (render-time only, never persisted). */
+export interface MarkCueState {
+  markedId: string | null;
+  startedAtMs: number;
 }
 
 const TAU = 2 * Math.PI;
@@ -103,5 +108,34 @@ export function writeLampGlowFrameAt(
   out.intensity = look.peakIntensity * envelope * flicker;
   out.scale = writeBounceAt(t, reducedMotion, scratchBounce, bounce).scale;
   out.done = false;
+  return out;
+}
+
+export function createMarkCueState(): MarkCueState {
+  return { markedId: null, startedAtMs: 0 };
+}
+
+/** When `markedId` differs from state.markedId: state.markedId = markedId, state.startedAtMs = nowMs (null clears). Returns state. Allocation-free. */
+export function trackMarkCue(state: MarkCueState, markedId: string | null, nowMs: number): MarkCueState {
+  if (state.markedId !== markedId) {
+    state.markedId = markedId;
+    state.startedAtMs = nowMs;
+  }
+  return state;
+}
+
+/**
+ * Scale of the marked object at `ageMs` after the mark started: cue.scale × writeBounceAt(ageMs, reducedMotion).scale; out.done =
+ * the bounce's done. Reduced motion: exactly cue.scale and done at once (no motion). Pure, allocation-free.
+ */
+export function writeMarkCueAt(
+  ageMs: number,
+  reducedMotion: boolean,
+  out: BounceFrame,
+  cue = KRATHONG_MARK_CUE,
+  bounce = GIMMICK_BOUNCE,
+): BounceFrame {
+  writeBounceAt(ageMs, reducedMotion, out, bounce);
+  out.scale *= cue.scale;
   return out;
 }

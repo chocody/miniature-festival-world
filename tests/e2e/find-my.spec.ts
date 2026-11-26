@@ -5,7 +5,14 @@ import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
-import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import {
+  E2E_KRATHONG_MARK_NAME,
+  E2E_KRATHONG_MARK_SCALE,
+  E2E_PINNED_TIER_URL,
+  installSceneProbe,
+  listRingAndHaloMeshes,
+  readObjectScaleX,
+} from "./helpers/sceneProbe";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -89,6 +96,7 @@ async function openAndSelect(page: Page) {
 test("3D: finds my krathong in another zone", async ({ page }) => {
   await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
   await highTier(page);
+  await installSceneProbe(page); // MFW-67: mark cue and ring checks
   // Pinned: the HIGH tier must not fall back to 2D mid-test on a slow SwiftShader runner (the FPS fallback has its own tests).
   const requested = await releaseThenMoveAway(page, true, E2E_PINNED_TIER_URL);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
@@ -99,6 +107,9 @@ test("3D: finds my krathong in another zone", async ({ page }) => {
   expect(requested[requested.length - 1]).toBe("2");
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-selected-target", "riverKrathong");
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-find-my", "following");
+  // MFW-67: the own krathong (drawn by OwnKrathong) is marked by the steady size-up, without a ring.
+  await expect.poll(() => readObjectScaleX(page, E2E_KRATHONG_MARK_NAME)).toBeCloseTo(E2E_KRATHONG_MARK_SCALE, 6);
+  await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
   await expect(page.locator(STATUS)).toHaveText(FOUND_TEXT);
   await expect(page.locator("canvas")).toHaveCount(1);
 });

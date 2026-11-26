@@ -1,17 +1,20 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { OrthographicCamera, Vector3 } from "three";
-import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR } from "@/config/camera.config";
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { LAMP_TAP_RADIUS, RIVER_KRATHONG_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { LOY_KRATHONG_PIER } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
-import { splineProgressToWorld } from "@/core/coordinates";
+import { locateOnLane, splineProgressToWorld } from "@/core/coordinates";
 import { getLoyKrathongRitualSite } from "./ritualSite";
 
-/** Backlog 10.2 AC3 (MFW-54): the framed zoom keeps the pier and both banks at the pier in view at any aspect ratio. */
+/**
+ * Backlog 10.2 AC3 (MFW-54) and 13.4 AC3 (MFW-68): the framed zoom keeps the pier and both banks at the pier in the ritual / world
+ * view at any aspect ratio inside the SCENE_MAX_VIEW_SIZE envelope; CUSTOMIZE keeps the krathong and the water at it.
+ */
 const SIZES = [
   [360, 640],
   [390, 844],
@@ -24,6 +27,11 @@ const SIZES = [
   [600, 800],
   [1024, 768],
   [3440, 1440],
+  [360, 860],
+  [1500, 300],
+] as const;
+/** Aspect ratios the SCENE_MAX_VIEW_SIZE floor crops (the frame is no longer fully contained). */
+const OUT_OF_ENVELOPE = [
   [200, 800],
   [1600, 300],
 ] as const;
@@ -33,19 +41,21 @@ interface Pose {
   readonly camera: readonly [number, number, number];
   readonly focus: readonly [number, number, number];
 }
+interface NamedPoint {
+  readonly name: string;
+  readonly p: { readonly x: number; readonly y: number; readonly z: number };
+}
 
 const ritualPose = getCameraFlightPose(getLoyKrathongRitualSite().tip);
-const POSES: readonly Pose[] = [
-  { name: "default (CUSTOMIZE)", camera: CAMERA_FLIGHT_OFFSET, focus: [0, 0, 0] },
-  {
-    name: "ritual/world",
-    camera: [ritualPose.cameraX, ritualPose.cameraY, ritualPose.cameraZ],
-    focus: [ritualPose.focusX, ritualPose.focusY, ritualPose.focusZ],
-  },
-];
+const RITUAL_POSE: Pose = {
+  name: "ritual/world",
+  camera: [ritualPose.cameraX, ritualPose.cameraY, ritualPose.cameraZ],
+  focus: [ritualPose.focusX, ritualPose.focusY, ritualPose.focusZ],
+};
+const CUSTOMIZE_POSE: Pose = { name: "default (CUSTOMIZE)", camera: CAMERA_FLIGHT_OFFSET, focus: [0, 0, 0] };
 
 const { pier, channel } = LOY_KRATHONG_RIVER_LAYOUT;
-const POINTS: readonly { readonly name: string; readonly p: { readonly x: number; readonly y: number; readonly z: number } }[] = [
+const PIER_POINTS: readonly NamedPoint[] = [
   { name: "pier tip", p: pier.tip },
   { name: "release point", p: pier.releasePoint },
   { name: "deck centre", p: pier.deckCenter },
@@ -57,54 +67,59 @@ const POINTS: readonly { readonly name: string; readonly p: { readonly x: number
   { name: "bank +0.5", p: splineProgressToWorld(channel, LOY_KRATHONG_PIER.progress, 0.5).position },
   { name: "bank -0.5", p: splineProgressToWorld(channel, LOY_KRATHONG_PIER.progress, -0.5).position },
 ];
+const originProgress = locateOnLane(channel, { x: 0, z: 0 }).progress;
+const CUSTOMIZE_POINTS: readonly NamedPoint[] = [
+  { name: "krathong (origin)", p: { x: 0, y: 0, z: 0 } },
+  { name: "water +0.5", p: splineProgressToWorld(channel, originProgress, 0.5).position },
+  { name: "water -0.5", p: splineProgressToWorld(channel, originProgress, -0.5).position },
+];
 
-describe("scene framing at any aspect ratio (MFW-54)", () => {
-  it("keeps the pier and both banks inside the frustum for every size and pose", () => {
-    expect(pier.piles.length).toBeGreaterThan(0);
-    const ndc = new Vector3();
-    for (const [w, h] of SIZES) {
-      for (const pose of POSES) {
-        const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, SCENE_CAMERA_NEAR, SCENE_CAMERA_FAR);
-        camera.zoom = getFramedCameraZoom({ width: w, height: h });
-        camera.position.set(...pose.camera);
-        camera.lookAt(...pose.focus);
-        camera.updateProjectionMatrix();
-        camera.updateMatrixWorld();
-        for (const { name, p } of POINTS) {
-          ndc.set(p.x, p.y, p.z).project(camera);
-          const where = `${name} at ${w}×${h}, ${pose.name}`;
-          expect(Math.abs(ndc.x), where).toBeLessThanOrEqual(1);
-          expect(Math.abs(ndc.y), where).toBeLessThanOrEqual(1);
-        }
-      }
+function missesInFrame(sizes: readonly (readonly [number, number])[], pose: Pose, points: readonly NamedPoint[]): string[] {
+  const misses: string[] = [];
+  const ndc = new Vector3();
+  for (const [w, h] of sizes) {
+    const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, SCENE_CAMERA_NEAR, SCENE_CAMERA_FAR);
+    camera.zoom = getFramedCameraZoom({ width: w, height: h });
+    camera.position.set(...pose.camera);
+    camera.lookAt(...pose.focus);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    for (const { name, p } of points) {
+      ndc.set(p.x, p.y, p.z).project(camera);
+      if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) misses.push(`${name} at ${w}×${h}, ${pose.name}: ndc ${ndc.x}, ${ndc.y}`);
     }
+  }
+  return misses;
+}
+
+describe("scene framing at any aspect ratio (MFW-54, MFW-68)", () => {
+  it("ritual / world view keeps the pier and both banks in frame at every size", () => {
+    expect(pier.piles.length).toBeGreaterThan(0);
+    expect(missesInFrame(SIZES, RITUAL_POSE, PIER_POINTS)).toEqual([]);
+  });
+
+  it("CUSTOMIZE view keeps the krathong and the water at it in frame", () => {
+    expect(missesInFrame(SIZES, CUSTOMIZE_POSE, CUSTOMIZE_POINTS)).toEqual([]);
+  });
+
+  it("the pier tip and release point stay in frame outside the envelope", () => {
+    const points = PIER_POINTS.filter((pt) => pt.name === "pier tip" || pt.name === "release point");
+    expect(points).toHaveLength(2);
+    expect(missesInFrame(OUT_OF_ENVELOPE, RITUAL_POSE, points)).toEqual([]);
   });
 });
 
-describe("tap discs at the framed zoom (MFW-54 fix round; documented follow-up)", () => {
-  // The MFW-59 proxies are sized in world units for MIN_TOUCH_TARGET_PX at SCENE_CAMERA_ZOOM. The framed zoom is at or above it from
-  // a 374-px width, so the AC phones 390×844 and wider keep ≥ 44 px discs. Below that the disc shrinks with the zoom: 360×640 frames
-  // at zoom ≈ 48.6 (7.4-wide frame since MFW-49) → ≈ 41.2 px. Scaling the proxies by SCENE_CAMERA_ZOOM / zoom is a follow-up (docs/follow-ups.md, MFW-54).
+describe("tap discs at the framed zoom (MFW-54, MFW-68)", () => {
   const discPx = (zoom: number) => ({
     lamp: 2 * LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO * zoom,
     krathong: 2 * RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_SCALE * TAP_PROXY_INRADIUS_RATIO * zoom,
   });
 
-  it("keeps ≥ MIN_TOUCH_TARGET_PX discs at 390×844, 844×390 and 1440×900", () => {
-    for (const [w, h] of [[390, 844], [844, 390], [1440, 900]] as const) {
+  it("tap discs ≥ MIN_TOUCH_TARGET_PX at the framed zoom, 360 px wide included (MFW-68 AC3)", () => {
+    for (const [w, h] of [[320, 568], [360, 640], [390, 844], [844, 390], [1440, 900]] as const) {
       const d = discPx(getFramedCameraZoom({ width: w, height: h }));
-      expect(d.lamp).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
-      expect(d.krathong).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+      expect(d.lamp, `lamp at ${w}×${h}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
+      expect(d.krathong, `krathong at ${w}×${h}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
     }
-  });
-
-  it("documents the 360-px shortfall: discs scale with zoom / SCENE_CAMERA_ZOOM (≈ 41.2 px at 360×640)", () => {
-    const zoom = getFramedCameraZoom({ width: 360, height: 640 });
-    expect(zoom).toBeLessThan(SCENE_CAMERA_ZOOM);
-    const d = discPx(zoom);
-    const expectedMin = (MIN_TOUCH_TARGET_PX * zoom) / SCENE_CAMERA_ZOOM;
-    expect(d.lamp).toBeCloseTo(expectedMin, 9);
-    expect(d.lamp).toBeLessThan(MIN_TOUCH_TARGET_PX);
-    expect(d.krathong).toBeGreaterThanOrEqual(expectedMin - 1e-9);
   });
 });

@@ -178,6 +178,13 @@ export const RIVER_KRATHONG_BLOB_SHADOW_RADIUS = KRATHONG_BLOB_SHADOW.radius * R
  */
 export const LOOK_MIN_LIT_LUMINANCE = 0.025;
 
+/**
+ * Lead regression guard (technical, not a product number): the largest Lambert radiance the own-krathong candle light may add to a
+ * white surface right under it. three's PBR Neutral tone mapping (LOOK_RENDERER) is linear up to StartCompression = 0.8 − 0.04
+ * (tonemapping_pars_fragment); above it the light clips into a flat bright disc with a visible edge (MFW-67).
+ */
+export const CANDLE_MAX_PEAK_RADIANCE = 0.76;
+
 /** Lead guard for "pastel, no near-black albedo" on environment materials (WCAG relative luminance). */
 export const LOOK_MIN_ALBEDO_LUMINANCE = 0.1;
 
@@ -185,25 +192,15 @@ export const LOOK_MIN_ALBEDO_LUMINANCE = 0.1;
 export interface VillageLightLevels {
   readonly windowEmissiveIntensity: number;
   readonly lanternEmissiveIntensity: number;
-  readonly lampLightPools: boolean;
 }
 
-/** AC3: lit at NIGHT, off at DAY. Emissive is a uniform, so a preset switch recompiles nothing. DRAFT. */
+/** AC3: lit at NIGHT, off at DAY (emissive only; the MFW-49 lamp light pools were removed in MFW-67, owner decision 40). Emissive is a uniform, so a preset switch recompiles nothing. DRAFT. */
 export const VILLAGE_LIGHTS: Readonly<Record<LightPresetId, VillageLightLevels>> = Object.freeze({
-  DAY: Object.freeze({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0, lampLightPools: false }),
-  NIGHT: Object.freeze({ windowEmissiveIntensity: 0.9, lanternEmissiveIntensity: 1.2, lampLightPools: true }),
+  DAY: Object.freeze({ windowEmissiveIntensity: 0, lanternEmissiveIntensity: 0 }),
+  NIGHT: Object.freeze({ windowEmissiveIntensity: 0.9, lanternEmissiveIntensity: 1.2 }),
 });
 
-/** Warm additive pool of light on the ground under each lamp, NIGHT only (vertex-alpha fan, no light). DRAFT. */
-export const LAMP_LIGHT_POOL_LOOK = Object.freeze({
-  color: LOOK_PALETTE.lanternGlow,
-  opacity: 0.35,
-  radius: 0.55,
-  liftY: 0.008,
-  additive: true,
-});
-
-/** Stylized water highlights (shore band, drifting glints, krathong ripple rings; MFW-49, AC4). DRAFT. */
+/** Stylized water highlights (shore band, drifting glints, krathong ripples; MFW-49, AC4). DRAFT. */
 export const WATER_HIGHLIGHT_LOOK = Object.freeze({
   color: LOOK_PALETTE.waterLight,
   shoreOpacity: 0.55,

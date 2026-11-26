@@ -7,9 +7,9 @@ import { assertDayNightHours } from "@/core/world";
 import {
   BLOB_SHADOW_LOOK,
   BLOB_SHADOW_TIER_GEOMETRY,
+  CANDLE_MAX_PEAK_RADIANCE,
   DAY_NIGHT_HOURS,
   KRATHONG_BLOB_SHADOW,
-  LAMP_LIGHT_POOL_LOOK,
   LIGHT_PRESET_CHOICES,
   LIGHT_PRESET_IDS,
   LIGHT_PRESET_STORAGE_KEY,
@@ -20,7 +20,10 @@ import {
   VILLAGE_LIGHTS,
   WATER_HIGHLIGHT_LOOK,
 } from "./look.config";
-import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
+import { KRATHONG_BASE_MODELS } from "./krathongModel.config";
+import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
+import { RELEASE_CANDLE } from "./ritual.config";
+import { TOY_SCENE_LIGHTING } from "./scene.config";
 
 const HEX = /^#[0-9A-F]{6}$/i;
 const triangles = (g: { segments: number; rings: number }) => g.segments * (2 * g.rings - 1);
@@ -100,7 +103,6 @@ describe("village lights and water look (MFW-49)", () => {
       VILLAGE_LIGHTS,
       VILLAGE_LIGHTS.DAY,
       VILLAGE_LIGHTS.NIGHT,
-      LAMP_LIGHT_POOL_LOOK,
       WATER_HIGHLIGHT_LOOK,
     ]) {
       expect(Object.isFrozen(o)).toBe(true);
@@ -109,10 +111,8 @@ describe("village lights and water look (MFW-49)", () => {
 
   it("colours are #RRGGBB and opacities in (0, 1)", () => {
     expect(LOOK_PALETTE.stone).toMatch(HEX);
-    expect(LAMP_LIGHT_POOL_LOOK.color).toMatch(HEX);
     expect(WATER_HIGHLIGHT_LOOK.color).toMatch(HEX);
     for (const o of [
-      LAMP_LIGHT_POOL_LOOK.opacity,
       WATER_HIGHLIGHT_LOOK.shoreOpacity,
       WATER_HIGHLIGHT_LOOK.glintOpacity,
       WATER_HIGHLIGHT_LOOK.rippleOpacity,
@@ -126,11 +126,33 @@ describe("village lights and water look (MFW-49)", () => {
     expect(Object.keys(VILLAGE_LIGHTS).sort()).toEqual([...LIGHT_PRESET_IDS].sort());
     expect(VILLAGE_LIGHTS.DAY.windowEmissiveIntensity).toBe(0);
     expect(VILLAGE_LIGHTS.DAY.lanternEmissiveIntensity).toBe(0);
-    expect(VILLAGE_LIGHTS.DAY.lampLightPools).toBe(false);
     expect(VILLAGE_LIGHTS.NIGHT.windowEmissiveIntensity).toBeGreaterThan(0);
     expect(VILLAGE_LIGHTS.NIGHT.lanternEmissiveIntensity).toBeGreaterThan(0);
-    expect(VILLAGE_LIGHTS.NIGHT.lampLightPools).toBe(true);
-    expect(LAMP_LIGHT_POOL_LOOK.radius).toBeGreaterThan(0);
-    expect(LAMP_LIGHT_POOL_LOOK.liftY).toBeGreaterThan(0);
+  });
+});
+
+describe("candle light (MFW-67)", () => {
+  const c = TOY_SCENE_LIGHTING.candle;
+  /** Lambert radiance the brightened candle adds to a white surface right under it: I / h² × 1/π (decay 2). */
+  const peak = (intensity: number, h: number) => intensity / (Math.PI * h * h);
+
+  it("fades out smoothly just past the krathong", () => {
+    expect(c.distance).toBe(2 * KRATHONG_MODEL_FOOTPRINT_RADIUS);
+    expect(c.decay).toBe(2);
+    expect(c.color).toBe("#ffb35c");
+  });
+
+  it("never clips into a flat disc: peak radiance ≤ CANDLE_MAX_PEAK_RADIANCE for every base and preset", () => {
+    for (const [baseId, base] of Object.entries(KRATHONG_BASE_MODELS)) {
+      const h = c.position[1] - base.topY;
+      expect(h, baseId).toBeGreaterThan(0);
+      for (const p of LIGHT_PRESET_IDS) {
+        const intensity = c.intensity * LIGHT_PRESETS[p].candle.intensityScale * RELEASE_CANDLE.brightenFactor;
+        expect(peak(intensity, h), `${baseId} ${p}`).toBeLessThanOrEqual(CANDLE_MAX_PEAK_RADIANCE);
+        // Scale invariance: OwnKrathong scales distance by s and intensity by s², so the river pose looks the same.
+        const s = RIVER_KRATHONG_SCALE;
+        expect(peak(intensity * s * s, h * s)).toBeCloseTo(peak(intensity, h), 12);
+      }
+    }
   });
 });

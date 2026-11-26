@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import {
   useCallback,
   useEffect,
@@ -14,14 +14,10 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import { OrthographicCamera, Vector3 } from "three";
+import { OrthographicCamera } from "three";
 import type { Group, Mesh } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
-  HIGHLIGHT_RING_COLOR,
-  HIGHLIGHT_RING_OPACITY,
-  HIGHLIGHT_RING_SEGMENTS,
-  HIGHLIGHT_RING_SIZES,
   SCENE_CAMERA_FAR,
   SCENE_CAMERA_NEAR,
   SCENE_CAMERA_ZOOM,
@@ -50,7 +46,6 @@ import {
   getFramedCameraZoom,
   getRiverPanBounds,
   twistCameraRig,
-  updateHighlightPosition,
   type CameraRigState,
   type CameraTargetKind,
 } from "@/core/camera";
@@ -96,7 +91,8 @@ import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { CANVAS_GL_OPTIONS } from "./sceneLook";
 import { SceneLighting } from "./SceneLighting";
 import { EnvironmentBlobShadows } from "./BlobShadows";
-import { LampLightPools, ShoreHighlights, WaterGlints } from "./WaterHighlights";
+import { ShoreHighlights, WaterGlints } from "./WaterHighlights";
+import { getSceneMarks } from "./sceneMarks";
 import { useResolvedLightPreset } from "./useLightPreset";
 import { DEFAULT_KRATHONG_APPEARANCE, type KrathongAppearance } from "@/core/customization";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -179,6 +175,8 @@ interface ToyNightSceneProps {
   pierFocusRef: RefObject<Group | null>;
   findMyItem: RiverFlowItem | null;
   findMyAnchorRef: RefObject<Group | null>;
+  markedRiverId: string | null;
+  ownMarked: boolean;
 }
 
 const ToyNightScene = memo(function ToyNightScene({
@@ -211,6 +209,8 @@ const ToyNightScene = memo(function ToyNightScene({
   pierFocusRef,
   findMyItem,
   findMyAnchorRef,
+  markedRiverId,
+  ownMarked,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   return (
@@ -233,7 +233,6 @@ const ToyNightScene = memo(function ToyNightScene({
         <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <ShoreHighlights layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <WaterGlints layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
-        <LampLightPools layout={LOY_KRATHONG_RIVER_LAYOUT} lightPreset={lightPreset} />
         <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
         <OwnKrathong
           targetRef={krathongTargetRef}
@@ -252,6 +251,7 @@ const ToyNightScene = memo(function ToyNightScene({
           onTouchedDown={onTouchedDown}
           onSettled={onSettled}
           candleIntensityScale={LIGHT_PRESETS[lightPreset].candle.intensityScale}
+          marked={ownMarked}
         />
         <RiverFlow
           items={riverItems}
@@ -262,6 +262,7 @@ const ToyNightScene = memo(function ToyNightScene({
           pinnedIds={pinnedRiverIds}
           onItemTapped={onRiverItemTapped}
           shadowSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
+          markedId={markedRiverId}
         />
         {findMyItem && (
           <FindMyAnchor item={findMyItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} anchorRef={findMyAnchorRef} />
@@ -278,27 +279,6 @@ const ToyNightScene = memo(function ToyNightScene({
     </>
   );
 });
-
-function TargetHighlight({ targetRef, target }: { targetRef: TargetRef; target: CameraTargetKind }) {
-  const ringRef = useRef<Mesh | null>(null);
-  const worldTarget = useRef(new Vector3());
-  const ringSize = HIGHLIGHT_RING_SIZES[target];
-
-  useFrame(() => {
-    const target = targetRef.current;
-    const ring = ringRef.current;
-    if (!target || !ring) return;
-    target.getWorldPosition(worldTarget.current);
-    updateHighlightPosition(worldTarget.current, ring.position, ringSize.heightOffset);
-  });
-
-  return (
-    <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[ringSize.innerRadius, ringSize.outerRadius, HIGHLIGHT_RING_SEGMENTS]} />
-      <meshBasicMaterial color={HIGHLIGHT_RING_COLOR} transparent opacity={HIGHLIGHT_RING_OPACITY} toneMapped={false} />
-    </mesh>
-  );
-}
 
 function readTarget(target: EventTarget | null): InteractionTarget | null {
   if (!(target instanceof Element)) return null;
@@ -463,7 +443,7 @@ export function SceneViewport({
 
   const onWaterSelected = useCallback((tap: WorldXZ | null) => {
     if (mode !== "WORLD_EXPLORE") return;
-    // Decided (lead default, MFW-69; owner may revisit): a water tap selects and highlights the water and makes its ripple, but
+    // Decided (lead default, MFW-69; owner may revisit): a water tap selects the water and makes its ripple, but
     // never moves the camera. A flight on every water tap moved the scene under repeated taps at one screen point.
     setSelectedTarget("water");
     if (tap && effectsRef.current) {
@@ -510,15 +490,6 @@ export function SceneViewport({
     [mode, inspectedId, sceneRiverItems],
   );
 
-  const activeTargetRef: TargetRef | null = selectedTarget === "water"
-    ? waterTargetRef
-    : selectedTarget === "krathong"
-      ? krathongTargetRef
-      : selectedTarget === "lamp"
-        ? lampTargetRef
-        : selectedTarget === "riverKrathong"
-          ? findMyAnchorRef
-          : null;
   const flightTargetRef: TargetRef | null = flightTarget === "krathong"
     ? krathongTargetRef
     : flightTarget === "lamp"
@@ -526,6 +497,12 @@ export function SceneViewport({
       : flightTarget === "riverKrathong"
         ? findMyAnchorRef
         : null;
+  const { markedRiverId, ownMarked } = getSceneMarks({
+    selectedTarget,
+    findMyId: findMyItem?.id ?? null,
+    ownId: ritual.saved?.id ?? null,
+    ownShown,
+  });
   const cameraTargetRef: TargetRef | null =
     flightTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
 
@@ -809,6 +786,8 @@ export function SceneViewport({
             pierFocusRef={pierFocusRef}
             findMyItem={findMyItem}
             findMyAnchorRef={findMyAnchorRef}
+            markedRiverId={markedRiverId}
+            ownMarked={ownMarked}
           />
           <CameraRig
             getRig={getRig}
@@ -818,14 +797,13 @@ export function SceneViewport({
             reducedMotion={reducedMotion}
             handleRef={rigHandleRef}
           />
-          {activeTargetRef && selectedTarget && <TargetHighlight targetRef={activeTargetRef} target={selectedTarget} />}
         </KrathongAssetsProvider>
       </Canvas>
       {mode === "RITUAL_RELEASE" && ritual.phase === "IDLE" && (
         <div
           role="img"
           aria-label="กระทง ลากลงน้ำ"
-          className="absolute z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full border-2 border-amber-200 bg-transparent text-xs font-semibold text-amber-950 shadow-lg active:cursor-grabbing"
+          className="absolute z-10 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full bg-transparent active:cursor-grabbing"
           data-input-target="krathong"
           ref={chipRef}
           style={{ left: `${RITUAL_CHIP_START_PERCENT.x}%`, top: `${RITUAL_CHIP_START_PERCENT.y}%` }}

@@ -1,38 +1,39 @@
-/** Camera offset from the focus at yaw 0 (orthographic viewing angle). The camera rig rotates it about +Y (MFW-57). */
-export const CAMERA_FLIGHT_OFFSET = [4.5, 5.5, 7] as const;
+/**
+ * Camera offset from the focus at yaw 0 (orthographic viewing angle). The camera rig rotates it about +Y (MFW-57).
+ * MFW-68: ×2 of the MFW-15 [4.5, 5.5, 7] — same azimuth atan2(9, 14) and elevation (≈ 33.46°), so the orthographic picture is
+ * identical; the distance (≈ 19.95) keeps the near plane off the ground and the scenery at the bottom of the tallest view
+ * (SCENE_MAX_VIEW_SIZE.height / PINCH_ZOOM_MIN) and the ground's far edge inside SCENE_CAMERA_FAR (sceneCoverage.test.ts).
+ * Technical (lead, MFW-68).
+ */
+export const CAMERA_FLIGHT_OFFSET = [9, 11, 14] as const;
 
 /** Smooth, interruptible camera transition tuned for short scene navigation. */
 export const CAMERA_FLIGHT_SPRING_CONFIG = Object.freeze({ mass: 1, tension: 170, friction: 26 });
-
-/** Per-target highlight rings, sized to remain visible around the scene object. */
-export const HIGHLIGHT_RING_SIZES = Object.freeze({
-  water: Object.freeze({ innerRadius: 0.42, outerRadius: 0.56, heightOffset: 0.04 }),
-  krathong: Object.freeze({ innerRadius: 1.35, outerRadius: 1.55, heightOffset: 0.26 }),
-  lamp: Object.freeze({ innerRadius: 0.28, outerRadius: 0.42, heightOffset: 0.04 }),
-  /** Find My ring around a river krathong (MFW-30). Lead design: inner radius clears RIVER_COLLISION_RADIUS (about 0.286), about 5 px wide at zoom 52. Tune on device. */
-  riverKrathong: Object.freeze({ innerRadius: 0.34, outerRadius: 0.44, heightOffset: 0.04 }),
-});
 
 /** Toy scene orthographic camera (MFW-15 values, moved from canvas3d in MFW-27). */
 export const SCENE_CAMERA_ZOOM = 52;
 export const SCENE_CAMERA_NEAR = 0.1;
 export const SCENE_CAMERA_FAR = 40;
 /**
- * MFW-54: view-plane rectangle (world units, centred on the camera focus) that always stays in view; the base zoom is the largest
- * that fits it ("contain"). PLACEHOLDER (spec silent; owner reviews from screenshots): 7.4 wide holds the whole pier deck
- * (|x| ≤ 3.68 in the default view since the MFW-49 wider channel; MFW-54 shipped 7.2 for |x| ≤ 3.2) and keeps the framed zoom
- * ≥ SCENE_CAMERA_ZOOM at 390 px wide (390 / 7.4 ≈ 52.7); 4.9 high ≈ the old 256-px viewport at SCENE_CAMERA_ZOOM.
- * sceneFraming.test.ts pins that the pier and both banks stay inside.
+ * MFW-54/MFW-68: view-plane rectangle (world units, centred on the camera focus) that stays in view ("contain") whenever the
+ * viewport's aspect ratio is within [width / SCENE_MAX_VIEW_SIZE.height, SCENE_MAX_VIEW_SIZE.width / height] and the cap does not
+ * bind. PLACEHOLDER (owner approves from the MFW-68 screenshots, open question 42): 5.4 wide ≥ 2 × 2.55, the far-bank water edge
+ * at the pier seen from the pier tip (ritual / world view), and 360 / 5.4 ≈ 66.7 ≥ SCENE_CAMERA_ZOOM, so tap discs are ≥
+ * MIN_TOUCH_TARGET_PX from 281 px wide; 4.0 high ≥ 2 × 1.92 (the same bank edge, vertically) for landscape phones.
+ * ≈ 1.37× closer than MFW-49 (7.4 × 4.9) on portrait phones, 1.22× on 844×390. sceneFraming.test.ts pins that the pier and both
+ * banks stay inside the ritual / world view.
  */
-export const SCENE_FRAME_VIEW_SIZE = Object.freeze({ width: 7.4, height: 4.9 });
-/** MFW-54: big screens show more world instead of a bigger krathong. PLACEHOLDER: 2 → 1440×900 shows ≈ 13.8 × 8.7 units (the old desktop viewport showed ≈ 13.5 across). */
-export const SCENE_CAMERA_ZOOM_MAX_FACTOR = 2;
+export const SCENE_FRAME_VIEW_SIZE = Object.freeze({ width: 5.4, height: 4 });
+/** MFW-68: zoom cap factor 2 → 2.75 (cap 104 → 143, 1.375× closer on 1440×900, which shows ≈ 10.1 × 6.3 units). PLACEHOLDER. */
+export const SCENE_CAMERA_ZOOM_MAX_FACTOR = 2.75;
 export const SCENE_CAMERA_ZOOM_MAX = SCENE_CAMERA_ZOOM * SCENE_CAMERA_ZOOM_MAX_FACTOR;
-/** Highlight ring look (MFW-17 values, moved in MFW-27). */
-export const HIGHLIGHT_RING_COLOR = "#ffd166";
-export const HIGHLIGHT_RING_OPACITY = 0.9;
-export const HIGHLIGHT_RING_SEGMENTS = 32;
-
+/**
+ * MFW-68: the most world (view-plane units) any viewport shows at pinch factor 1. The framed zoom never goes below
+ * max(width / 20, height / 13), so the ground and the camera planes can cover every viewport size (AC2). 13 ≥ 5.4 × 960 / 411
+ * (21:9 phone portrait, 12.6) and 20 ≥ 2560 / 143 (QHD desktop, 17.9): common screens keep the contain framing.
+ * PLACEHOLDER (lead, MFW-68; owner approves with the framing).
+ */
+export const SCENE_MAX_VIEW_SIZE = Object.freeze({ width: 20, height: 13 });
 /** MFW-57 camera drag-to-travel. PLACEHOLDER (spec silent; owner tunes on device, MFW-57) unless marked technical. */
 /** Fraction of the finger motion applied past a soft pan bound (rubber band). PLACEHOLDER (spec silent; owner tunes on device, MFW-57). */
 export const CAMERA_PAN_EDGE_RESISTANCE = 0.35;

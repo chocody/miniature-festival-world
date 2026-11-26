@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
-import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { E2E_PINNED_TIER_URL, installSceneProbe, listRingAndHaloMeshes } from "./helpers/sceneProbe";
 
 /** Duplicated literals (do not import src/ into Playwright): LIGHT_PRESET_STORAGE_KEY / LIGHT_PRESET_SWITCH_COPY in src/config/look.config.ts. */
 const LIGHT_PRESET_STORAGE_KEY = "mfw:lightPreset:v1";
@@ -25,6 +25,7 @@ async function openScene(page: Page): Promise<{ pageErrors: string[]; consoleErr
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
   });
+  await installSceneProbe(page); // MFW-67: ring / halo check
   return { pageErrors, consoleErrors };
 }
 
@@ -63,6 +64,8 @@ test("the switch overrides the time and the choice stays on the device (MFW-47 A
   await expect(page.locator('[data-overlay-slot="corner"]').getByRole("radiogroup", { name: SWITCH_GROUP })).toHaveCount(1);
   await page.getByRole("radio", { name: SWITCH_NIGHT }).click();
   await expect(scene(page)).toHaveAttribute("data-light-preset", "NIGHT");
+  // MFW-67: no ring and no additive halo (no lamp light pools, no highlight ring) at NIGHT.
+  await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
   expect(await page.evaluate((key) => localStorage.getItem(key), LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");
 
   await page.reload();

@@ -91,9 +91,11 @@ as in the reference instead of only the ground.
 
 Candle and flame:
 
-- The own-krathong candle point light is `TOY_SCENE_LIGHTING.candle` (#ffb35c, 14, distance 7) × the preset's
-  `candle.intensityScale`. The scale is applied through a spring interpolation, so a preset switch never restarts a
-  release.
+- The own-krathong candle point light is `TOY_SCENE_LIGHTING.candle` × the preset's `candle.intensityScale`. Since
+  MFW-67 (DRAFT): #ffb35c, intensity 1.0 in krathong model units (was 14), distance 2 × footprint = 2.6 (was 7), decay 2,
+  scaled by the pose (distance × s, intensity × s², so CUSTOMIZE and the 0.22-scaled river pose look the same) and kept
+  under the guard `CANDLE_MAX_PEAK_RADIANCE` (no clipped yellow disc). The scale is applied through a spring
+  interpolation, so a preset switch never restarts a release.
 - The shared krathong flame material is not tone-mapped (`KRATHONG_FLAME_GLOW`), and its emissive intensity is set
   per preset. That makes the flame the brightest surface in both presets without a bloom pass (guarded in
   `riverLayout.test.ts`).
@@ -299,7 +301,7 @@ Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, p
   the water (y −0.26) up to the village terrace (`RIVER_BANK_TOP_Y` −0.14) at 0.25, a flat terrace to 3 (lamps, path,
   village), then a gentle rise to 0.08 at the bank edge (`bankWidth` 5). Smooth vertex normals round the lip; the
   shoreline is the clean intersection of the water and the lip.
-- A flat ground (`RIVER_GROUND`, radius 30, below the water) lies around everything so no viewport shows background. It is
+- A flat ground (`RIVER_GROUND`, radius 40 (MFW-68: covers the largest view from anywhere in the pan bounds), below the water) lies around everything so no viewport shows background. It is
   a disc with a hole shaped like the river + banks outline (`buildGroundHoleOutline`: the outer bank edges pulled in by
   `holeMargin` 1), so it never overdraws the water or banks, and no camera ray passes under a bank edge into the hole. It is
   drawn last among opaque meshes (`RIVER_GROUND_RENDER_ORDER`). See §11.7 for why it is not a plain disc.
@@ -312,8 +314,8 @@ Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, p
 - Two roof kinds and colours: teal pyramid (`houseRoof`) and terracotta gable (`houseRoofGable`), one InstancedMesh each
   (no per-instance colour: it would add a shader variant on SwiftShader). Walls stay cream.
 - `HOUSE_FACADE`: one door and two windows on each house front (local +Z), resolved by `resolveHouseFeatures`.
-- `VILLAGE_LIGHTS` (DRAFT): NIGHT windows 0.9 and lanterns 1.2 emissive and warm additive lamp light pools
-  (`LAMP_LIGHT_POOL_LOOK`, radius 0.55, opacity 0.35); DAY all off. Emissive is a uniform, so a preset switch recompiles
+- `VILLAGE_LIGHTS` (DRAFT): NIGHT windows 0.9 and lanterns 1.2 emissive (lamp light pools removed in MFW-67); DAY all
+  off. Emissive is a uniform, so a preset switch recompiles
   nothing and creates nothing. No new lights (the light count is part of every program key).
 - The krathong flame stays the brightest surface in both presets (`riverLayout.test.ts`).
 
@@ -398,6 +400,32 @@ Before = the MFW-47 screenshots (256-px stage).
 |---|---|---|---|
 | World, 1440×900 | ![day](screenshots/mfw-47/after-desktop-world-day.png) ![night](screenshots/mfw-47/after-desktop-world-night.png) | ![day](screenshots/mfw-49/after-desktop-1440x900-world-day.png) | ![night](screenshots/mfw-49/after-desktop-1440x900-world-night.png) |
 | World, 390×844 | — | ![day](screenshots/mfw-49/after-phone-390x844-world-day.png) | ![night](screenshots/mfw-49/after-phone-390x844-world-night.png) |
+
+## Natural look, no rings (MFW-67, backlog 13.3)
+
+Owner decision (open question 40, 2026-11-25): no yellow rings or halos around objects; light looks natural.
+
+| # | Source | Fate |
+|---|---|---|
+| R1 | Own-krathong candle point light (`TOY_SCENE_LIGHTING.candle`, was 14 / distance 7, not scaled with the 0.22 river pose): the big yellow disc around the krathong | Replaced: intensity 1.0 (DRAFT), distance 2 × footprint, decay 2, distance × s and intensity × s² with the pose scale; guard `CANDLE_MAX_PEAK_RADIANCE` 0.76 (PBR Neutral linear limit) |
+| R2 | MFW-49 lamp light pools (additive fans under the 19 lamps at NIGHT) | Removed; the lamp heads keep their emissive glow (9.3 AC3) |
+| R3 | Selection / Find My highlight ring (`TargetHighlight`, `HIGHLIGHT_RING_*`) | Removed; replaced by the mark cue: one `GIMMICK_BOUNCE` + a steady `KRATHONG_MARK_CUE.scale` size-up of the marked krathong (river batch matrix, or a mark group in `OwnKrathong`) |
+| R4 | Lamp light-up shell 1.35 × the head (a halo) | Kept as the lamp's cue, `LAMP_GLOW_LOOK.shellScale` 1.1 (a thin skin) |
+| R5 | 2D Find My ring (`flat-focus-ring`) | Replaced by the same steady size-up of the focused sprite (`data-marked`) |
+| R6 | Amber ring of the pier drag chip | Ring removed; the transparent 48-px hit target stays |
+| K1 | Tap ripple (pale blue) | Kept: the water's tap cue (backlog 6.2) |
+| K2 | Pale water ripple ring around each river krathong | Kept: backlog 9.3 AC4 (owner may drop it, see follow-ups) |
+| K3 | Sage blob shadows | Kept (not yellow) |
+| K4 | Shore highlights, water glints | Kept (bands and streaks, not rings) |
+| K5 | Flame, window and lantern emissive | Kept: the small soft glow on the object itself |
+
+DRAFT values (owner reviews them from the screenshots): candle intensity 1.0, `KRATHONG_MARK_CUE.scale` 1.2 (the largest
+steady size that clears a neighbour at `RIVER_MIN_CENTER_SPACING`), `LAMP_GLOW_LOOK.shellScale` 1.1.
+Under reduced motion the cue is the steady size-up only; it is a size change, so it does not depend on colour.
+
+Screenshots (phone 390×844 unless noted): `docs/design/screenshots/mfw-67/after-phone-world-night.png`,
+`after-phone-world-day.png`, `after-phone-customize-night.png`, `after-phone-pier-night.png`,
+`after-desktop-world-night.png` (1440×900), `after-phone-world-findmy-night.png` (Find My mark).
 
 ## 12. Krathong v3 detail (MFW-69)
 

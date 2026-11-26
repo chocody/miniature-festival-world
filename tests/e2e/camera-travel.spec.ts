@@ -173,6 +173,10 @@ test.describe("mouse", () => {
   test.use({ viewport: E2E_SWIFTSHADER_3D_VIEWPORT });
 
   test("mouse: drag pans the camera and taps still work", async ({ page }) => {
+    // Genuinely long (MFW-68 trace): the whole flow to the world, then drag, tap, wheel, rotate and tap again — about 45 sequential
+    // page round trips, five camera-rest checks of 8 frames each and an 8-step drag that waits a frame per step. On CPU WebGL at
+    // HIGH a frame takes ~0.2 s on a busy 2-core runner, so the test needs ~36 s there (no step hangs); 3× the default budget.
+    test.slow();
     const errors = await openWorld(page);
     const base = await dragPansAndTapWorks(
       page,

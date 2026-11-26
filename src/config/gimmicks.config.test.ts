@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOUNCE_SETTLE_EPSILON,
   GIMMICK_BOUNCE,
+  KRATHONG_MARK_CUE,
   LAMP_GLOW_LOOK,
   MS_PER_SECOND,
   RIPPLE_LOOK,
@@ -15,7 +16,13 @@ import {
 } from "./gimmicks.config";
 import { SCENE_CAMERA_ZOOM } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
-import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
+import {
+  KRATHONG_MODEL_FOOTPRINT_RADIUS,
+  RIVER_COLLISION_RADIUS,
+  RIVER_KRATHONG_SCALE,
+  RIVER_MIN_CENTER_SPACING,
+} from "./riverFlow.config";
+import { writeBounceAt } from "@/core/effects/gimmickCurves";
 
 describe("gimmick config", () => {
   it("ripple look is sane", () => {
@@ -63,5 +70,22 @@ describe("gimmick config", () => {
     expect(SCENE_TAP_HINT_STORAGE_KEY).toMatch(/^mfw:[A-Za-z]+:v\d+$/);
     expect(SCENE_TAP_HINT_COPY.scene3d.length).toBeGreaterThan(0);
     expect(SCENE_TAP_HINT_COPY.flat2d.length).toBeGreaterThan(0);
+  });
+});
+
+describe("natural look cues (MFW-67)", () => {
+  it("mark cue is a slight, overlap-free size-up (MFW-67)", () => {
+    expect(Object.isFrozen(KRATHONG_MARK_CUE)).toBe(true);
+    expect(KRATHONG_MARK_CUE.scale).toBeGreaterThan(1);
+    // A marked krathong next to a plain one at the minimum spacing does not touch it.
+    expect(RIVER_COLLISION_RADIUS * (1 + KRATHONG_MARK_CUE.scale)).toBeLessThanOrEqual(RIVER_MIN_CENTER_SPACING + 1e-12);
+  });
+
+  it("the lamp light-up hugs the head (MFW-67)", () => {
+    const out = { scale: 1, done: true };
+    let minScale = Infinity;
+    for (let t = 0; t <= GIMMICK_BOUNCE.durationMs; t++) minScale = Math.min(minScale, writeBounceAt(t, false, out).scale);
+    expect(LAMP_GLOW_LOOK.shellScale * minScale).toBeGreaterThan(1); // stays outside the head
+    expect(LAMP_GLOW_LOOK.shellScale - 1).toBeLessThan(GIMMICK_BOUNCE.amplitude); // a skin, not a halo
   });
 });

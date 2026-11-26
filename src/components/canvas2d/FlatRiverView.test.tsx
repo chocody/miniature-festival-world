@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FLAT_RIVER_FRAME_INTERVAL_MS, FLAT_RIVER_VIEW_HEIGHT_PX } from "@/config/fallback2d.config";
+import { FLAT_RIVER_FRAME_INTERVAL_MS, FLAT_RIVER_MARK_SCALE, FLAT_RIVER_VIEW_HEIGHT_PX } from "@/config/fallback2d.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT, LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { RIPPLE_LOOK, SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
@@ -354,7 +354,7 @@ describe("FlatRiverView", () => {
     const focus = (id: string | null, requestId?: number) =>
       act(() => useWorldStore.setState((s) => ({ focusedCreationId: id, focusRequestId: requestId ?? s.focusRequestId })));
 
-    it("scrolls to centre the krathong once and highlights it", () => {
+    it("scrolls to centre the krathong once and marks it", () => {
       const { container } = mount();
       setClientWidth(container);
       scrollTo.mockClear();
@@ -363,9 +363,15 @@ describe("FlatRiverView", () => {
       const p = getRiverItemCanvasPositionAtForTest({ coord: target.coord as never, createdAtMs: Date.parse(target.createdAt) }, T);
       expect(scrollTo).toHaveBeenCalledTimes(1);
       expect(scrollTo).toHaveBeenCalledWith({ left: flatRiverScrollLeft(p.x, 360, W), behavior: "smooth" });
-      const ring = screen.getByTestId("flat-focus-ring");
-      expect(ring).toHaveAttribute("visibility", "visible");
-      expect(Number(ring.getAttribute("cx"))).toBe(p.x);
+      // MFW-67: a steady size-up of the focused sprite, no ring.
+      expect(screen.queryByTestId("flat-focus-ring")).toBeNull();
+      const marked = container.querySelector(`[data-creation-id="${target.id}"][data-testid="flat-river-item"]`)!;
+      expect(marked).toHaveAttribute("data-marked", "true");
+      expect(marked.getAttribute("transform")).toBe(`translate(${p.x} ${p.y}) scale(${FLAT_RIVER_MARK_SCALE})`);
+      for (const other of screen.getAllByTestId("flat-river-item").filter((el) => el !== marked)) {
+        expect(other).not.toHaveAttribute("data-marked");
+        expect(other.getAttribute("transform")).not.toContain("scale(");
+      }
       expect(screen.getByTestId("flat-river-view")).toHaveAttribute("data-focused-creation-id", target.id);
       focus(target.id, 1);
       expect(scrollTo).toHaveBeenCalledTimes(1);
@@ -389,7 +395,7 @@ describe("FlatRiverView", () => {
       const late = makePublicCreation(9);
       focus(late.id, 1);
       expect(scrollTo).not.toHaveBeenCalled();
-      expect(screen.getByTestId("flat-focus-ring")).toHaveAttribute("visibility", "hidden");
+      expect(container.querySelector("[data-marked]")).toBeNull();
       act(() => useWorldStore.setState({ zoneItems: [...items(5), late] }));
       expect(scrollTo).toHaveBeenCalledTimes(1);
     });
