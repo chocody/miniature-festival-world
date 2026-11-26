@@ -134,6 +134,44 @@ describe("loop skills", () => {
     }
   });
 
+  it("loop-ticket has the three lead routes and no route drops the reviewer, qa or CI", () => {
+    for (const route of ["plan-file", "brief-only", "lead"]) expect(ticket).toContain(`**${route}**`);
+    expect(ticket).toContain("docs/plans/<KEY>.md");
+    expect(ticket).toMatch(/spec-lint\.mjs docs\/plans\/<KEY>\.md --ac <n> --size/);
+    expect(ticket).toContain("sizeHint.skipLead");
+    expect(ticket).toContain("Route: <plan-file|brief-only|lead>");
+    expect(ticket).toContain("every route keeps reviewer, qa, the auditors that apply, `loop-verify` and the CI gate");
+    expect(ticket).toContain("The reviewer runs on every route, and so do qa and the CI gate");
+    // no route text may offer to skip qa, the reviewer or CI
+    const routes = ticket.slice(ticket.indexOf("**Route**"), ticket.indexOf("## Step 3"));
+    expect(routes).not.toMatch(/skip (the )?(reviewer|qa|ci)\b/i);
+    // the verdict gate still demands reviewer and qa reports on every route
+    expect(ticket).toContain("`<SCRATCH>/<KEY>-reviewer.md` and `<KEY>-qa.md`");
+  });
+
+  it("reviews are diff-first: reviewer reads two spec sections, auditors get no spec", () => {
+    const step44 = ticket.slice(ticket.indexOf("### 4.4"), ticket.indexOf("### 4.5"));
+    expect(step44).toContain("diff-first");
+    expect(step44).toContain("## Acceptance criteria → checks");
+    expect(step44).toContain("## Decisions");
+    expect(step44).toMatch(/`r3f-perf-reviewer` gets the brief, the diff and the dev-report path, not\s+the spec/);
+    expect(step44).toMatch(/`privacy-auditor` gets the same plus, when a spec exists, its `## Decisions` and `## Out of scope`/);
+    expect(step44).toContain("Both get the dev-report path");
+    // spec-less routes: brief flag, in-WT lint recheck, fix/repair/PR wording
+    expect(ticket).toContain("--spec docs/plans/<KEY>.md");
+    expect(ticket).toContain("--spec none");
+    expect(ticket).toContain("**confirm it inside `WT`**");
+    expect(ticket).toContain("(or the brief alone when there is no spec)");
+    expect(ticket).toContain("send dev the spec (or the brief when there is no spec)");
+    expect(ticket).toContain("on route `brief-only`, from the brief and the dev report");
+    expect(ticket).toContain("route `brief-only` stays on `sonnet` too");
+    const reviewer = read(".claude/agents/reviewer.md");
+    expect(reviewer).toContain("diff-first");
+    expect(reviewer).toContain("## Acceptance criteria → checks");
+    expect(reviewer).toContain("## Decisions");
+    expect(reviewer).toContain("every item below still applies");
+  });
+
   it("loop-epic supports a cap, parallel lanes and a merge queue", () => {
     const hint = frontmatter(epic)["argument-hint"];
     expect(hint).toContain("--max");

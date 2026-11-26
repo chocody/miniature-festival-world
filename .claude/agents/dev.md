@@ -50,5 +50,6 @@ Write the dev report to the path the brief gives, then reply with a short summar
 - `## AC → tests` — each AC → test file/case, or "manual: …"
 - `## Commands` — each command with pass/fail and counts
 - `## Deviations from spec` — with the reason ("None")
+- `## Decisions` — technical decisions you made where there is no lead (brief-only or plan-file route) ("None")
 - `## Spec silent on` ("None")
 - `## Open issues` ("None")
