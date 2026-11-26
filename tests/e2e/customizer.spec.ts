@@ -64,7 +64,7 @@ test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom wor
     Object.defineProperty(navigator, "deviceMemory", { get: () => 8, configurable: true });
     Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8, configurable: true });
   });
-  await page.goto(E2E_PINNED_TIER_URL); // keeps forced HIGH (CPU WebGL is below the FALLBACK_2D FPS threshold on a busy runner)
+  await page.goto(E2E_PINNED_TIER_URL); // keeps forced HIGH (CPU WebGL could step the tier down on a busy runner)
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await waitForActiveEvent(page);
   await expect(page.locator("canvas")).toHaveCount(1);
@@ -100,37 +100,5 @@ test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom wor
   await page.getByRole("button", { name: "ถัดไป" }).tap();
   await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
   await expect(page.getByRole("region", { name: PANEL })).toHaveCount(0);
-  expect(errors).toEqual([]);
-});
-
-test("FALLBACK_2D at 360 px: same bar, no view buttons, no canvas", async ({ page }) => {
-  const errors: Error[] = [];
-  page.on("pageerror", (e) => errors.push(e));
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
-  await page.goto("/");
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await waitForActiveEvent(page);
-  const { panel } = await expectPanelAtBottom(page);
-
-  for (const name of VIEW_BUTTONS) await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
-  await expect(page.locator("canvas")).toHaveCount(0);
-  await expect(page.locator(".touch-none")).toHaveCount(0);
-
-  for (const name of TABS) {
-    await tapTab(page, name);
-    await expectTargetsFit(panel);
-    await expectNoHorizontalOverflow(page);
-  }
-  await tapTab(page, "เทียน");
-  await tapOption(page, "ส้มอ่อน");
-
-  await page.getByRole("button", { name: "ถัดไป" }).tap();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
   expect(errors).toEqual([]);
 });

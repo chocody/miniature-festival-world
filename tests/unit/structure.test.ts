@@ -7,11 +7,10 @@ const root = path.resolve(__dirname, "../..");
 
 const DIRS = [
   "src/config/events",
-  ...["coordinates", "camera", "customization", "world", "ritual", "interaction", "effects", "fallback2d"].map(
+  ...["coordinates", "camera", "customization", "world", "ritual", "interaction", "effects"].map(
     (d) => `src/core/${d}`,
   ),
   "src/components/canvas3d",
-  "src/components/canvas2d",
   "src/components/models/loyKrathong",
   "src/components/ui",
   "src/services/api",

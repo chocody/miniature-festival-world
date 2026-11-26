@@ -6,9 +6,9 @@ every ticket needs; `CLAUDE.md` stays the rule book (invariants A–G are not re
 ## Code layout (`docs/spec/03-structure.md` is authoritative)
 - `src/config/*.config.ts` — constants and per-feature numbers, with a colocated `*.config.test.ts`.
   Never inline a magic number in a component: read it from a config file.
-- `src/core/*` (coordinates, fallback2d, effects, world, ...) — pure logic, no React. Converters need
-  round-trip unit tests (invariant B).
-- `src/components/{canvas3d,canvas2d,models,ui}` — rendering; read `reducedMotion` and `qualityTier` from the
+- `src/core/*` (coordinates, effects, world, performance, ...) — pure logic, no React. Converters need
+  round-trip unit tests (invariant B, 3D only since MFW-71).
+- `src/components/{canvas3d,models,ui}` — rendering; read `reducedMotion` and `qualityTier` from the
   stores (invariant F).
 - `src/services/*`, `src/app/api/*`, `supabase/**` — server side, privacy-critical (invariants C, D, G).
 - `src/store/*` — separate Zustand stores: UI / builder / world / device.

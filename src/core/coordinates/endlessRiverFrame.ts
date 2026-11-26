@@ -1,7 +1,7 @@
 import type { WorldXZ } from "./types";
 
 /*
- * MFW-58 endless river (three-free: the 3D scene and the 2D fallback share it, invariant B). The world is an endless chain of
+ * MFW-58 endless river (three-free: the 3D scene reads it, invariant B). The world is an endless chain of
  * identical stretches: stretch s is the river's centreline translated by s·T, with T = last − first centreline control point
  * (the river's own period vector). Everything here is render-time only — a stretch index, along / across coordinates and stretch
  * offsets are derived from zone_id + SplinePathCoord and the river config, and are NEVER persisted (invariant A).

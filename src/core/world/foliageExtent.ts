@@ -1,8 +1,7 @@
 import type { FoliageBladeSpec } from "@/config/scene.config";
 
 /*
- * Foliage extents (MFW-70). Kept free of value imports so the FALLBACK_2D config can size its trees from the same clump
- * layout as the 3D crowns without pulling three into the 2D chunk (fallback2d-import-graph.test.ts).
+ * Foliage extents (MFW-70). Kept free of value imports (three-free).
  */
 
 /** One rounded leaf mass in its owner's local frame (local +Z faces the water), local units × owner scale. */

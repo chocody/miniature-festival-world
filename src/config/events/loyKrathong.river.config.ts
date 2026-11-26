@@ -116,7 +116,7 @@ export const LOY_KRATHONG_PIER = {
 
 /**
  * Lane location of the pier release point (LOY_KRATHONG_RIVER_LAYOUT.pier.releasePoint), clamped to the krathong body limit
- * (riverSpotLateralLimit). Three-free so the FALLBACK_2D release needs no lane math (MFW-23). Valid because the single lane shares the channel
+ * (riverSpotLateralLimit). Three-free (MFW-23). Valid because the single lane shares the channel
  * centreline in xz, so the pier's channel progress is its lane progress. Pinned by loyKrathong.river.release.test.ts.
  */
 const PIER_RELEASE_LATERAL_OFFSET =

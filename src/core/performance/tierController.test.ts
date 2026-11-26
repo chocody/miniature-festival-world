@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { QualityTier } from "@/config/performance.config";
 import { createTierController, type TierController } from "./tierController";
 
 function feed(ctrl: TierController, fps: number, fromK: number, count: number) {
@@ -44,26 +43,28 @@ describe("tierController", () => {
     expect(r[4]).toMatchObject({ from: "MEDIUM", to: "LOW", atMs: 12_000 });
     expect(c.tier).toBe("LOW");
   });
-  it("LOW at 25 does nothing; LOW at 15 falls back after 5 s", () => {
-    const c = createTierController("LOW");
-    expect(decisions(feed(c, 25, 0, 60))).toEqual([]);
-    const r = feed(c, 15, 60, 5);
-    expect(r[4]).toMatchObject({
-      from: "LOW",
-      to: "FALLBACK_2D",
-      reason: "FPS_BELOW_FALLBACK_THRESHOLD",
-    });
+  it("C1: LOW is final: at 25 and at 15 fps, 60 windows each, no decision", () => {
+    expect(decisions(feed(createTierController("LOW"), 25, 0, 60))).toEqual([]);
+    expect(decisions(feed(createTierController("LOW"), 15, 0, 60))).toEqual([]);
   });
-  it("fallback takes precedence over step-down on HIGH", () => {
+  it("C2: HIGH at 10 fps drops straight to LOW (drop-to-LOW reason takes precedence over the step-down)", () => {
     const r = feed(createTierController("HIGH"), 10, 0, 5);
-    expect(r[4]).toMatchObject({ from: "HIGH", to: "FALLBACK_2D" });
+    expect(r[4]).toEqual({ from: "HIGH", to: "LOW", reason: "FPS_BELOW_DROP_TO_LOW_THRESHOLD", atMs: 5000 });
   });
-  it("FALLBACK_2D is sticky", () => {
-    const c = createTierController("LOW");
+  it("C3: MEDIUM at 15 fps drops to LOW with the drop-to-LOW reason", () => {
+    const r = feed(createTierController("MEDIUM"), 15, 0, 5);
+    expect(r[4]).toEqual({ from: "MEDIUM", to: "LOW", reason: "FPS_BELOW_DROP_TO_LOW_THRESHOLD", atMs: 5000 });
+  });
+  it("C4: after the drop LOW stays: 20 windows at 60 fps, no decision", () => {
+    const c = createTierController("HIGH");
     feed(c, 10, 0, 5);
-    expect(c.tier).toBe("FALLBACK_2D");
+    expect(c.tier).toBe("LOW");
     expect(decisions(feed(c, 60, 10, 20))).toEqual([]);
-    expect(c.tier).toBe("FALLBACK_2D");
+    expect(c.tier).toBe("LOW");
+  });
+  it("C5: MEDIUM at exactly 20 fps is a step-down (not below the drop threshold)", () => {
+    const r = feed(createTierController("MEDIUM"), 20, 0, 5);
+    expect(r[4]).toEqual({ from: "MEDIUM", to: "LOW", reason: "FPS_BELOW_STEP_DOWN_THRESHOLD", atMs: 5000 });
   });
   it("never steps up", () => {
     const low = createTierController("LOW");
@@ -79,10 +80,6 @@ describe("tierController", () => {
     c.reset();
     expect(decisions(feed(c, 40, 3, 2))).toEqual([]);
     expect(c.tier).toBe("HIGH");
-  });
-  it("starting in FALLBACK_2D never decides", () => {
-    const c = createTierController("FALLBACK_2D" as QualityTier);
-    expect(decisions(feed(c, 1, 0, 20))).toEqual([]);
   });
   it("ignores NaN samples", () => {
     const c = createTierController("HIGH");

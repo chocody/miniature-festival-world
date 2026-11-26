@@ -47,7 +47,7 @@ describe("zustand stores", () => {
       fps: null,
       qualityTier: DEFAULT_QUALITY_TIER,
       reducedMotion: false,
-      isFallback2D: false,
+      webglAvailable: true,
     });
     expect(QUALITY_TIERS).toContain(useDeviceStore.getState().qualityTier);
     expect(useDeviceStore.getState().qualityTier).toBe(DEFAULT_QUALITY_TIER);

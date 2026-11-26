@@ -20,11 +20,6 @@ const cases: [number | null, number | null, QualityTier][] = [
 
 describe("pickInitialTier", () => {
   it.each(cases)("memory %s, cores %s -> %s", (deviceMemoryGb, hardwareConcurrency, tier) => {
-    expect(pickInitialTier({ webgl: true, deviceMemoryGb, hardwareConcurrency })).toBe(tier);
-  });
-  it("no WebGL -> FALLBACK_2D regardless of hints", () => {
-    expect(pickInitialTier({ webgl: false, deviceMemoryGb: 8, hardwareConcurrency: 16 })).toBe(
-      "FALLBACK_2D",
-    );
+    expect(pickInitialTier({ deviceMemoryGb, hardwareConcurrency })).toBe(tier);
   });
 });

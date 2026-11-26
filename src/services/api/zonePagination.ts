@@ -31,13 +31,13 @@ export interface ZonePagination {
   loadZone(zoneId: number): Promise<ZoneLoadOutcome>;
   retry(): Promise<ZoneLoadOutcome>;
   leaveWorld(): void;
-  /** MFW-58: the camera (3D) or the navigator (2D) is now in stretch `stretchIndex`. Never clears focusedCreationId. */
+  /** MFW-58: the camera is now in stretch `stretchIndex`. Never clears focusedCreationId. */
   setCurrentStretch(stretchIndex: number): void;
-  /** MFW-58: one stretch up- or downstream: the registered travel driver (3D camera flight) if any, else setCurrentStretch(S ± 1). */
+  /** MFW-58: one stretch up- or downstream: the registered travel driver (3D camera flight) if any, else setCurrentStretch(S ± 1), e.g. while the scene chunk loads. */
   jumpBy(delta: TravelDirection): void;
   /** MFW-58: the 3D scene drives jumps by flying the camera. The returned unregister clears it only if it is still the same driver. */
   registerTravelDriver(driver: (delta: TravelDirection) => void): () => void;
-  /** MFW-58: stretches on each side whose zones stay loaded (3D: ZONE_STREAM_LOAD_RADIUS, 2D: 0). Safe integer ≥ 0, else ignored. */
+  /** MFW-58: stretches on each side whose zones stay loaded (ZONE_STREAM_LOAD_RADIUS while the scene is mounted, else 0). Safe integer ≥ 0, else ignored. */
   setStreamRadius(radius: number): void;
 }
 

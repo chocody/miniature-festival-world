@@ -139,8 +139,7 @@ off (§8).
 
 ### Focus
 
-A 3 px solid `--color-focus` outline at a 2 px offset on every native control (`:focus-visible`). The full-stage 2D
-scroller draws it inside (`focus-visible:-outline-offset-4`) so the ring stays on-screen.
+A 3 px solid `--color-focus` outline at a 2 px offset on every native control (`:focus-visible`).
 
 ## 4. Font
 
@@ -155,7 +154,7 @@ Sans Thai, Mitr (rounder, playful).
 Positions and widths are unchanged from MFW-54; only surfaces, radius, padding and insets use the tokens.
 
 - `root` — fixed full-viewport stage (`bg-stage`), no page scroll.
-- `stage` — the 3D canvas or the 2D flat view, full screen.
+- `stage` — the 3D canvas (or the no-WebGL notice), full screen.
 - `overlay` — pass-through layer above the stage; only slots take pointer events.
 - `top` — phones: a translucent card across the top; from `md` (768 px): a 320 px card top-left. World step: day/night switch, zone navigation, My Creations.
 - `panel` — phones: a translucent bottom sheet with rounded top corners; from `md`: a 384 px floating side panel top-right. Customizer, release, world title.
@@ -220,7 +219,6 @@ Positions and widths are unchanged from MFW-54; only surfaces, radius, padding a
 | Inspect popup | `InspectPopup.tsx` |
 | Owner wish section | `OwnerWishControls.tsx`, `PrivateWishReveal.tsx` |
 | Notices | `OwnershipNotice.tsx`, moderation alerts in `WishModal.tsx` / `OwnerWishControls.tsx` |
-| 2D fallback frame | `StageLayout.tsx` slots, `src/components/canvas2d/FlatRiverView.tsx` (focus ring inside the scroller) |
 
 All in `src/components/ui/` unless a path is given. `src/components/canvas3d/**` (ritual drag chip, scene names) is a
 follow-up (lane coordination with MFW-57).
@@ -240,7 +238,7 @@ dark mode); the copy in §10.
 ## 12. Before / after
 
 Before = BASE 548cf08, after = this card. Production build, 390×844 phone and 1440×900 desktop at HIGH (`?pinTier=1`), and
-390×844 with WebGL off (FALLBACK_2D).
+390×844 with WebGL off (FALLBACK_2D, removed in MFW-71).
 
 | Screen | Before | After |
 |---|---|---|

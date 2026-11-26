@@ -80,4 +80,16 @@ describe("zone ↔ stretch mapping (MFW-58, open question 37)", () => {
     expect(() => buildRiverStretchSlots(frame, Number.NaN, null, null)).toThrow(RangeError);
     expect(() => stretchRingIndex(0, 0)).toThrow(RangeError);
   });
+
+  it.each([
+    [1, { stretchIndex: 0, zoneId: 1 }],
+    [3, { stretchIndex: 0, zoneId: 3 }],
+    [3, { stretchIndex: 2, zoneId: 1 }],
+  ] as const)("N = %i, anchor %o: every 3D slot for s in -4..4 shows zoneIdForStretch(slot.stretchIndex)", (n, anchor) => {
+    for (let s = -4; s <= 4; s++) {
+      const slots = buildRiverStretchSlots(frame, s, anchor, n);
+      expect(slots[0].stretchIndex).toBe(s);
+      for (const slot of slots) expect(slot.zoneId).toBe(zoneIdForStretch(slot.stretchIndex, anchor, n));
+    }
+  });
 });

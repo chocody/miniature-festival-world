@@ -65,9 +65,9 @@ const CROSSED_PLANES = 3;
 
 const frac = (x: number) => x - Math.floor(x);
 
-/** Tier (FALLBACK_2D never renders 3D: treated as LOW) and reduced motion → what the living world shows and moves. */
+/** Tier and reduced motion → what the living world shows and moves. */
 export function resolveLivingWorldSettings(qualityTier: QualityTier, reducedMotion: boolean): LivingWorldSettings {
-  const tier: RenderTier = qualityTier === "FALLBACK_2D" ? "LOW" : qualityTier;
+  const tier: RenderTier = qualityTier;
   const t = LIVING_WORLD_TIERS[tier];
   const villagersWalk = t.villagersWalk && !reducedMotion;
   const motesMove = t.moteCount > 0 && !reducedMotion;

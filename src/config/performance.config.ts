@@ -1,18 +1,22 @@
-/** Rendering quality tiers (spec §3: High, Medium, Low, Fallback 2D). */
-export const QUALITY_TIERS = ["HIGH", "MEDIUM", "LOW", "FALLBACK_2D"] as const;
+/** Rendering quality tiers (spec §3: High, Medium, Low; the 2D fallback tier was removed in MFW-71, owner, 2026-11-26). */
+export const QUALITY_TIERS = ["HIGH", "MEDIUM", "LOW"] as const;
 
 export type QualityTier = (typeof QUALITY_TIERS)[number];
 
 /** SSR / pre-detection default; the client profiler (MFW-9) replaces it after mount. Also the owner's 'otherwise MEDIUM' tier. */
 export const DEFAULT_QUALITY_TIER: QualityTier = "MEDIUM";
 
-/** Tiers that render 3D (FALLBACK_2D renders the 2D view instead). */
-export type RenderTier = Exclude<QualityTier, "FALLBACK_2D">;
+/** Every tier renders 3D since MFW-71; kept as the key type of the per-tier 3D tables. */
+export type RenderTier = QualityTier;
+
+/** Lowest tier: the FPS controller's final step and the tier recorded without WebGL (MFW-71). */
+export const FLOOR_QUALITY_TIER: QualityTier = "LOW";
 
 // Owner numbers (owner, 2026-11-23, open question #5)
 
-/** Avg FPS below this, sustained, switches any 3D tier to FALLBACK_2D (owner, 2026-11-23, open question #5). */
-export const FALLBACK_FPS_THRESHOLD = 20;
+/** Avg FPS below this, sustained FPS_SUSTAIN_MS, drops HIGH or MEDIUM straight to LOW, which is final (owner, 2026-11-23, open
+ *  question #5; target was FALLBACK_2D until the owner removed 2D, 2026-11-26). Renamed from FALLBACK_FPS_THRESHOLD. */
+export const DROP_TO_LOW_FPS_THRESHOLD = 20;
 /** Avg FPS below this, sustained, steps the tier down; null = no step-down (owner, 2026-11-23, open question #5). */
 export const STEP_DOWN_FPS_THRESHOLD: Readonly<Record<RenderTier, number | null>> = Object.freeze({
   HIGH: 45,
@@ -47,7 +51,7 @@ export interface TierBudget {
   readonly riverItemCastShadow: boolean;
 }
 
-/** Per-tier render budgets (owner, 2026-11-23, open question #5). FALLBACK_2D has no 3D budget. */
+/** Per-tier render budgets (owner, 2026-11-23, open question #5). */
 // riverItemCap / riverItemCastShadow: PLACEHOLDER lead values (MFW-25, MFW-24 perf review), not owner numbers.
 export const TIER_BUDGETS: Readonly<Record<RenderTier, TierBudget>> = Object.freeze({
   HIGH: Object.freeze({ pixelRatioCap: 2, shadows: true, maxTextureSize: 2048, riverItemCap: 80, riverItemCastShadow: true }),
@@ -58,9 +62,9 @@ export const TIER_BUDGETS: Readonly<Record<RenderTier, TierBudget>> = Object.fre
 /**
  * Max renderer drawing-buffer pixels (screen CSS area × pixel ratio²) per 3D tier; null = no cap (MFW-54). The full-screen stage
  * made the canvas 5–7× larger than the old 704×256 box, so a big screen renders at a lower pixel ratio (LOW even below 1) instead
- * of spending the frame budget on fill or dropping to FALLBACK_2D. PLACEHOLDER (spec silent; owner to confirm): HIGH ≈ 2.5 MP
+ * of spending the frame budget on fill or stepping down. PLACEHOLDER (spec silent; owner to confirm): HIGH ≈ 2.5 MP
  * and MEDIUM ≈ 1.5 MP leave phones at their pixelRatioCap and trim retina desktops; LOW = a 390×844 phone at pixel ratio 1,
- * the size SwiftShader e2e holds above FALLBACK_FPS_THRESHOLD.
+ * the size SwiftShader e2e holds above DROP_TO_LOW_FPS_THRESHOLD.
  */
 export const TIER_MAX_RENDER_PIXELS: Readonly<Record<RenderTier, number | null>> = Object.freeze({
   HIGH: 2_500_000,
@@ -115,11 +119,6 @@ export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Ob
  * yet reviewed by the owner).
  */
 export const FIREWORK_SPARKS_PER_BURST: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 32, MEDIUM: 24, LOW: 12 });
-
-// Technical numbers (lead decision, MFW-33)
-
-/** Pooled 2D effects on FALLBACK_2D (invariant E): the weakest 3D tier's caps, so a weak device never runs more effects in 2D than on LOW. */
-export const FALLBACK_2D_EFFECT_POOL_CAPS: EffectPoolCaps = EFFECT_POOL_CAPS.LOW;
 
 // Technical numbers (lead decision, MFW-49)
 

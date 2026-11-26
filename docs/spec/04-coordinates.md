@@ -1,5 +1,7 @@
 # 4. การออกแบบระบบพิกัดกลาง 2D/3D (Unified 2D/3D Coordinate Architecture)
 
+> Note (owner, 2026-11-26, MFW-71): "เอา 2d ออกไปเลย" — the 2D fallback is removed; only the 3D scene (HIGH | MEDIUM | LOW) remains. See open-questions row 46.
+
 เพื่อให้โหมด 3D Toy-like และโหมด 2D Flat Vector Fallback ใช้งานฐานข้อมูลชุดเดียวกันได้ 100% โดยที่ชิ้นงานไม่ลอยกลางอากาศและไม่จมหายเมื่อสลับโหมด หรือเมื่อโลกขยายตัว (Growing World) ระบบจึง ห้ามเก็บพิกัดเป็น (x, y, z) ดิบๆ เพียงอย่างเดียว แต่ต้องเก็บเป็น Normalized Parametric Coordinates ตามประเภทการวางดังนี้:
 
 ## 4.1 พิกัดเส้นทางไหล (SplinePathCoord) — ใช้กับ Loy Krathong (Phase 1)

@@ -21,13 +21,13 @@ const performanceNow = () => performance.now();
  * Drives the shared flame flicker of one canvas (MFW-48 AC2). Per frame it writes `assets.flameFlicker`
  * (read by every KrathongModel flame and the river batch) and the shared flame emissive; no allocation, no React state.
  * The demand loop is kept alive by a per-tier interval on the shared idle-redraw ticker (idleRedraw.ts), not continuous frames.
- * Reduced motion and FALLBACK_2D: static flame, no interval.
+ * Reduced motion: static flame, no interval.
  */
 export function FlameFlicker({ baseEmissiveIntensity, reducedMotion, now = performanceNow }: FlameFlickerProps): null {
   const assets = useKrathongAssets();
   const invalidate = useThree((s) => s.invalidate);
   const qualityTier = useDeviceStore((s) => s.qualityTier);
-  const flickerOff = reducedMotion || qualityTier === "FALLBACK_2D";
+  const flickerOff = reducedMotion;
 
   useFrame(() => {
     writeFlameFlickerAt(now(), flickerOff, assets.flameFlicker);
@@ -35,7 +35,7 @@ export function FlameFlicker({ baseEmissiveIntensity, reducedMotion, now = perfo
   });
 
   useEffect(() => {
-    if (reducedMotion || qualityTier === "FALLBACK_2D") {
+    if (reducedMotion) {
       writeFlameFlickerAt(0, true, assets.flameFlicker);
       applyFlameGlow(assets.material("flame"), baseEmissiveIntensity);
       invalidate();
@@ -45,7 +45,7 @@ export function FlameFlicker({ baseEmissiveIntensity, reducedMotion, now = perfo
   }, [reducedMotion, qualityTier, assets, baseEmissiveIntensity, invalidate]);
 
   // The demand loop is kept alive through the canvas's ONE shared idle-redraw ticker (MFW-50 fix round).
-  useIdleRedraw(reducedMotion || qualityTier === "FALLBACK_2D" ? null : FLAME_FLICKER_REDRAW_INTERVAL_MS[qualityTier]);
+  useIdleRedraw(reducedMotion ? null : FLAME_FLICKER_REDRAW_INTERVAL_MS[qualityTier]);
 
   return null;
 }

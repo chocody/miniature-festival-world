@@ -20,13 +20,11 @@ const STATUS = '[data-testid="find-my-status"]';
 const FOUND_TEXT = "พบกระทงของคุณที่คุ้งน้ำที่ 2";
 const root = (page: Page) => page.locator("[data-flow-state]");
 
-async function webglOff(page: Page) {
+/** MFW-71: the former 2D tests run on the 3D LOW tier (weak hints), pinned so the FPS watcher cannot change it. */
+async function lowTier(page: Page) {
   await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
+    Object.defineProperty(navigator, "deviceMemory", { get: () => 2, configurable: true });
+    Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 2, configurable: true });
   });
 }
 
@@ -71,7 +69,7 @@ async function walkToWorld(page: Page) {
 }
 
 /** Release into zone 2, move to zone 3, open the drawer. */
-async function releaseThenMoveAway(page: Page, withOwnItem: boolean, startUrl = "/") {
+async function releaseThenMoveAway(page: Page, withOwnItem: boolean, startUrl = E2E_PINNED_TIER_URL) {
   const requested = await routeZones(page, 3, { 1: 2, 2: 2, 3: 3 }, withOwnItem ? { zoneId: 2, id: E2E_CREATION_ID } : undefined);
   await mockCreateCreation(page, { zoneId: 2 }); // after the zone routes: handles POST only
   await page.goto(startUrl);
@@ -97,8 +95,8 @@ test("3D: finds my krathong in another zone", async ({ page }) => {
   await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
   await highTier(page);
   await installSceneProbe(page); // MFW-67: mark cue and ring checks
-  // Pinned: the HIGH tier must not fall back to 2D mid-test on a slow SwiftShader runner (the FPS fallback has its own tests).
-  const requested = await releaseThenMoveAway(page, true, E2E_PINNED_TIER_URL);
+  // Pinned: the HIGH tier must not step down mid-test on a slow SwiftShader runner (the FPS step-down has its own tests).
+  const requested = await releaseThenMoveAway(page, true);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   const before = requested.length;
   await openAndSelect(page);
@@ -117,27 +115,20 @@ test("3D: finds my krathong in another zone", async ({ page }) => {
   await expect(page.locator("canvas")).toHaveCount(1);
 });
 
-test("FALLBACK_2D: finds my krathong in another zone", async ({ page }) => {
-  await webglOff(page);
-  await releaseThenMoveAway(page, true);
-  await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-  await openAndSelect(page);
-  await expect(page.locator(NAV)).toHaveAttribute("data-zone-id", "2");
-  await expect(page.locator(STATUS)).toHaveText(FOUND_TEXT);
-  await expect(page.locator("canvas")).toHaveCount(0);
-});
-
 test("not found when the zone no longer has it", async ({ page }) => {
-  await webglOff(page);
+  await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT);
+  await lowTier(page);
   await releaseThenMoveAway(page, false);
+  await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await openAndSelect(page);
   await expect(page.locator(STATUS)).toHaveText("ไม่พบกระทงนี้บนสายน้ำแล้ว");
-  await expect(page.locator("canvas")).toHaveCount(0);
-  await expect(page.locator("[data-find-my]")).toHaveCount(0);
+  await expect(page.locator("canvas")).toHaveCount(1);
+  await expect(page.locator(VIEWPORT)).not.toHaveAttribute("data-find-my", "following");
 });
 
 test("the release is recorded on this device only", async ({ page }) => {
-  await webglOff(page);
+  await page.setViewportSize(E2E_SWIFTSHADER_3D_VIEWPORT);
+  await lowTier(page);
   const urls: string[] = [];
   page.on("request", (r) => urls.push(r.url()));
   await releaseThenMoveAway(page, true);
@@ -164,7 +155,7 @@ test.describe("360 px", () => {
   test.use({ viewport: { width: 360, height: 640 } });
 
   test("the drawer fits", async ({ page }) => {
-    await webglOff(page);
+    await lowTier(page);
     await releaseThenMoveAway(page, true);
     const open = page.getByRole("button", { name: "ค้นหาของฉัน" });
     await expect(open).toBeInViewport();

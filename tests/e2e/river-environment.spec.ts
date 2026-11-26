@@ -32,7 +32,7 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
       },
       { memory: deviceMemory, cores: hardwareConcurrency },
     );
-    // HIGH is pinned so it cannot fall back to 2D mid-test on a slow SwiftShader runner; LOW has no step-down.
+    // HIGH is pinned so it cannot step down mid-test on a slow SwiftShader runner; LOW has no step-down.
     await page.goto(tier === "HIGH" ? E2E_PINNED_TIER_URL : "/");
     await expect(root(page)).toHaveAttribute("data-quality-tier", tier);
 

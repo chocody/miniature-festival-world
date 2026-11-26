@@ -71,11 +71,10 @@ export const SCENE_TAP_HINT_STORAGE_KEY = "mfw:sceneTapHintSeen:v1";
 export const SCENE_TAP_HINT_SEEN_VALUE = "1";
 /**
  * DRAFT copy (spec silent; owner to review). scene3d since MFW-60: every object of the 3D scene answers a tap, so the hint says
- * "anything" (loop decision, not yet reviewed by the owner). flat2d is unchanged: the 2D view still reacts to water and krathongs only.
+ * "anything" (loop decision, not yet reviewed by the owner).
  */
 export const SCENE_TAP_HINT_COPY = Object.freeze({
   scene3d: "แตะอะไรก็ได้ในฉาก เพื่อเล่นได้เลย",
-  flat2d: "แตะผิวน้ำหรือกระทง เพื่อเล่นได้เลย",
 });
 
 /*

@@ -3,7 +3,7 @@ import { bankSurfaceY, type BankProfilePoint } from "./bankProfile";
 import type { FoliageClumpDefinition } from "./foliageExtent";
 import { resolveBankPlacement, type BankPlacement, type InstanceTransform } from "./riverEnvironment";
 
-// The extents live in a three-free module so the 2D fallback config can read them (fallback2d-import-graph.test.ts).
+// The extents live in a three-free module (foliageExtent.ts).
 export * from "./foliageExtent";
 
 /*

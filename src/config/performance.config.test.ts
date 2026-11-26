@@ -3,13 +3,14 @@ import {
   DEFAULT_QUALITY_TIER,
   EFFECT_KINDS,
   EFFECT_POOL_CAPS,
-  FALLBACK_2D_EFFECT_POOL_CAPS,
   FIREWORK_SPARKS_PER_BURST,
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
   LIVING_WORLD_RENDER_BUDGETS,
   LIVING_WORLD_TIERS,
-  FALLBACK_FPS_THRESHOLD,
+  DROP_TO_LOW_FPS_THRESHOLD,
+  FLOOR_QUALITY_TIER,
+  QUALITY_TIERS,
   FOLIAGE_TIERS,
   FPS_SAMPLE_WINDOW_MS,
   FPS_STALL_GAP_MS,
@@ -29,8 +30,12 @@ import { ZONE_ITEM_CAP } from "./world.config";
 import { LOY_KRATHONG_VILLAGERS } from "./events/loyKrathong.life.config";
 
 describe("performance.config (owner numbers, open question #5)", () => {
-  it("has the owner thresholds", () => {
-    expect(FALLBACK_FPS_THRESHOLD).toBe(20);
+  it("T1: the tiers are HIGH, MEDIUM, LOW and the floor is LOW", () => {
+    expect(QUALITY_TIERS).toEqual(["HIGH", "MEDIUM", "LOW"]);
+    expect(FLOOR_QUALITY_TIER).toBe("LOW");
+  });
+  it("has the owner thresholds (T2)", () => {
+    expect(DROP_TO_LOW_FPS_THRESHOLD).toBe(20);
     expect(STEP_DOWN_FPS_THRESHOLD).toEqual({ HIGH: 45, MEDIUM: 30, LOW: null });
     expect(FPS_SUSTAIN_MS).toBe(5000);
     expect(FPS_WARMUP_MS).toBe(2000);
@@ -63,7 +68,7 @@ describe("performance.config (owner numbers, open question #5)", () => {
     expect(TIER_BUDGETS.LOW.riverItemCastShadow).toBe(false);
   });
   it("orders the thresholds", () => {
-    expect(FALLBACK_FPS_THRESHOLD).toBeLessThan(STEP_DOWN_FPS_THRESHOLD.MEDIUM!);
+    expect(DROP_TO_LOW_FPS_THRESHOLD).toBeLessThan(STEP_DOWN_FPS_THRESHOLD.MEDIUM!);
     expect(STEP_DOWN_FPS_THRESHOLD.MEDIUM!).toBeLessThan(STEP_DOWN_FPS_THRESHOLD.HIGH!);
   });
   it("keeps the SSR default and positive technical numbers", () => {
@@ -94,7 +99,6 @@ describe("performance.config (owner numbers, open question #5)", () => {
       expect(EFFECT_KINDS).toContain(kind);
       expect(EFFECT_POOL_CAPS.LOW[kind]).toBeGreaterThan(0);
     }
-    expect(FALLBACK_2D_EFFECT_POOL_CAPS).toBe(EFFECT_POOL_CAPS.LOW);
   });
   it("PC2: FIREWORK_SPARKS_PER_BURST is a positive integer, HIGH ≥ MEDIUM ≥ LOW, frozen (MFW-60 DRAFT)", () => {
     expect(Object.isFrozen(FIREWORK_SPARKS_PER_BURST)).toBe(true);

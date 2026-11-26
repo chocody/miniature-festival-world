@@ -18,7 +18,7 @@ export interface WorldState {
   focusedCreationId: string | null;
   /** Incremented by MFW-30 Find My on every focus request (selecting the same krathong again flies again). Monotonic per world session. */
   focusRequestId: number;
-  /** MFW-58: stretch of the endless river the camera (3D) or the navigator (2D) is in. Render-time only, never persisted. */
+  /** MFW-58: stretch of the endless river the camera is in. Render-time only, never persisted. */
   currentStretchIndex: number;
   /** MFW-58: zone(s) = wrap(anchor.zoneId + s − anchor.stretchIndex) (riverStretches.ts). Null until a zone is chosen. Never persisted. */
   stretchAnchor: StretchAnchor | null;

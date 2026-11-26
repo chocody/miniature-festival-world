@@ -4,7 +4,8 @@ import { DEFAULT_QUALITY_TIER, type QualityTier } from "@/config/performance.con
 
 export interface DeviceStoreActions {
   setFps: (fps: number | null) => void;
-  /** The ONLY writer of isFallback2D: keeps qualityTier === "FALLBACK_2D" <=> isFallback2D. */
+  /** Written once by the profiler, before setQualityTier (MFW-71). */
+  setWebglAvailable: (available: boolean) => void;
   setQualityTier: (tier: QualityTier) => void;
   setReducedMotion: (reduced: boolean) => void;
   /** Only sets the field; persistence is src/services/preferences (MFW-47). */
@@ -12,8 +13,8 @@ export interface DeviceStoreActions {
 }
 
 /**
- * Device status (spec §3: FPS, Quality Tier, Reduced Motion, IsFallback2D).
- * FALLBACK_2D <=> isFallback2D. The store holds no policy: stickiness and no step-up are the controller's job.
+ * Device status (spec §3: FPS, Quality Tier, Reduced Motion, IsFallback2D, replaced by webglAvailable in MFW-71).
+ * The store holds no policy: LOW being final and no step-up are the controller's job.
  * lightPresetChoice: per-device display preference (open question 32): AUTO follows the local time, DAY/NIGHT override it.
  */
 export interface DeviceState extends DeviceStoreActions {
@@ -22,7 +23,8 @@ export interface DeviceState extends DeviceStoreActions {
   /** True only after the client profiler has selected the initial rendering tier. */
   profiled: boolean;
   reducedMotion: boolean;
-  isFallback2D: boolean;
+  /** false only when the profiler found no WebGL; the stage then shows a notice instead of the scene (MFW-71). */
+  webglAvailable: boolean;
   lightPresetChoice: LightPresetChoice;
 }
 
@@ -31,11 +33,11 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
   qualityTier: DEFAULT_QUALITY_TIER,
   profiled: false,
   reducedMotion: false,
-  isFallback2D: false,
+  webglAvailable: true,
   lightPresetChoice: "AUTO",
   setFps: (fps) => set({ fps }),
-  setQualityTier: (tier) =>
-    set({ qualityTier: tier, profiled: true, isFallback2D: tier === "FALLBACK_2D" }),
+  setWebglAvailable: (available) => set({ webglAvailable: available }),
+  setQualityTier: (tier) => set({ qualityTier: tier, profiled: true }),
   setReducedMotion: (reduced) => set({ reducedMotion: reduced }),
   setLightPresetChoice: (choice) => set({ lightPresetChoice: choice }),
 }));

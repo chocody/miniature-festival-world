@@ -1,4 +1,4 @@
-/** Unified 2D/3D Coordinate Converters */
+/** Coordinate converters (3D) */
 export * from "./types";
 export * from "./SplinePathCoord";
 export * from "./riverLaneSet";

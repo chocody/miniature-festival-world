@@ -8,13 +8,13 @@ import { useEffect } from "react";
 import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 
 export interface RitualReleasePanelProps {
-  /** True when a 3D scene animates the ritual (FlowRoot's show3D). False → completes without animation (FALLBACK_2D). */
+  /** True when a 3D scene animates the ritual (FlowRoot's show3D). False → completes without animation. */
   readonly animateInScene: boolean;
   /** Injected in tests; default getReleaseCreation(). */
   readonly releaser?: Pick<ReleaseCreation, "release">;
 }
 
-/** The release button and status line of RITUAL_RELEASE (MFW-23). Works without any scene (FALLBACK_2D). */
+/** The release button and status line of RITUAL_RELEASE (MFW-23). Works without any scene. */
 export function RitualReleasePanel({ animateInScene, releaser }: RitualReleasePanelProps) {
   const ritual = useUIStore((s) => s.ritual);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);

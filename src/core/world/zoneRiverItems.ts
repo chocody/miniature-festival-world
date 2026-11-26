@@ -1,6 +1,6 @@
 import type { FestivalEventId } from "@/config/events/types";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
-import { parsePersistableCoord } from "@/core/coordinates/validateCoord"; // three-free (MFW-33): the 2D fallback imports this module
+import { parsePersistableCoord } from "@/core/coordinates/validateCoord"; // three-free
 import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
 import { parseEventAppearance, type KrathongAppearance } from "@/core/customization";
 import type { PublicCreation } from "@/services/api/creationTypes";

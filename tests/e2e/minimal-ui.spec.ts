@@ -10,8 +10,8 @@ import { CLEAN_WISH, WISH_TEXT_LABEL, completeWishStep } from "./helpers/wishSte
  * Backlog 10.3 (MFW-55): a minimal UI over the scene. One primary action per step, the scene centre stays visible, HUD
  * surfaces are translucent, every control is a 44 px target, the keyboard walks the flow with a visible focus ring, UI
  * transitions follow reduced motion, and one Thai web font from next/font is applied. The 3D tests force LOW and open
- * E2E_PINNED_TIER_URL, so the FPS watcher never swaps the SwiftShader canvas for 2D mid-test. The FALLBACK_2D and font tests
- * are not pinned.
+ * E2E_PINNED_TIER_URL, so the FPS watcher never steps the SwiftShader canvas down mid-test. The font test
+ * is not pinned.
  */
 
 const NEXT = "ถัดไป";
@@ -22,8 +22,6 @@ const LIGHT_GROUP = "แสงในฉาก";
 const DAY = "กลางวัน";
 const PANEL_SLOT = '[data-overlay-slot="panel"]';
 const TOP_SLOT = '[data-overlay-slot="top"]';
-const PREVIEW = '[data-testid="flat-krathong-preview"]';
-const RIVER = '[data-testid="flat-river-view"]';
 const CONTROLS =
   '[data-overlay-slot] :is(button, [role="tab"], [role="radio"], [role="switch"], input, textarea), [data-testid="customizer-panel"] :is(button, [role="tab"], [role="radio"], input)';
 const PHONE = { width: 390, height: 844 } as const;
@@ -40,21 +38,11 @@ async function openLow(page: Page): Promise<string[]> {
   const errors = collectPageErrors(page);
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
-  await page.goto(E2E_PINNED_TIER_URL); // keeps LOW: CI's SwiftShader FPS would otherwise fall back to 2D mid-test
+  await page.goto(E2E_PINNED_TIER_URL); // keeps LOW: CI's SwiftShader FPS would otherwise step the tier down mid-test
   await waitForActiveEvent(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);
   return errors;
-}
-
-async function webglOff(page: Page) {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (/webgl/i.test(type)) return null;
-      return (original as (...a: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof original;
-  });
 }
 
 async function visiblePrimaryCount(page: Page): Promise<number> {
@@ -152,40 +140,6 @@ for (const vp of [
     });
   });
 }
-
-test.describe("390×844 FALLBACK_2D", () => {
-  test.use({ viewport: PHONE });
-
-  test("FALLBACK_2D: one primary action per step and the flat view stays visible", async ({ page }) => {
-    const errors = collectPageErrors(page);
-    await webglOff(page);
-    await mockCreateCreation(page);
-    await page.goto("/");
-    await waitForActiveEvent(page);
-    await expect(root(page)).toHaveAttribute("data-quality-tier", "FALLBACK_2D");
-    expect(await visiblePrimaryCount(page)).toBe(1);
-    await expectSceneCentreVisible(page, PREVIEW);
-    await expectTranslucent(page.getByRole("region", { name: PANEL }));
-
-    await page.getByRole("button", { name: NEXT }).click();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");
-    expect(await visiblePrimaryCount(page)).toBe(1);
-
-    await completeWishStep(page);
-    await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");
-    expect(await visiblePrimaryCount(page)).toBe(1);
-    await expectSceneCentreVisible(page, RIVER);
-    await expectTranslucent(page.locator(PANEL_SLOT));
-
-    await page.getByRole("button", { name: RELEASE }).click();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
-    expect(await visiblePrimaryCount(page)).toBe(0);
-    await expectSceneCentreVisible(page, RIVER);
-    await expectTranslucent(page.locator(PANEL_SLOT));
-    await expectTranslucent(page.locator(TOP_SLOT));
-    expect(errors).toEqual([]);
-  });
-});
 
 test.describe("390×844 touch", () => {
   test.use({ viewport: PHONE, hasTouch: true });

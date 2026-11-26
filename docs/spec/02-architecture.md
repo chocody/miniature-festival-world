@@ -9,5 +9,7 @@
 - Animation & Effects: GSAP หรือ @react-spring/three (เน้น Procedural Animation สั้นๆ เช่น เด้ง เอียง หมุน ลอย และ glow โดยไม่พึ่งฟิสิกส์สมจริง)
 - State Management: Zustand (แยก Store สำหรับ UI State, Customization State, World Scene State, และ Device Performance State)
 - 2D Fallback Engine: HTML5 Canvas / SVG Modular Renderer (ใช้พิกัดกลางชุดเดียวกับ 3D)
+
+> Note (owner, 2026-11-26, MFW-71): "เอา 2d ออกไปเลย" — the 2D fallback is removed; only the 3D scene (HIGH | MEDIUM | LOW) remains. See open-questions row 46.
 - Backend & Database: Supabase (PostgreSQL) หรือ Node.js + PostgreSQL + Redis (สำหรับจัดการ Spatial Zone & Caching)
 - Security & Moderation: LocalStorage Ownership Token Vault + ระบบกรอง PII (ข้อมูลส่วนบุคคล) และคำหยาบ

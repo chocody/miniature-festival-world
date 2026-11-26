@@ -75,7 +75,7 @@
     color: var(--color-ink);
   }
 
-  /* Visible focus for keyboard users on every control (WCAG 2.4.7). Utilities may move the offset (2D scroller). */
+  /* Visible focus for keyboard users on every control (WCAG 2.4.7). Utilities may move the offset. */
   :where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
     outline: var(--focus-ring-width) solid var(--color-focus);
     outline-offset: var(--focus-ring-offset);

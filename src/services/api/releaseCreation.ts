@@ -87,9 +87,9 @@ export function createReleaseCreation(deps: ReleaseCreationDeps = {}): ReleaseCr
     ui.dispatchRitual({ type: "RELEASE_STARTED", attempt, origin });
     // 4. Candidate spot.
     const candidate: RiverSpot = origin.kind === "drop" ? origin.candidate : LOY_KRATHONG_PIER_RELEASE_SPOT;
-    // 5. Landing (client pre-check, 3D tiers only: FALLBACK_2D never loads the lane math).
+    // 5. Landing (client pre-check, only when the scene can mount).
     const device = useDeviceStore.getState();
-    const sceneTier = device.profiled && device.qualityTier !== "FALLBACK_2D";
+    const sceneTier = device.profiled && device.webglAvailable;
     let landed: ReleaseLanding = { landing: candidate, collided: false };
     if (sceneTier) {
       try {

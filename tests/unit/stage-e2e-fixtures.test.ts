@@ -1,13 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { SCENE_CAMERA_ZOOM, SCENE_CAMERA_ZOOM_MAX, SCENE_FRAME_VIEW_SIZE, SCENE_MAX_VIEW_SIZE } from "@/config/camera.config";
-import { FLAT_RIVER_VIEW_HEIGHT_PX } from "@/config/fallback2d.config";
 import { PINCH_ZOOM_MIN } from "@/config/interaction.config";
 import { LIGHT_PRESETS, LIGHT_PRESET_STORAGE_KEY } from "@/config/look.config";
 import { TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { getFramedCameraZoom } from "@/core/camera";
 import {
-  E2E_FLAT_RIVER_PROBED_HEIGHT_PX,
   E2E_LIGHT_PRESET_STORAGE_KEY,
   E2E_LOW_MAX_RENDER_PIXELS,
   E2E_PINCH_ZOOM_MIN,
@@ -27,7 +25,6 @@ describe("full-screen stage e2e fixtures (MFW-54)", () => {
     expect(E2E_PROBED_CAMERA_ZOOM).toBe(SCENE_CAMERA_ZOOM);
     expect(E2E_SCENE_FRAME_VIEW_SIZE).toEqual(SCENE_FRAME_VIEW_SIZE);
     expect(E2E_SCENE_CAMERA_ZOOM_MAX).toBe(SCENE_CAMERA_ZOOM_MAX);
-    expect(E2E_FLAT_RIVER_PROBED_HEIGHT_PX).toBe(FLAT_RIVER_VIEW_HEIGHT_PX);
     expect(E2E_SCENE_MAX_VIEW_SIZE).toEqual(SCENE_MAX_VIEW_SIZE);
     expect(E2E_PINCH_ZOOM_MIN).toBe(PINCH_ZOOM_MIN);
     expect(E2E_LIGHT_PRESET_STORAGE_KEY).toBe(LIGHT_PRESET_STORAGE_KEY);
