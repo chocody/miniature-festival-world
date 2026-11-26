@@ -9,11 +9,21 @@ import { WISH_SWITCH_COPY } from "@/config/wish.config";
 import { FALLBACK_2D_EFFECT_POOL_CAPS } from "@/config/performance.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import {
+  LOY_KRATHONG_BUSH_CLUMPS,
+  LOY_KRATHONG_RIVER_ENVIRONMENT,
+  LOY_KRATHONG_TREES,
+  PIER_DECK_MATERIAL,
+  RIVER_BANK_MATERIAL,
+} from "@/config/events/loyKrathong.river.config";
+import { LIGHT_PRESETS } from "@/config/look.config";
+import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
+import {
   createCanvasPointOut,
   createFlatCanvasScratch,
   flatProgressToCanvasInto,
   flatRiverScrollLeft,
   flatRiverScrollLeftAfterRescale,
+  flatSurfaceColor,
   getLoyKrathongFlatRiver,
 } from "@/core/fallback2d/flat";
 import { getRiverItemCanvasPositionAt } from "@/core/fallback2d/riverTopDown"; // three-based reference (tests only)
@@ -32,7 +42,7 @@ import { FlatRiverView, type FrameScheduler } from "./FlatRiverView";
 const T = 1_800_000_000_000;
 /** One throttled frame later (the +1 absorbs float error of the epoch-ms subtraction). */
 const STEP = FLAT_RIVER_FRAME_INTERVAL_MS + 1;
-const { projection, scene, lanes } = getLoyKrathongFlatRiver();
+const { projection, scene, lanes, villagers } = getLoyKrathongFlatRiver();
 const W = projection.viewport.width;
 
 let clock = T;
@@ -100,6 +110,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof HTMLElement.prototype.scrollTo;
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   useDeviceStore.getState().setQualityTier("FALLBACK_2D");
+  useDeviceStore.getState().setLightPresetChoice("DAY"); // MFW-51: the 2D view follows the preset; pin it
   useUIStore.setState(useUIStore.getInitialState(), true);
   useBuilderStore.setState(useBuilderStore.getInitialState(), true);
   setWorld(items(5));
@@ -593,5 +604,81 @@ describe("FlatRiverView", () => {
       tap(container.querySelector('[data-input-target="krathong"][data-creation-id="' + items(5)[2].id + '"]')!);
       expect(screen.getByRole("dialog").closest('[data-overlay-slot="sheet"]')).not.toBeNull();
     });
+  });
+});
+
+describe("FlatRiverView new look (MFW-51)", () => {
+  const lit = (albedo: string, preset: "DAY" | "NIGHT") => flatSurfaceColor({ albedo, normal: [0, 1, 0] }, LIGHT_PRESETS[preset]);
+  const props = (container: HTMLElement, selector: string) => container.querySelectorAll(`[data-flat-prop]${selector}`).length;
+
+  it("T55 draws the village from the shared scene: both roofs, both tree shapes, bushes, rocks, lamps, reeds, villagers", () => {
+    const { container } = mount();
+    const roofs = LOY_KRATHONG_RIVER_ENVIRONMENT.houses.map((h) => h.roof);
+    expect(props(container, '[data-flat-prop="house"]')).toBe(scene.houses.length);
+    expect(props(container, '[data-roof="gable"]')).toBe(roofs.filter((r) => r === "gable").length);
+    expect(props(container, '[data-roof="pyramid"]')).toBe(roofs.filter((r) => r === "pyramid").length);
+    for (const shape of ["round", "tall"] as const) {
+      expect(props(container, `[data-flat-prop="tree"][data-tree-shape="${shape}"]`)).toBe(
+        LOY_KRATHONG_TREES.filter((t) => t.shape === shape).length,
+      );
+    }
+    expect(props(container, '[data-flat-prop="bush"]')).toBe(scene.bushes.length);
+    expect(LOY_KRATHONG_BUSH_CLUMPS.length).toBeGreaterThan(0);
+    expect(props(container, '[data-flat-prop="rock"]')).toBe(scene.rocks.length);
+    expect(props(container, '[data-flat-prop="lamp"]')).toBe(scene.lamps.length);
+    expect(props(container, '[data-flat-prop="reed"]')).toBe(scene.plants.length);
+    expect(props(container, '[data-flat-prop="villager"]')).toBe(villagers.length);
+  });
+
+  it("T56 follows the day / night preset", () => {
+    const { container } = mount();
+    const section = screen.getByTestId("flat-river-view");
+    const bank = () => container.querySelector("svg > rect")!.getAttribute("fill");
+    expect(section).toHaveAttribute("data-light-preset", "DAY");
+    expect(bank()).toBe(lit(RIVER_BANK_MATERIAL.color, "DAY"));
+    expect(water(container)).toHaveAttribute("fill", lit(TOY_MATTE_MATERIALS.water.color, "DAY"));
+    act(() => useDeviceStore.getState().setLightPresetChoice("NIGHT"));
+    expect(section).toHaveAttribute("data-light-preset", "NIGHT");
+    expect(bank()).toBe(lit(RIVER_BANK_MATERIAL.color, "NIGHT"));
+    expect(water(container)).toHaveAttribute("fill", lit(TOY_MATTE_MATERIALS.water.color, "NIGHT"));
+    expect(container.querySelector(`path[fill="${lit(PIER_DECK_MATERIAL.color, "NIGHT")}"]`)).not.toBeNull();
+  });
+
+  it("T57 props and shore bands never take taps", () => {
+    const { container } = mount();
+    const tapThrough = (el: Element) => el.closest('[pointer-events="none"]') !== null;
+    const sprites = [...container.querySelectorAll("[data-flat-prop]")];
+    expect(sprites.length).toBeGreaterThan(0);
+    expect(sprites.every(tapThrough)).toBe(true);
+    const bands = [...container.querySelectorAll("[fill-opacity]")];
+    expect(bands.length).toBeGreaterThan(0);
+    expect(bands.every(tapThrough)).toBe(true);
+    expect(tapThrough(water(container))).toBe(false);
+  });
+
+  it("T58 each river krathong has a soft blob; shared ones at the river LOD, the own one at the hero LOD", () => {
+    const zone = items(5);
+    setRitual({ phase: "RELEASED", saved: savedRelease({ id: zone[1].id }) });
+    const { container } = mount();
+    const all = screen.getAllByTestId("flat-river-item");
+    for (const item of all) {
+      const blob = item.querySelector(":scope > circle[pointer-events='none']")!;
+      expect(blob).not.toBeNull();
+      expect(blob.getAttribute("fill")).toMatch(/^url\(#/);
+    }
+    const shared = all.filter((el) => el.getAttribute("data-own") !== "true");
+    expect(shared.length).toBeGreaterThan(0);
+    for (const item of shared) expect(item.querySelector("path[stroke-width]")).toBeNull();
+    const own = container.querySelector('[data-own="true"]')!;
+    expect(own.querySelector("path[stroke-width]")).not.toBeNull();
+  });
+
+  it("T59 a water tap still ripples after a preset switch", () => {
+    const { container } = mount();
+    act(() => useDeviceStore.getState().setLightPresetChoice("NIGHT"));
+    tap(water(container));
+    expect(screen.getByTestId("flat-river-view")).toHaveAttribute("data-gimmick-count", "1");
+    runFrame(T + STEP);
+    expect(visibleRipples(container)).toHaveLength(1);
   });
 });

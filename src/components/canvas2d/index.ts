@@ -3,3 +3,4 @@ export * from "./FlatViewport";
 export * from "./FlatKrathongPreview";
 export * from "./FlatRiverView";
 export * from "./FlatKrathongShapes";
+export * from "./FlatRiverArt";

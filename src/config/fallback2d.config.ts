@@ -1,16 +1,8 @@
 import { CAMERA_FLIGHT_OFFSET } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
 import { KRATHONG_MARK_CUE, MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./gimmicks.config";
+import { LIVING_WORLD_TIERS } from "./performance.config";
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
-import { LIGHT_PRESETS } from "./look.config";
-import { TOY_MATTE_MATERIALS } from "./scene.config";
-import {
-  LOY_KRATHONG_TREE_SHAPES,
-  PIER_DECK_MATERIAL,
-  RIVER_BANK_MATERIAL,
-  RIVER_ENVIRONMENT_PARTS,
-} from "./events/loyKrathong.river.config";
-import { foliageClumpsExtent } from "@/core/world/foliageExtent";
 
 /** Flat vector 2D fallback (spec §6.8 Task 8.1, MFW-33). PLACEHOLDER = spec silent (art/feel), owner may tune (plan §11 Q1). */
 
@@ -20,8 +12,6 @@ export const FLAT_KRATHONG_VIEW_ELEVATION_RAD = Math.atan2(
   CAMERA_FLIGHT_OFFSET[1],
   Math.hypot(CAMERA_FLIGHT_OFFSET[0], CAMERA_FLIGHT_OFFSET[2]),
 );
-/** Puck sides are the top colour × this (flat shading cue). PLACEHOLDER. */
-export const FLAT_KRATHONG_SIDE_SHADE = 0.8;
 /** CUSTOMIZE preview viewBox, model units: square of half-size halfExtent centred centerLift above the model origin. PLACEHOLDER. */
 export const FLAT_KRATHONG_PREVIEW_VIEW = Object.freeze({ halfExtent: 1.7, centerLift: 0.25 });
 
@@ -29,8 +19,12 @@ export const FLAT_KRATHONG_PREVIEW_VIEW = Object.freeze({ halfExtent: 1.7, cente
 export const FLAT_RIVER_VIEW_HEIGHT_PX = 256;
 /** Map padding in CSS px. Lead decision: none (the map is clipped by the scroller). */
 export const FLAT_RIVER_PADDING_PX = 0;
-/** World units of bank drawn on each side of the water. PLACEHOLDER. */
-export const FLAT_RIVER_VISIBLE_BANK_DEPTH = 1.2;
+/**
+ * World units of bank drawn on each side of the water (across the flow only; along the flow the map is cropped at the water,
+ * see resolveFlatRiverScene). 1.2 → 3.2 in MFW-51 so the village (houses at setback 1.45 / 2.6) and most riverside trees are on
+ * the map; at 390×844 the map scale is ≈ 70.7 px per world unit (3D phone framing ≈ 72). DRAFT (MFW-51, owner review).
+ */
+export const FLAT_RIVER_VISIBLE_BANK_DEPTH = 3.2;
 /**
  * Lane progress cropped at each end of the map so the % 1 wrap is never drawn (owner decision 22). PLACEHOLDER; must hide a whole
  * sprite (flatRiverScene.test.ts pins margin × lane length > RIVER_COLLISION_RADIUS).
@@ -50,28 +44,20 @@ export const FLAT_RIVER_TAP_RADIUS = RIVER_KRATHONG_TAP_RADIUS * RIVER_KRATHONG_
 export const FLAT_MIN_TAP_RADIUS_PX = MIN_TOUCH_TARGET_PX / 2;
 /** Find My cue in 2D = the 3D mark's steady size-up (MFW-67: no ring; same cue in both views). */
 export const FLAT_RIVER_MARK_SCALE = KRATHONG_MARK_CUE.scale;
-/** Prop footprints, world units (from the 3D part specs). */
-export const FLAT_RIVER_PROP_SIZES = Object.freeze({
-  houseHalfWidth: RIVER_ENVIRONMENT_PARTS.houseBody.geometry.width / 2,
-  houseHalfDepth: RIVER_ENVIRONMENT_PARTS.houseBody.geometry.depth / 2,
-  // MFW-70: the round crown's footprint (leaf clumps), so the 2D tree is as large as the 3D one.
-  treeRadius: foliageClumpsExtent(
-    LOY_KRATHONG_TREE_SHAPES.round.clumps,
-    RIVER_ENVIRONMENT_PARTS.leafClump.geometry.lumpAmplitude,
-  ).footprintRadius,
-  lampRadius: RIVER_ENVIRONMENT_PARTS.lampHead.geometry.radius,
-});
-/** Unlit flat colours = the 3D materials' base colours (no new colour). */
-export const FLAT_VIEW_COLORS = Object.freeze({
-  background: LIGHT_PRESETS.DAY.background, // unlit albedo = the DAY look (MFW-47); 2D day/night is MFW-51
-  bank: RIVER_BANK_MATERIAL.color,
-  water: TOY_MATTE_MATERIALS.water.color,
-  pier: PIER_DECK_MATERIAL.color,
-  house: RIVER_ENVIRONMENT_PARTS.houseBody.material.color,
-  roof: RIVER_ENVIRONMENT_PARTS.houseRoof.material.color,
-  tree: RIVER_ENVIRONMENT_PARTS.leafClump.material.color,
-  lamp: RIVER_ENVIRONMENT_PARTS.lampHead.material.color,
-});
+/** Leaf midrib on full-LOD krathongs: stroke = leaf fill × shade (shadeHex), width in model units. DRAFT (MFW-51). */
+export const FLAT_KRATHONG_VEIN = Object.freeze({ shade: 0.75, width: 0.015 });
+/** Two-tone clay sphere (tree / bush clumps): highlight circle centre offset toward the key light and its radius, both × clump radius. DRAFT (MFW-51). */
+export const FLAT_SPHERE_HIGHLIGHT = Object.freeze({ offset: 0.25, radius: 0.72 });
+/** Lathe silhouettes are sampled at this many segments (the 3D low LOD is an octagon that reads round only with smooth shading). Technical (MFW-51). */
+export const FLAT_LATHE_SILHOUETTE_SEGMENTS = 48;
+/** Decimals of every SVG path number (model units or CSS px; 0.001 ≪ 1 px). Technical (MFW-51). */
+export const FLAT_PATH_DECIMALS = 3;
+/** Stops of the blob-shadow radial gradient, sampled from the 3D fan's alpha (1 − t)^falloffExponent. Technical (MFW-51). */
+export const FLAT_BLOB_GRADIENT_STOPS = 5;
+/** Steps of the shore highlight band; step j's opacity = shoreOpacity × the mean of the 3D linear 1→0 ramp over the step. Technical (MFW-51). */
+export const FLAT_SHORE_BAND_STEPS = 2;
+/** FALLBACK_2D shows the LOW living world: its villager count, standing still (LIVING_WORLD_TIERS.LOW.villagersWalk is false). Loop decision (MFW-51). */
+export const FLAT_RIVER_VILLAGER_COUNT = LIVING_WORLD_TIERS.LOW.villagerCount;
 /** Accessible names. DRAFT Thai copy (owner review, §11 Q4). */
 export const FLAT_VIEW_COPY = Object.freeze({
   previewLabel: "ตัวอย่างกระทง (ภาพ 2 มิติ)",

@@ -1,5 +1,6 @@
 import type { WorldXZ } from "@/core/coordinates/types";
-import type { BankPlacement, RiverEnvironmentDefinition } from "@/core/world/riverEnvironment"; // type-only
+import type { BankPlacement, BankSide, HouseRoofKind, RiverEnvironmentDefinition } from "@/core/world/riverEnvironment"; // type-only
+import type { RiversideFoliageDefinition, TreeShapeId } from "@/core/world/riversideFoliage"; // type-only
 import { createFlatLane, createFlatLaneFrameOut, flatLaneFrameInto, type FlatLane } from "./flatLane";
 import type { BoundsXZ } from "./topDownProjection";
 
@@ -11,6 +12,13 @@ export interface FlatProp {
   readonly z: number;
   readonly scale: number;
   readonly yawRad: number;
+  readonly side: BankSide;
+}
+export interface FlatHouse extends FlatProp {
+  readonly roof: HouseRoofKind;
+}
+export interface FlatTree extends FlatProp {
+  readonly shape: TreeShapeId;
 }
 export interface FlatRiverScene {
   readonly channel: FlatLane;
@@ -19,10 +27,18 @@ export interface FlatRiverScene {
   /** Deck rectangle seen from above: [bankEnd − flow·w/2, bankEnd + flow·w/2, tip + flow·w/2, tip − flow·w/2]. */
   readonly pierDeck: readonly WorldXZ[];
   readonly pierTip: WorldXZ;
-  readonly houses: readonly FlatProp[];
-  readonly trees: readonly FlatProp[];
+  readonly houses: readonly FlatHouse[];
+  readonly trees: readonly FlatTree[];
+  readonly bushes: readonly FlatProp[];
+  readonly rocks: readonly FlatProp[];
   readonly lamps: readonly FlatProp[];
-  /** Map bounds: water ± visibleBankDepth, cropped by endMarginProgress at both lane ends (owner decision 22). */
+  /** Reeds and grass tufts (MFW-70 riverside plants). */
+  readonly plants: readonly FlatProp[];
+  /**
+   * Map bounds over progress [endMarginProgress, 1 − endMarginProgress] (owner decision 22): x spans the water edges only (along the
+   * flow the map is cropped at the water, so a deeper bank never widens the map and the % 1 wrap stays off-map, MFW-51); z spans
+   * the water ± visibleBankDepth (across the flow).
+   */
   readonly bounds: BoundsXZ;
 }
 
@@ -31,6 +47,7 @@ const SIDES = [-1, 1] as const;
 /** Three-free twin of the 2D-relevant part of resolveRiverEnvironment (same expressions, bit-identical). */
 export function resolveFlatRiverScene(
   def: RiverEnvironmentDefinition,
+  foliage: Pick<RiversideFoliageDefinition, "trees" | "plants">,
   visibleBankDepth: number,
   endMarginProgress: number,
 ): FlatRiverScene {
@@ -43,6 +60,7 @@ export function resolveFlatRiverScene(
   if (!Number.isFinite(endMarginProgress) || endMarginProgress < 0 || endMarginProgress >= 0.5) {
     throw new RangeError("endMarginProgress must be in [0, 0.5)");
   }
+  if (foliage.trees.length !== def.trees.length) throw new RangeError("foliage.trees must have one entry per environment tree");
   const channel = createFlatLane({
     laneId: FLAT_RIVER_CHANNEL_CURVE_ID,
     controlPoints: def.channel.controlPoints,
@@ -71,7 +89,7 @@ export function resolveFlatRiverScene(
     const p = endMarginProgress + (1 - 2 * endMarginProgress) * (i / n);
     flatLaneFrameInto(channel, p, f);
     for (const s of SIDES) {
-      const x = f.cx + f.rx * s * outer;
+      const x = f.cx + f.rx * s * half;
       const z = f.cz + f.rz * s * outer;
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -89,11 +107,15 @@ export function resolveFlatRiverScene(
       z: f.cz + f.rz * d,
       scale: p.scale,
       yawRad: Math.atan2(-p.side * f.rx, -p.side * f.rz) + p.yawOffsetRad,
+      side: p.side,
     });
   };
-  const houses = Object.freeze(def.houses.map(resolve));
-  const trees = Object.freeze(def.trees.map(resolve));
+  const houses = Object.freeze(def.houses.map((h) => Object.freeze({ ...resolve(h), roof: h.roof })));
+  const trees = Object.freeze(def.trees.map((t, i) => Object.freeze({ ...resolve(t), shape: foliage.trees[i].shape })));
+  const bushes = Object.freeze(def.bushes.map(resolve));
+  const rocks = Object.freeze(def.rocks.map(resolve));
   const lamps = Object.freeze(def.lamps.map(resolve));
+  const plants = Object.freeze(foliage.plants.map(resolve));
 
   flatLaneFrameInto(channel, def.pier.progress, f);
   const flowX = f.rz;
@@ -121,7 +143,10 @@ export function resolveFlatRiverScene(
     pierTip: Object.freeze(t),
     houses,
     trees,
+    bushes,
+    rocks,
     lamps,
+    plants,
     bounds,
   });
 }

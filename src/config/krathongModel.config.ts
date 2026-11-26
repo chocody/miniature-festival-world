@@ -117,7 +117,7 @@ export interface MatteMaterialSpec {
 export const KRATHONG_MATTE_SURFACE = Object.freeze({ roughness: 1, metalness: 0 });
 
 export interface BaseModelSpec {
-  /** v1 primitive, kept as the 2D-fallback silhouette and the river-footprint proxy. The 3D model is `mesh`. */
+  /** v1 primitive, kept as the river-footprint proxy (the 2D fallback draws outlines of `mesh` since MFW-51). The 3D model is `mesh`. */
   readonly geometry: PrimitiveGeometrySpec;
   /** The full 3D model (v3, MFW-69): own krathong and the river at "full" LOD. */
   readonly mesh: KrathongMeshSpec;
@@ -135,7 +135,7 @@ export interface BaseModelSpec {
   readonly color: string;
 }
 export interface PartModelSpec {
-  /** v1 primitive, kept as the 2D-fallback silhouette and the river-footprint proxy. The 3D model is `mesh`. */
+  /** v1 primitive, kept as the river-footprint proxy (the 2D fallback draws outlines of `mesh` since MFW-51). The 3D model is `mesh`. */
   readonly geometry: PrimitiveGeometrySpec;
   /** The full 3D model (v3, MFW-69): own krathong and the river at "full" LOD. */
   readonly mesh: KrathongMeshSpec;
@@ -194,7 +194,7 @@ export const KRATHONG_LEAF_COUNT = 8;
 const HALF_LEAF_STEP_RAD = Math.PI / KRATHONG_LEAF_COUNT;
 /** Inner blade ≈ radius 0.7 for a rim ≈ 0.95 (DRAFT). */
 const INNER_LEAF_OFFSET: Vec3Tuple = vec(0.27, 0, -0.3);
-/** toy_bread_01 keeps its v1 part scale [1, 0.32, 1] (the 2D silhouette needs it); its lathe is authored /0.32 in y. */
+/** toy_bread_01 keeps its v1 part scale [1, 0.32, 1] (kept from v1; the 2D outline reads the same mesh since MFW-51); its lathe is authored /0.32 in y. */
 const TOY_BREAD_SQUASH = 0.32;
 /** Flower heads face up and outward (DRAFT). */
 export const KRATHONG_FLOWER_TILT_RAD = 0.5;
