@@ -5,7 +5,10 @@ import type { RefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoxGeometry, InstancedMesh, Matrix4, MeshStandardMaterial } from "three";
 import type { ScenePartSpec } from "@/config/scene.config";
-import type { FoliageInstance, FoliageSwayParams } from "@/core/world";
+import type { FoliageInstance, FoliageOwnerRef, FoliageSwayParams } from "@/core/world";
+import { TAP_SHAKE_LOOKS } from "@/config/gimmicks.config";
+import { EFFECT_POOL_CAPS } from "@/config/performance.config";
+import { createObjectPoolManager, releaseExpiredNudges, startNudge, type NudgeSource } from "@/core/effects";
 import { composeInstanceMatrix } from "./instancing";
 import { SwayingInstancedPart } from "./SwayingInstancedPart";
 
@@ -101,5 +104,50 @@ describe("SwayingInstancedPart (MFW-70 AC4)", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     const body = source.slice(start, source.indexOf("\n  });\n", start));
     expect(body).not.toMatch(/invalidate/);
+  });
+});
+
+describe("SwayingInstancedPart tap shake (MFW-60)", () => {
+  const OWNERS: FoliageOwnerRef[] = [
+    { kind: "bush", index: 0 },
+    { kind: "bush", index: 1 },
+  ];
+  let NOW = 5_000;
+  const source = (): NudgeSource => ({ pool: createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge, now: () => NOW });
+
+  it("SW1: with sway null it writes while shaking plus one tail frame, then nothing", () => {
+    const nudges = source();
+    render(<SwayingInstancedPart name="x" part={PART} instances={INSTANCES} shadows={false} sway={null} now={now} shakeOwners={OWNERS} nudges={nudges} />);
+    const frame = frames[frames.length - 1];
+    const mesh = created.mesh!;
+    const v0 = mesh.instanceMatrix.version;
+    frame();
+    expect(mesh.instanceMatrix.version).toBe(v0); // idle: nothing written
+    startNudge(nudges.pool, "bush", 1, NOW);
+    NOW += TAP_SHAKE_LOOKS.bush.periodMs / 4;
+    frame();
+    expect(atRest(mesh)).toBe(false);
+    NOW += TAP_SHAKE_LOOKS.bush.durationMs;
+    releaseExpiredNudges(nudges.pool, NOW, false);
+    const v1 = mesh.instanceMatrix.version;
+    frame(); // the tail frame restores the rest pose
+    expect(mesh.instanceMatrix.version).toBeGreaterThan(v1);
+    expect(atRest(mesh)).toBe(true);
+    const v2 = mesh.instanceMatrix.version;
+    frame();
+    frame();
+    expect(mesh.instanceMatrix.version).toBe(v2);
+  });
+
+  it("SW2: shaking never calls invalidate (SceneEffects keeps the loop alive)", () => {
+    const nudges = source();
+    render(<SwayingInstancedPart name="x" part={PART} instances={INSTANCES} shadows={false} sway={SWAY} now={now} shakeOwners={OWNERS} nudges={nudges} />);
+    const calls = invalidate.mock.calls.length;
+    startNudge(nudges.pool, "bush", 0, NOW);
+    for (let i = 0; i < 5; i++) {
+      NOW += 100;
+      frames[frames.length - 1]();
+    }
+    expect(invalidate.mock.calls.length).toBe(calls);
   });
 });

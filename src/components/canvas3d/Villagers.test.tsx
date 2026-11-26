@@ -1,4 +1,4 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BufferGeometry, InstancedMesh, Material, Matrix4 } from "three";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "@/components/models/loyKrathong/riverLayout";
@@ -6,6 +6,9 @@ import { LOY_KRATHONG_VILLAGERS } from "@/config/events/loyKrathong.life.config"
 import { LIVING_WORLD_TIERS, type RenderTier } from "@/config/performance.config";
 import { planVillagerInstances, prepareVillagers } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { EFFECT_POOL_CAPS } from "@/config/performance.config";
+import { VILLAGER_TAP_HOP } from "@/config/gimmicks.config";
+import { createObjectPoolManager, releaseExpiredNudges, startNudge, type NudgeSource } from "@/core/effects";
 import { NO_RAYCAST } from "./blobShadowMeshes";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { Villagers } from "./Villagers";
@@ -132,7 +135,7 @@ describe("Villagers (MFW-50)", () => {
     expect(meshes.head.instanceMatrix.version).toBe(version);
   });
 
-  it("VC5 no handlers and no raycast: villagers never take taps", () => {
+  it("VC5 villager meshes never raycast; without onVillagerTapped there are no handlers (taps go through the MFW-60 proxies)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
     const { container } = render(<Villagers layout={layout} now={now} />);
     for (const el of container.querySelectorAll("*")) expect(el.getAttribute("onclick")).toBeNull();
@@ -171,5 +174,48 @@ describe("Villagers (MFW-50)", () => {
     const m = new Matrix4();
     meshes.head.getMatrixAt(0, m);
     expect(m.equals(new Matrix4())).toBe(false);
+  });
+});
+
+describe("Villagers tap hop (MFW-60)", () => {
+  const source = (): NudgeSource => ({ pool: createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge, now });
+
+  it("VL-a: with onVillagerTapped one named proxy per villager reports its villagerId; without it there are none", () => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    const onTap = vi.fn();
+    const { container } = render(<Villagers layout={layout} now={now} nudges={source()} onVillagerTapped={onTap} />);
+    const ids = LOY_KRATHONG_VILLAGERS.slice(0, LIVING_WORLD_TIERS.HIGH.villagerCount).map((v) => v.villagerId);
+    const proxies = container.querySelectorAll(`[name^="${SCENE_OBJECT_NAMES.propTapPrefix}villager-"]`);
+    expect([...proxies].map((p) => p.getAttribute("name"))).toEqual(ids.map((id) => `${SCENE_OBJECT_NAMES.propTapPrefix}villager-${id}`));
+    fireEvent.click(proxies[1]);
+    expect(onTap).toHaveBeenCalledWith(ids[1]);
+    for (const mesh of latest().all) expect(mesh.raycast).toBe(NO_RAYCAST);
+    cleanup();
+    const plain = render(<Villagers layout={layout} now={now} nudges={source()} />);
+    expect(plain.container.querySelectorAll(`[name^="${SCENE_OBJECT_NAMES.propTapPrefix}"]`)).toHaveLength(0);
+  });
+
+  it("VL-b: a static (LOW) villager is re-written while nudged plus one tail frame, then not again", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const nudges = source();
+    render(<Villagers layout={layout} now={now} nudges={nudges} onVillagerTapped={vi.fn()} />);
+    const head = latest().head;
+    const v0 = head.instanceMatrix.version;
+    lastFrame()();
+    expect(head.instanceMatrix.version).toBe(v0); // idle
+    startNudge(nudges.pool, "villager", LOY_KRATHONG_VILLAGERS[0].villagerId, NOW);
+    NOW += VILLAGER_TAP_HOP.durationMs / 2;
+    const before = matrices(head);
+    lastFrame()();
+    expect(matrices(head)).not.toEqual(before);
+    NOW += VILLAGER_TAP_HOP.durationMs;
+    releaseExpiredNudges(nudges.pool, NOW, false);
+    const v1 = head.instanceMatrix.version;
+    lastFrame()(); // tail: the rest pose
+    expect(head.instanceMatrix.version).toBeGreaterThan(v1);
+    expect(matrices(head)).toEqual(before);
+    const v2 = head.instanceMatrix.version;
+    lastFrame()();
+    expect(head.instanceMatrix.version).toBe(v2);
   });
 });

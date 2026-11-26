@@ -23,7 +23,7 @@ import {
   SCENE_CAMERA_ZOOM,
 } from "@/config/camera.config";
 import type { EffectPoolCaps, QualityTier, RenderTier } from "@/config/performance.config";
-import { EFFECT_POOL_CAPS, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
+import { EFFECT_POOL_CAPS, FIREWORK_SPARKS_PER_BURST, TIER_ANTIALIAS, TIER_BUDGETS } from "@/config/performance.config";
 import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
@@ -33,9 +33,12 @@ import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { WorldRotateButton } from "@/components/ui/WorldRotateButton";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
-import { SCENE_TAP_HINT_COPY } from "@/config/gimmicks.config";
+import { SCENE_TAP_HINT_COPY, type SceneTargetKind } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
-import { SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
+import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
+import { PropNudges } from "./effects/PropNudges";
+import { PropTapProxies } from "./effects/PropTapProxies";
+import { createObjectPoolManager, type NudgeSource } from "@/core/effects";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
 import {
@@ -75,6 +78,7 @@ import {
 import {
   FlameFlicker,
   KrathongAssetsProvider,
+  LOY_KRATHONG_PROP_TAP_TARGETS,
   LOY_KRATHONG_RIVER_LAYOUT,
   RiverEnvironment,
 } from "@/components/models/loyKrathong";
@@ -181,6 +185,10 @@ interface ToyNightSceneProps {
   ownMarked: boolean;
   /** MFW-50: the living world may keep an idle-redraw cadence (true only in WORLD_EXPLORE). A primitive keeps the memo effective. */
   livingWorldIdleRedraw: boolean;
+  /** MFW-60: FIREWORK_SPARKS_PER_BURST[tier]. */
+  fireworkSparks: number;
+  /** MFW-60: a prop / land tap (WORLD_EXPLORE only; absent = no prop proxies and no land / pier handlers). Stable callback. */
+  onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null) => void;
 }
 
 const ToyNightScene = memo(function ToyNightScene({
@@ -216,9 +224,17 @@ const ToyNightScene = memo(function ToyNightScene({
   markedRiverId,
   ownMarked,
   livingWorldIdleRedraw,
+  fireworkSparks,
+  onPropTapped,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
   const lampHeadMeshRef = useRef<InstancedMesh | null>(null);
+  // MFW-60: the effect pools live here so the foliage, rocks, pier and villagers share the nudge pool with SceneEffects.
+  const pools = useMemo(() => createObjectPoolManager(effectCaps), [effectCaps]);
+  const nudges = useMemo<NudgeSource>(() => ({ pool: pools.nudge, now: SCENE_EFFECT_CLOCK }), [pools]);
+  const rockMeshRef = useRef<InstancedMesh | null>(null);
+  const pierDeckRef = useRef<Mesh | null>(null);
+  const onVillagerTapped = useCallback((id: number) => onPropTapped?.("villager", id, null), [onPropTapped]);
   return (
     <>
       {/* World-fixed lights: NOT inside the world container, so pan/rotate never changes the key-light direction. */}
@@ -236,11 +252,28 @@ const ToyNightScene = memo(function ToyNightScene({
           onLampSelected={onLampSelected}
           lightPreset={lightPreset}
           lampHeadMeshRef={lampHeadMeshRef}
+          onPropTapped={onPropTapped}
+          nudges={nudges}
+          rockMeshRef={rockMeshRef}
+          pierDeckRef={pierDeckRef}
+        />
+        {onPropTapped && <PropTapProxies targets={LOY_KRATHONG_PROP_TAP_TARGETS} onPropTapped={onPropTapped} />}
+        <PropNudges
+          nudges={nudges}
+          rockMeshRef={rockMeshRef}
+          rocks={LOY_KRATHONG_RIVER_LAYOUT.rocks}
+          rockPart={RIVER_ENVIRONMENT_PARTS.rock}
+          pierDeckRef={pierDeckRef}
         />
         <EnvironmentBlobShadows layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <ShoreHighlights layout={LOY_KRATHONG_RIVER_LAYOUT} />
         <WaterGlints layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
-        <Villagers layout={LOY_KRATHONG_RIVER_LAYOUT} now={riverNow} />
+        <Villagers
+          layout={LOY_KRATHONG_RIVER_LAYOUT}
+          now={riverNow}
+          nudges={nudges}
+          onVillagerTapped={onPropTapped ? onVillagerTapped : undefined}
+        />
         <AmbientLife
           layout={LOY_KRATHONG_RIVER_LAYOUT}
           now={riverNow}
@@ -284,11 +317,16 @@ const ToyNightScene = memo(function ToyNightScene({
         )}
         <SceneEffects
           handleRef={effectsRef}
-          caps={effectCaps}
+          pools={pools}
           reducedMotion={reducedMotion}
           waterSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
           lamps={LOY_KRATHONG_RIVER_LAYOUT.lamps}
           lampHead={RIVER_ENVIRONMENT_PARTS.lampHead}
+          houseWindows={LOY_KRATHONG_RIVER_LAYOUT.houseWindows}
+          windowsPerHouse={LOY_KRATHONG_RIVER_ENVIRONMENT.houseFacade.windows.length}
+          windowPart={RIVER_ENVIRONMENT_PARTS.houseWindow}
+          fireworkBaseY={LOY_KRATHONG_RIVER_LAYOUT.bankTopY}
+          fireworkSparks={fireworkSparks}
         />
       </group>
     </>
@@ -461,10 +499,8 @@ export function SceneViewport({
     // Decided (lead default, MFW-69; owner may revisit): a water tap selects the water and makes its ripple, but
     // never moves the camera. A flight on every water tap moved the scene under repeated taps at one screen point.
     setSelectedTarget("water");
-    if (tap && effectsRef.current) {
-      effectsRef.current.spawnRipple(tap);
-      recordGimmick("ripple");
-    }
+    const gimmick = effectsRef.current?.react("water", 0, tap) ?? null; // registry (MFW-60): a ripple when the tap point is known
+    if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
   const onLampSelected = useCallback((index: number) => {
@@ -473,10 +509,18 @@ export function SceneViewport({
     setSelectedTarget("lamp");
     setFlightTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
-    if (effectsRef.current) {
-      effectsRef.current.lightLamp(index);
-      recordGimmick("lamp-glow");
-    }
+    const gimmick = effectsRef.current?.react("lamp", index, null) ?? null; // registry (MFW-60): light-up + a sky lantern
+    if (gimmick !== null) recordGimmick(gimmick);
+  }, [mode, recordGimmick]);
+
+  /**
+   * MFW-60: a tap on a house, tree, bush, reed, rock, the pier, a villager or bare land ("sky"). It neither selects anything nor
+   * moves the camera (loop decision, not yet reviewed by the owner); the reaction comes from the SCENE_TAP_REACTIONS registry.
+   */
+  const onPropTapped = useCallback((kind: SceneTargetKind, index: number, at: WorldXZ | null) => {
+    if (mode !== "WORLD_EXPLORE") return;
+    const gimmick = effectsRef.current?.react(kind, index, at) ?? null;
+    if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
   const onRiverItemTapped = useCallback((id: string) => {
@@ -804,6 +848,8 @@ export function SceneViewport({
             markedRiverId={markedRiverId}
             ownMarked={ownMarked}
             livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
+            fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier as RenderTier]}
+            onPropTapped={mode === "WORLD_EXPLORE" ? onPropTapped : undefined}
           />
           <CameraRig
             getRig={getRig}

@@ -1,8 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { BoxGeometry, InstancedMesh, Matrix4, MeshStandardMaterial, Vector3 } from "three";
-import type { FoliageInstance, FoliageSwayParams } from "@/core/world";
-import { createFoliageSwayScratch, writeFoliageSway } from "./foliageSway";
+import type { FoliageInstance, FoliageOwnerRef, FoliageSwayParams } from "@/core/world";
+import { REDUCED_MOTION_TAP_CUE, TAP_SHAKE_LOOKS, TAP_SHAKE_WIND } from "@/config/gimmicks.config";
+import { EFFECT_POOL_CAPS } from "@/config/performance.config";
+import { createNudgeFrame, createObjectPoolManager, startNudge, writeNudgeAt } from "@/core/effects";
+import { foliageSwayShearAt } from "@/core/world";
+import { createFoliageSwayScratch, writeFoliageSway, writeFoliageSwayAndShake, type FoliageShakeInput } from "./foliageSway";
 import { composeInstanceMatrix } from "./instancing";
 
 /** instanceMatrix stores Float32: matrices compare to 6 digits (float32 epsilon × the coordinates used here). */
@@ -69,5 +73,64 @@ describe("writeFoliageSway (MFW-70 AC4)", () => {
     expect(a.x).toBeCloseTo(b.x, 6);
     expect(a.z).toBeCloseTo(b.z, 6);
     expect(a.length()).toBeGreaterThan(0);
+  });
+});
+
+describe("writeFoliageSwayAndShake (MFW-60 tap shake)", () => {
+  const OWNERS: FoliageOwnerRef[] = [
+    { kind: "tree", index: 0 },
+    { kind: "tree", index: 1 },
+  ];
+  const shakeInput = (nowMs: number, reducedMotion = false): FoliageShakeInput => ({
+    pool: createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge,
+    owners: OWNERS,
+    nowMs,
+    reducedMotion,
+    frame: createNudgeFrame(),
+  });
+  const T = TAP_SHAKE_LOOKS.tree.periodMs / 4; // near the first shake peak
+
+  it("FS1: only the tapped tree's clumps change, and the lean = sway + shake shear", () => {
+    const shake = shakeInput(1_000 + T);
+    startNudge(shake.pool, "tree", 1, 1_000);
+    const m = mesh();
+    expect(writeFoliageSwayAndShake(m, INSTANCES, PART, 180, SWAY, shake, createFoliageSwayScratch())).toBe(true);
+    const ref = mesh();
+    writeFoliageSway(ref, INSTANCES, PART, 180, SWAY, createFoliageSwayScratch());
+    matrixAt(m, 0).elements.forEach((v, k) => expect(v).toBeCloseTo(matrixAt(ref, 0).elements[k], 6));
+    const k = foliageSwayShearAt(180, 0, SWAY) + writeNudgeAt("tree", T, false, createNudgeFrame()).shear;
+    const top = displacement(m, 1, INSTANCES[1].swayPivotY + 1);
+    expect(top.x).toBeCloseTo(SWAY.windDirX * k, 5);
+    expect(top.z).toBeCloseTo(SWAY.windDirZ * k, 5);
+  });
+
+  it("FS2: with sway null the shake still writes (along TAP_SHAKE_WIND), then the rest pose", () => {
+    const shake = shakeInput(1_000 + T);
+    startNudge(shake.pool, "tree", 0, 1_000);
+    const m = mesh();
+    const scratch = createFoliageSwayScratch();
+    expect(writeFoliageSwayAndShake(m, INSTANCES, PART, 0, null, shake, scratch)).toBe(true);
+    const top = displacement(m, 0, INSTANCES[0].swayPivotY + 1);
+    const k = writeNudgeAt("tree", T, false, createNudgeFrame()).shear;
+    expect(top.x).toBeCloseTo(TAP_SHAKE_WIND.windDirX * k, 5);
+    expect(top.z).toBeCloseTo(TAP_SHAKE_WIND.windDirZ * k, 5);
+    shake.pool.releaseAll();
+    expect(writeFoliageSwayAndShake(m, INSTANCES, PART, 0, null, shake, scratch)).toBe(false);
+    for (let i = 0; i < INSTANCES.length; i++) {
+      matrixAt(m, i).elements.forEach((v, j) => expect(v).toBeCloseTo(staticMatrix(i).elements[j], 6));
+    }
+  });
+
+  it("FS3: reduced motion scales the clumps about their own origin (no shear)", () => {
+    const shake = shakeInput(1_100, true);
+    startNudge(shake.pool, "tree", 0, 1_000);
+    const m = mesh();
+    writeFoliageSwayAndShake(m, INSTANCES, PART, 0, null, shake, createFoliageSwayScratch());
+    const got = matrixAt(m, 0);
+    const want = staticMatrix(0).multiply(
+      new Matrix4().makeScale(REDUCED_MOTION_TAP_CUE.scale.tree, REDUCED_MOTION_TAP_CUE.scale.tree, REDUCED_MOTION_TAP_CUE.scale.tree),
+    );
+    got.elements.forEach((v, j) => expect(v).toBeCloseTo(want.elements[j], 6));
+    expect(new Vector3().setFromMatrixPosition(got).distanceTo(new Vector3().setFromMatrixPosition(staticMatrix(0)))).toBeLessThan(1e-6);
   });
 });

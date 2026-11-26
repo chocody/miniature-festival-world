@@ -20,6 +20,24 @@ export interface MarkCueState {
   startedAtMs: number;
 }
 
+/** The bounce parameters writeBounceAt reads (GIMMICK_BOUNCE and the MFW-60 per-target bounces). */
+export interface BounceLook {
+  readonly amplitude: number;
+  readonly periodMs: number;
+  readonly decayMs: number;
+  readonly durationMs: number;
+}
+/** The glow parameters writeLampGlowFrameAt reads (LAMP_GLOW_LOOK and the MFW-60 WINDOW_GLOW_LOOK). */
+export interface GlowLook {
+  readonly peakIntensity: number;
+  readonly durationMs: number;
+  readonly attackMs: number;
+  readonly releaseMs: number;
+  readonly flickerDepth: number;
+  readonly flickerPeriodAMs: number;
+  readonly flickerPeriodBMs: number;
+}
+
 const TAU = 2 * Math.PI;
 const scratchBounce: BounceFrame = { scale: 1, done: true };
 
@@ -65,7 +83,7 @@ export function writeBounceAt(
   ageMs: number,
   reducedMotion: boolean,
   out: BounceFrame,
-  bounce = GIMMICK_BOUNCE,
+  bounce: BounceLook = GIMMICK_BOUNCE,
 ): BounceFrame {
   const t = normaliseAge(ageMs);
   if (reducedMotion || t >= bounce.durationMs) {
@@ -83,8 +101,8 @@ export function writeLampGlowFrameAt(
   ageMs: number,
   reducedMotion: boolean,
   out: LampGlowFrame,
-  look = LAMP_GLOW_LOOK,
-  bounce = GIMMICK_BOUNCE,
+  look: GlowLook = LAMP_GLOW_LOOK,
+  bounce: BounceLook = GIMMICK_BOUNCE,
 ): LampGlowFrame {
   const t = normaliseAge(ageMs);
   if (t >= look.durationMs) {
@@ -133,7 +151,7 @@ export function writeMarkCueAt(
   reducedMotion: boolean,
   out: BounceFrame,
   cue = KRATHONG_MARK_CUE,
-  bounce = GIMMICK_BOUNCE,
+  bounce: BounceLook = GIMMICK_BOUNCE,
 ): BounceFrame {
   writeBounceAt(ageMs, reducedMotion, out, bounce);
   out.scale *= cue.scale;

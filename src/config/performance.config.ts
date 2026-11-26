@@ -91,17 +91,30 @@ export const TIER_ANTIALIAS: Readonly<Record<RenderTier, boolean>> = Object.free
 
 // Technical numbers (lead decision, MFW-28). Values PLACEHOLDER (spec silent); the owner may tune them (MFW-28 plan §11 Q3).
 
-/** Pooled scene effects (spec §3 core/effects: "ObjectPoolManager (Ripples, Fireworks, Confetti, Glow)"). Phase 1 uses ripple + glow only. */
-export const EFFECT_KINDS = ["ripple", "glow"] as const;
+/**
+ * Pooled scene effects (spec §3 core/effects: "ObjectPoolManager (Ripples, Fireworks, Confetti, Glow)"). ripple + glow since MFW-28;
+ * MFW-60 adds nudge (a tapped tree / bush / reed / rock / pier / villager moves), windowGlow (house lights), firework and skyLantern.
+ */
+export const EFFECT_KINDS = ["ripple", "glow", "nudge", "windowGlow", "firework", "skyLantern"] as const;
 export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type EffectPoolCaps = Readonly<Record<EffectKind, number>>;
 
-/** Max concurrent pooled effects per 3D tier (invariant E: fixed cap; a new tap recycles the oldest). PLACEHOLDER (spec silent). */
+/**
+ * Max concurrent pooled effects per 3D tier (invariant E: fixed cap; a new tap recycles the oldest). ripple / glow: PLACEHOLDER
+ * (spec silent, MFW-28). nudge / windowGlow / firework / skyLantern: DRAFT (MFW-60 loop decision, not yet reviewed by the owner).
+ */
 export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Object.freeze({
-  HIGH: Object.freeze({ ripple: 8, glow: 6 }),
-  MEDIUM: Object.freeze({ ripple: 6, glow: 4 }),
-  LOW: Object.freeze({ ripple: 3, glow: 2 }),
+  HIGH: Object.freeze({ ripple: 8, glow: 6, nudge: 8, windowGlow: 3, firework: 3, skyLantern: 4 }),
+  MEDIUM: Object.freeze({ ripple: 6, glow: 4, nudge: 6, windowGlow: 2, firework: 2, skyLantern: 3 }),
+  LOW: Object.freeze({ ripple: 3, glow: 2, nudge: 4, windowGlow: 1, firework: 1, skyLantern: 1 }),
 });
+
+/**
+ * Sparks per firework burst per 3D tier (LOW = the cheap variant); each spark is a head and a tail instance (FIREWORK_LOOK). Raised
+ * from the spec's 24 / 16 / 8 after the MFW-60 screenshots (the burst did not read as a firework). DRAFT (MFW-60 loop decision, not
+ * yet reviewed by the owner).
+ */
+export const FIREWORK_SPARKS_PER_BURST: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 32, MEDIUM: 24, LOW: 12 });
 
 // Technical numbers (lead decision, MFW-33)
 

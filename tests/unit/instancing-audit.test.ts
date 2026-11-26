@@ -195,4 +195,43 @@ describe("instancing audit (backlog 8.2)", () => {
     expect(end).toBeGreaterThan(start);
     expect(doc.slice(start, end)).not.toContain("TBD");
   });
+
+  it("IA1: the MFW-60 reaction writers and curves allocate nothing", () => {
+    const writers: [string, string[]][] = [
+      ["src/components/canvas3d/effects/effectMeshes.ts", ["writeWindowGlowInstances", "writeFireworkInstances", "writeSkyLanternInstances"]],
+      ["src/components/canvas3d/foliageSway.ts", ["writeFoliageSwayAndShake", "writeFoliageSway"]],
+      ["src/core/effects/sceneNudges.ts", ["findNudgeEntry", "releaseExpiredNudges", "startNudge", "nudgeDurationMs", "retriggerGlow"]],
+      ["src/components/canvas3d/villagerMeshes.ts", ["writeVillagerInstances"]],
+    ];
+    const curves = read("src/core/effects/reactionCurves.ts");
+    const curveNames = [...curves.matchAll(/export function (\w+)\(/g)].map((m) => m[1]).filter((n) => n !== "fireworkDirectionsInto" && !n.startsWith("create"));
+    expect(curveNames).toEqual(expect.arrayContaining(["writeNudgeAt", "writeFireworkShellAt", "writeFireworkSparkAt", "fireworkDurationMs", "writeSkyLanternAt"]));
+    writers.push(["src/core/effects/reactionCurves.ts", curveNames]);
+    for (const [file, names] of writers) {
+      const source = read(file);
+      for (const name of names) {
+        expect(functionSource(source, name), name).not.toMatch(ALLOCATION);
+        expect(functionSource(source, name), name).not.toMatch(RANGE_ALLOCATION);
+      }
+    }
+  });
+
+  it("IA2: the MFW-60 frame callbacks allocate nothing; the proxies and nudges create no three resource", () => {
+    for (const file of [
+      "src/components/canvas3d/effects/SceneEffects.tsx",
+      "src/components/canvas3d/effects/PropNudges.tsx",
+      "src/components/canvas3d/SwayingInstancedPart.tsx",
+      "src/components/canvas3d/Villagers.tsx",
+    ]) {
+      const bodies = frameCallbackBodies(read(file));
+      expect(bodies.length, file).toBe(1);
+      for (const body of bodies) expect(body, file).not.toMatch(ALLOCATION);
+    }
+    for (const file of ["src/components/canvas3d/effects/PropTapProxies.tsx", "src/components/canvas3d/effects/PropNudges.tsx"]) {
+      const source = read(file);
+      expect(source, file).not.toMatch(NEW_RESOURCE);
+      expect(source, file).not.toMatch(TEXTURE_API);
+      expect(source, file).not.toMatch(CONSOLE);
+    }
+  });
 });

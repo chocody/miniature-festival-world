@@ -1,6 +1,16 @@
-import { Euler, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type MeshStandardMaterial } from "three";
-import { VILLAGER_MATERIAL, VILLAGER_MOTION, VILLAGER_PARTS } from "@/config/events/loyKrathong.life.config";
+import {
+  Euler,
+  InstancedMesh,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type BufferGeometry,
+  type MeshStandardMaterial,
+  type Object3D,
+} from "three";
+import { VILLAGER_HEIGHT, VILLAGER_MATERIAL, VILLAGER_MOTION, VILLAGER_PARTS } from "@/config/events/loyKrathong.life.config";
 import type { ScenePartSpec } from "@/config/scene.config";
+import { findNudgeEntry, writeNudgeAt, type NudgeFrame, type NudgeState, type ObjectPool } from "@/core/effects";
 import {
   createVillagerPoseOut,
   RIVER_ITEM_EULER_ORDER,
@@ -105,9 +115,19 @@ export function createVillagerWriteScratch(): VillagerWriteScratch {
   };
 }
 
+/** MFW-60 tap hop input (the shared nudge pool); `nowMs` / `reducedMotion` are refreshed by the caller. Render-time only. */
+export interface VillagerNudgeInput {
+  pool: ObjectPool<NudgeState>;
+  nowMs: number;
+  reducedMotion: boolean;
+  frame: NudgeFrame;
+}
+
 /**
  * Allocation-free per-frame writer: every villager's pose (villagerPoseInto) → body, head and hat matrices (base =
  * T(pose + hop) · R(yaw, roll in YXZ: the waddle rolls about the walking direction) · S(scale)) and its blob shadow.
+ * MFW-60: a tapped villager (nudge entry "villager", villagerId) also lifts by frame.liftY × scale (hop) or scales by frame.scale
+ * (reduced motion); its blob shadow stays on the ground. Tap proxies go to the body centre (pose + VILLAGER_HEIGHT / 2 × scale, no hop).
  */
 export function writeVillagerInstances(
   meshes: VillagerMeshes,
@@ -118,21 +138,33 @@ export function writeVillagerInstances(
   animated: boolean,
   scratch: VillagerWriteScratch,
   blobs: DynamicBlobShadowsHandle | null,
+  nudge: VillagerNudgeInput | null = null,
+  tapProxies: readonly (Object3D | null)[] | null = null,
 ): void {
   const pose = scratch.pose;
   for (let i = 0; i < villagers.length; i++) {
     const v = villagers[i];
     villagerPoseInto(v, layout.channel, layout.bankProfile, VILLAGER_MOTION, timeMs, animated, pose);
-    scratch.position.set(pose.x, pose.y + pose.hopY, pose.z);
+    let lift = 0;
+    let size = 1;
+    const e = nudge !== null ? findNudgeEntry(nudge.pool, "villager", v.def.villagerId) : null;
+    if (nudge !== null && e !== null) {
+      const f = writeNudgeAt("villager", nudge.nowMs - e.startedAtMs, nudge.reducedMotion, nudge.frame);
+      lift = f.liftY * v.def.scale;
+      size = f.scale;
+    }
+    scratch.position.set(pose.x, pose.y + pose.hopY + lift, pose.z);
     scratch.euler.set(0, pose.yawRad, pose.rollRad, RIVER_ITEM_EULER_ORDER);
     scratch.quaternion.setFromEuler(scratch.euler);
-    scratch.scale.setScalar(v.def.scale);
+    scratch.scale.setScalar(v.def.scale * size);
     scratch.base.compose(scratch.position, scratch.quaternion, scratch.scale);
     meshes.body.setMatrixAt(i, scratch.out.multiplyMatrices(scratch.base, scratch.body));
     meshes.head.setMatrixAt(i, scratch.out.multiplyMatrices(scratch.base, scratch.head));
     const hatSlot = plan.hatSlotOf[i];
     if (meshes.hat && hatSlot >= 0) meshes.hat.setMatrixAt(hatSlot, scratch.out.multiplyMatrices(scratch.base, scratch.hat));
     blobs?.writeAt(i, pose.x, pose.z);
+    const proxy = tapProxies !== null ? tapProxies[i] : null;
+    if (proxy) proxy.position.set(pose.x, pose.y + (VILLAGER_HEIGHT / 2) * v.def.scale, pose.z);
   }
   for (let m = 0; m < meshes.all.length; m++) meshes.all[m].instanceMatrix.needsUpdate = true;
   blobs?.commit(villagers.length);

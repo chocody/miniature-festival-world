@@ -1,8 +1,9 @@
 "use client";
 
+import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useMemo, type RefObject } from "react";
 import type { Group, InstancedMesh, Mesh } from "three";
-import { hasTapProxyHit } from "@/components/canvas3d/effects/riverHitPick";
+import { hasAnyTapProxyHit, hasTapProxyHit } from "@/components/canvas3d/effects/riverHitPick";
 import { createTapProxy } from "@/components/canvas3d/effects/riverTapProxy";
 import { isTapClick, tapPointInParentSpace } from "@/components/canvas3d/effects/tapPoint";
 import { InstancedPart } from "@/components/canvas3d/InstancedPart";
@@ -14,12 +15,13 @@ import {
   RIVER_ENVIRONMENT_PARTS,
   RIVER_GROUND_RENDER_ORDER,
 } from "@/config/events/loyKrathong.river.config";
-import { LAMP_TAP_RADIUS } from "@/config/gimmicks.config";
+import { LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO, type SceneTargetKind } from "@/config/gimmicks.config";
 import { VILLAGE_LIGHTS, type LightPresetId } from "@/config/look.config";
 import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
+import type { NudgeSource } from "@/core/effects";
 import type { BankGeometryData, RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
-import { LOY_KRATHONG_RIVER_FOLIAGE, lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
+import { LOY_KRATHONG_RIVER_FOLIAGE, lampHeadPosition, lampIndexFromInstanceId, lampTapProxyPlacement } from "./riverLayout";
 import { RiversideFoliage } from "./RiversideFoliage";
 
 export interface RiverEnvironmentProps {
@@ -35,6 +37,16 @@ export interface RiverEnvironmentProps {
   readonly lightPreset: LightPresetId;
   /** MFW-50: receives the lamp-head InstancedMesh (lantern flicker), via the InstancedPart meshRef. Optional. */
   readonly lampHeadMeshRef?: RefObject<InstancedMesh | null>;
+  /**
+   * MFW-60 (WORLD_EXPLORE only): when set, a short tap on the ground or a bank that no tap proxy claims is a "sky" tap (a firework
+   * above the tapped point), and a tap on the pier deck or piles is a pier tap. Absent = no extra raycast targets.
+   */
+  readonly onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null) => void;
+  /** MFW-60: the shared nudge pool, passed on to the foliage (a tapped tree, bush or reed shakes). */
+  readonly nudges?: NudgeSource | null;
+  /** MFW-60: receive the rock InstancedMesh and the pier deck mesh (PropNudges bounces them). */
+  readonly rockMeshRef?: RefObject<InstancedMesh | null>;
+  readonly pierDeckRef?: RefObject<Mesh | null>;
 }
 
 function useRibbonGeometry(data: RibbonGeometryData) {
@@ -56,7 +68,22 @@ function useBankGeometry(data: BankGeometryData) {
  */
 export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { layout, shadows, waterRef, lampFocusRef, selectedLampIndex, onWaterSelected, onLampSelected, lightPreset } = props;
-  const { lampHeadMeshRef } = props;
+  const { lampHeadMeshRef, onPropTapped, nudges = null, rockMeshRef, pierDeckRef } = props;
+  // Rule 5 (look doc §16): land = "sky" unless a proxy further along the ray takes the tap. Rule 3: the pier defers only to proxies.
+  const onLandClick = onPropTapped
+    ? (event: ThreeEvent<MouseEvent>) => {
+        if (!isTapClick(event) || hasAnyTapProxyHit(event.intersections)) return;
+        event.stopPropagation();
+        onPropTapped("sky", 0, tapPointInParentSpace(event));
+      }
+    : undefined;
+  const onPierClick = onPropTapped
+    ? (event: ThreeEvent<MouseEvent>) => {
+        if (!isTapClick(event) || hasTapProxyHit(event.intersections)) return;
+        event.stopPropagation();
+        onPropTapped("pier", 0, null);
+      }
+    : undefined;
   const water = useRibbonGeometry(layout.water);
   const bankLeft = useBankGeometry(layout.banks.left);
   const bankRight = useBankGeometry(layout.banks.right);
@@ -66,9 +93,10 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
   const parts = RIVER_ENVIRONMENT_PARTS;
   const lampProxy = useMemo(() => createTapProxy(LAMP_TAP_RADIUS), []);
   useEffect(() => () => lampProxy.dispose(), [lampProxy]);
-  const lampProxyPositions = useMemo(
-    () => layout.lamps.map((lamp) => lampHeadPosition(lamp, parts.lampHead.yOffset)),
-    [layout.lamps, parts.lampHead.yOffset],
+  // MFW-60 polish: the proxy covers the whole lamp (post + head), so a tap on the post lights the lamp instead of a firework.
+  const lampProxyPlacements = useMemo(
+    () => layout.lamps.map((lamp) => lampTapProxyPlacement(lamp, parts.lampHead, LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO)),
+    [layout.lamps, parts.lampHead],
   );
   const focusLamp = layout.lamps[selectedLampIndex] ?? layout.lamps[0];
   const { pier } = layout;
@@ -89,10 +117,10 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         <meshStandardMaterial {...TOY_MATTE_MATERIALS.water} />
       </mesh>
       {/* Bank heights are absolute (the profile), so the bank meshes sit at y = 0. */}
-      <mesh name={SCENE_OBJECT_NAMES.bankLeft} geometry={bankLeft} receiveShadow={shadows}>
+      <mesh name={SCENE_OBJECT_NAMES.bankLeft} geometry={bankLeft} receiveShadow={shadows} onClick={onLandClick}>
         <meshStandardMaterial {...RIVER_BANK_MATERIAL} />
       </mesh>
-      <mesh name={SCENE_OBJECT_NAMES.bankRight} geometry={bankRight} receiveShadow={shadows}>
+      <mesh name={SCENE_OBJECT_NAMES.bankRight} geometry={bankRight} receiveShadow={shadows} onClick={onLandClick}>
         <meshStandardMaterial {...RIVER_BANK_MATERIAL} />
       </mesh>
       <mesh
@@ -102,6 +130,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         rotation={[-Math.PI / 2, 0, 0]}
         renderOrder={RIVER_GROUND_RENDER_ORDER}
         receiveShadow={shadows}
+        onClick={onLandClick}
       >
         <meshStandardMaterial {...RIVER_BANK_MATERIAL} />
       </mesh>
@@ -126,8 +155,14 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         shadows={shadows}
         emissiveIntensity={village.windowEmissiveIntensity}
       />
-      <RiversideFoliage foliage={LOY_KRATHONG_RIVER_FOLIAGE} shadows={shadows} />
-      <InstancedPart name={SCENE_OBJECT_NAMES.rocks} part={parts.rock} transforms={layout.rocks} shadows={shadows} />
+      <RiversideFoliage foliage={LOY_KRATHONG_RIVER_FOLIAGE} shadows={shadows} nudges={nudges} />
+      <InstancedPart
+        name={SCENE_OBJECT_NAMES.rocks}
+        part={parts.rock}
+        transforms={layout.rocks}
+        shadows={shadows}
+        meshRef={rockMeshRef}
+      />
       <InstancedPart name={SCENE_OBJECT_NAMES.lampPosts} part={parts.lampPost} transforms={layout.lamps} shadows={shadows} />
       <InstancedPart
         name={SCENE_OBJECT_NAMES.lampHeads}
@@ -141,7 +176,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
           onLampSelected(lampIndexFromInstanceId(event.instanceId, layout.lamps.length));
         }}
       />
-      {lampProxyPositions.map((position, i) => (
+      {lampProxyPlacements.map(({ position, scaleY }, i) => (
         <mesh
           key={i}
           name={`${SCENE_OBJECT_NAMES.lampTapPrefix}${i}`}
@@ -149,6 +184,7 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
           material={lampProxy.material}
           visible={false}
           position={position}
+          scale={[1, scaleY, 1]}
           onClick={(event) => {
             if (!isTapClick(event)) return;
             event.stopPropagation();
@@ -157,16 +193,24 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         />
       ))}
       <mesh
+        ref={pierDeckRef}
         name={SCENE_OBJECT_NAMES.pierDeck}
         position={[pier.deckCenter.x, pier.deckCenter.y, pier.deckCenter.z]}
         rotation={[0, pier.yawRad, 0]}
         castShadow={shadows}
         receiveShadow={shadows}
+        onClick={onPierClick}
       >
         <boxGeometry args={[pier.width, pier.thickness, pier.length]} />
         <meshStandardMaterial {...PIER_DECK_MATERIAL} />
       </mesh>
-      <InstancedPart name={SCENE_OBJECT_NAMES.pierPiles} part={parts.pierPile} transforms={pier.piles} shadows={shadows} />
+      <InstancedPart
+        name={SCENE_OBJECT_NAMES.pierPiles}
+        part={parts.pierPile}
+        transforms={pier.piles}
+        shadows={shadows}
+        onClick={onPierClick}
+      />
       {focusLamp && (
         <group
           ref={lampFocusRef}
