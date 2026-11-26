@@ -169,3 +169,22 @@ describe("foliage extents and sway shear (MFW-70)", () => {
     }
   });
 });
+
+describe("foliage owners (MFW-60)", () => {
+  it("RF1: clumpOwners, clumpLowOwners and plantOwners are parallel to their lists; trees first in tree order, then bushes", async () => {
+    const { LOY_KRATHONG_RIVER_FOLIAGE: f, LOY_KRATHONG_RIVER_LAYOUT: layout } = await import("@/components/models/loyKrathong/riverLayout");
+    expect(f.clumpOwners).toHaveLength(f.clumps.length);
+    expect(f.clumpLowOwners).toHaveLength(f.clumpsLow.length);
+    expect(f.plantOwners).toEqual(f.plants.map((_, i) => ({ kind: "reed", index: i })));
+    const firstBush = f.clumpOwners.findIndex((o) => o.kind === "bush");
+    expect(firstBush).toBeGreaterThan(0);
+    expect(f.clumpOwners.slice(0, firstBush).every((o) => o.kind === "tree")).toBe(true);
+    expect(f.clumpOwners.slice(firstBush).every((o) => o.kind === "bush")).toBe(true);
+    const order = (kind: string) => f.clumpOwners.filter((o) => o.kind === kind).map((o) => o.index);
+    expect(order("tree")).toEqual([...order("tree")].sort((a, b) => a - b));
+    expect(new Set(order("tree")).size).toBe(layout.trees.length);
+    expect(new Set(order("bush")).size).toBe(layout.bushes.length);
+    // the LIGHT subset keeps its owners: every low clump is the same object as a FULL clump with the same owner
+    f.clumpsLow.forEach((c, i) => expect(f.clumpOwners[f.clumps.indexOf(c)]).toBe(f.clumpLowOwners[i]));
+  });
+});

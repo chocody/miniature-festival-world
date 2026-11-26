@@ -3,15 +3,16 @@ import { join } from "node:path";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createRef, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BufferGeometry, Material } from "three";
+import { BufferGeometry, InstancedMesh, Material, Object3D, Vector3 } from "three";
 import type { Group, Mesh } from "three";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import { VILLAGE_LIGHTS } from "@/config/look.config";
 import { LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
+import { DRAG_START_DISTANCE_PX } from "@/config/interaction.config";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverEnvironment } from "./RiverEnvironment";
-import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition, lampIndexFromInstanceId } from "./riverLayout";
+import { LOY_KRATHONG_RIVER_LAYOUT, lampIndexFromInstanceId, lampTapProxyPlacement } from "./riverLayout";
 
 const useFrameSpy = vi.hoisted(() => vi.fn());
 /** Materials created per part material spec (MFW-49: village lights per preset). */
@@ -40,6 +41,23 @@ vi.mock("@react-three/fiber", () => ({
 }));
 
 type Props = ComponentProps<typeof RiverEnvironment>;
+
+/** The props React gave a DOM stub element (an absent onClick = no R3F handler, so no raycast target). */
+function reactProps(el: Element): Record<string, unknown> {
+  const key = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+  if (!key) throw new Error("no React props on the element");
+  return (el as unknown as Record<string, Record<string, unknown>>)[key];
+}
+function named(name: string): Object3D {
+  const o = new Object3D();
+  o.name = name;
+  return o;
+}
+const callClick = (el: Element, event: Record<string, unknown>) => {
+  const stopPropagation = vi.fn();
+  (reactProps(el).onClick as (e: unknown) => void)({ stopPropagation, ...event });
+  return stopPropagation;
+};
 function makeProps(overrides: Partial<Props> = {}): Props {
   return {
     layout: LOY_KRATHONG_RIVER_LAYOUT,
@@ -106,14 +124,15 @@ describe("RiverEnvironment", () => {
     expect(props.onLampSelected).toHaveBeenCalledWith(0);
   });
 
-  it("renders one invisible tap proxy per lamp over the head", () => {
+  // MFW-60 polish: the proxy moved from the head centre to the middle of the whole lamp (post + head), so the post answers too.
+  it("renders one invisible tap proxy per lamp over the whole lamp", () => {
     const { container } = render(<RiverEnvironment {...makeProps()} />);
     const proxies = container.querySelectorAll(`[name^="${SCENE_OBJECT_NAMES.lampTapPrefix}"]`);
     expect(proxies).toHaveLength(LOY_KRATHONG_RIVER_LAYOUT.lamps.length);
     proxies.forEach((el, i) => {
-      expect(el.getAttribute("position")).toBe(
-        lampHeadPosition(LOY_KRATHONG_RIVER_LAYOUT.lamps[i], RIVER_ENVIRONMENT_PARTS.lampHead.yOffset).join(","),
-      );
+      const placement = lampTapProxyPlacement(LOY_KRATHONG_RIVER_LAYOUT.lamps[i], RIVER_ENVIRONMENT_PARTS.lampHead, LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO);
+      expect(el.getAttribute("position")).toBe(placement.position.join(","));
+      expect(el.getAttribute("scale")).toBe([1, placement.scaleY, 1].join(","));
     });
     // React's DOM stub drops visible={false}, so the invisibility is pinned in the source instead.
     expect(readFileSync(join(__dirname, "RiverEnvironment.tsx"), "utf8")).toMatch(/lampTapPrefix[\s\S]{0,200}visible=\{false\}/);
@@ -136,6 +155,23 @@ describe("RiverEnvironment", () => {
     const { container } = render(<RiverEnvironment {...props} />);
     fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.lampTapPrefix}2"]`)!);
     expect(props.onLampSelected).toHaveBeenCalledWith(2);
+  });
+
+  it("lamp proxy covers the whole post and the head (MFW-60 polish)", () => {
+    const head = RIVER_ENVIRONMENT_PARTS.lampHead;
+    const headRadius = head.geometry.kind === "icosahedron" ? head.geometry.radius : 0;
+    for (const lamp of LOY_KRATHONG_RIVER_LAYOUT.lamps) {
+      const p = lampTapProxyPlacement(lamp, head, LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO);
+      const vertical = LAMP_TAP_RADIUS * TAP_PROXY_INRADIUS_RATIO * p.scaleY;
+      const base = lamp.position.y;
+      const top = lamp.position.y + (head.yOffset + headRadius) * lamp.scale;
+      expect(p.position[1] - vertical).toBeLessThanOrEqual(base + 1e-9);
+      expect(p.position[1] + vertical).toBeGreaterThanOrEqual(top - 1e-9);
+      expect(p.position[0]).toBe(lamp.position.x);
+      expect(p.position[2]).toBe(lamp.position.z);
+    }
+    const tall = lampTapProxyPlacement(LOY_KRATHONG_RIVER_LAYOUT.lamps[0], { ...head, yOffset: 5 }, LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO);
+    expect(tall.scaleY).toBeGreaterThan(1); // a taller lamp stretches the proxy instead of leaving the post uncovered
   });
 
   it("lamp proxy encloses the lamp head", () => {
@@ -199,11 +235,76 @@ describe("RiverEnvironment", () => {
     expect(materialDispose).not.toHaveBeenCalled();
   });
 
-  it("the ground disc lies under everything, takes no taps and is drawn last (MFW-49)", () => {
+  // MFW-60 changed "takes no taps": the ground takes the "sky" tap, but ONLY when onPropTapped is set (WORLD_EXPLORE); see RE4.
+  it("the ground disc lies under everything, takes no taps without onPropTapped and is drawn last (MFW-49)", () => {
     const { container } = render(<RiverEnvironment {...makeProps()} />);
     const ground = container.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
     expect(ground.getAttribute("position")).toBe([0, LOY_KRATHONG_RIVER_LAYOUT.ground.y, 0].join(","));
     expect(Number(ground.getAttribute("renderOrder"))).toBeGreaterThan(0);
-    expect(readFileSync(join(__dirname, "RiverEnvironment.tsx"), "utf8")).not.toMatch(/name=\{SCENE_OBJECT_NAMES\.ground\}[^>]*onClick/);
+    expect(reactProps(ground).onClick).toBeUndefined();
+  });
+
+  describe("MFW-60 land and pier taps", () => {
+    const land = [SCENE_OBJECT_NAMES.ground, SCENE_OBJECT_NAMES.bankLeft, SCENE_OBJECT_NAMES.bankRight];
+
+    it("RE1: a ground or bank tap → onPropTapped('sky', 0, point)", () => {
+      const onPropTapped = vi.fn();
+      const { container } = render(<RiverEnvironment {...makeProps({ onPropTapped })} />);
+      for (const name of land) {
+        const stop = callClick(container.querySelector(`[name="${name}"]`)!, { delta: 0, intersections: [{ object: named(name) }] });
+        expect(stop).toHaveBeenCalledTimes(1);
+      }
+      expect(onPropTapped).toHaveBeenCalledTimes(land.length);
+      for (const call of onPropTapped.mock.calls) expect(call.slice(0, 2)).toEqual(["sky", 0]);
+      const group = new Object3D();
+      const hit = named(SCENE_OBJECT_NAMES.bankLeft);
+      group.add(hit);
+      callClick(container.querySelector(`[name="${SCENE_OBJECT_NAMES.bankLeft}"]`)!, { delta: 0, point: new Vector3(1.5, -0.1, -2), object: hit });
+      expect(onPropTapped).toHaveBeenLastCalledWith("sky", 0, { x: 1.5, z: -2 });
+      fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!); // the DOM stub click: point unknown
+      expect(onPropTapped).toHaveBeenLastCalledWith("sky", 0, null);
+    });
+
+    it("RE2: a drag, or a tap proxy further along the ray, fires nothing", () => {
+      const onPropTapped = vi.fn();
+      const { container } = render(<RiverEnvironment {...makeProps({ onPropTapped })} />);
+      const ground = container.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
+      expect(callClick(ground, { delta: DRAG_START_DISTANCE_PX + 1 })).not.toHaveBeenCalled();
+      for (const proxy of [`${SCENE_OBJECT_NAMES.propTapPrefix}house-0`, `${SCENE_OBJECT_NAMES.lampTapPrefix}0`, `${SCENE_OBJECT_NAMES.riverHitPrefix}x`]) {
+        expect(callClick(ground, { delta: 0, intersections: [{ object: named(SCENE_OBJECT_NAMES.ground) }, { object: named(proxy) }] })).not.toHaveBeenCalled();
+      }
+      expect(onPropTapped).not.toHaveBeenCalled();
+    });
+
+    it("RE3: a pier deck or pile tap → ('pier', 0, null); a krathong / lamp proxy wins", () => {
+      const onPropTapped = vi.fn();
+      const { container } = render(<RiverEnvironment {...makeProps({ onPropTapped })} />);
+      fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierDeck}"]`)!);
+      fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierPiles}"]`)!);
+      expect(onPropTapped.mock.calls).toEqual([["pier", 0, null], ["pier", 0, null]]);
+      const deck = container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierDeck}"]`)!;
+      expect(callClick(deck, { delta: 0, intersections: [{ object: named(`${SCENE_OBJECT_NAMES.riverHitPrefix}a`) }] })).not.toHaveBeenCalled();
+      expect(callClick(deck, { delta: DRAG_START_DISTANCE_PX + 1 })).not.toHaveBeenCalled();
+      expect(onPropTapped).toHaveBeenCalledTimes(2);
+    });
+
+    it("RE4: without onPropTapped there are no handlers on ground, banks or pier, and useFrame is still called twice", () => {
+      const { container } = render(<RiverEnvironment {...makeProps()} />);
+      for (const name of [...land, SCENE_OBJECT_NAMES.pierDeck, SCENE_OBJECT_NAMES.pierPiles]) {
+        expect(reactProps(container.querySelector(`[name="${name}"]`)!).onClick, name).toBeUndefined();
+      }
+      expect(useFrameSpy).toHaveBeenCalledTimes(2);
+      useFrameSpy.mockClear();
+      render(<RiverEnvironment {...makeProps({ onPropTapped: vi.fn() })} />);
+      expect(useFrameSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("RE5: rockMeshRef and pierDeckRef receive the meshes", () => {
+      const rockMeshRef = createRef<InstancedMesh>();
+      const pierDeckRef = createRef<Mesh>();
+      const { container } = render(<RiverEnvironment {...makeProps({ rockMeshRef, pierDeckRef })} />);
+      expect(rockMeshRef.current).toBe(container.querySelector(`[name="${SCENE_OBJECT_NAMES.rocks}"]`));
+      expect(pierDeckRef.current).toBe(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierDeck}"]`));
+    });
   });
 });

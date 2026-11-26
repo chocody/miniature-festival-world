@@ -2,7 +2,7 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { OrthographicCamera, type Vector3 } from "three";
-import { LIVING_WORLD_TIERS, TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
+import { EFFECT_POOL_CAPS, LIVING_WORLD_TIERS, TIER_ANTIALIAS, TIER_BUDGETS, TIER_MAX_RENDER_PIXELS } from "@/config/performance.config";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
 import { LIGHT_PRESETS } from "@/config/look.config";
 import { CANVAS_GL_OPTIONS } from "./sceneLook";
@@ -85,6 +85,20 @@ vi.mock("@/components/models/loyKrathong/krathongAssets", async (importOriginal)
 });
 
 const tapStub = vi.hoisted(() => ({ value: { x: 0.5, z: 0 } as { x: number; z: number } | null }));
+
+/** MFW-60: records every effect pool manager the scene creates (so a test can read the pooled sky lantern / firework / nudge counts). */
+const poolManagers = vi.hoisted(() => [] as import("@/core/effects").ObjectPoolManager[]);
+vi.mock("@/core/effects", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/effects")>();
+  return {
+    ...actual,
+    createObjectPoolManager: (...args: Parameters<typeof actual.createObjectPoolManager>) => {
+      const m = actual.createObjectPoolManager(...args);
+      poolManagers.push(m);
+      return m;
+    },
+  };
+});
 
 vi.mock("./effects/tapPoint", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./effects/tapPoint")>()),
@@ -1060,6 +1074,77 @@ describe("scene gimmicks (MFW-28)", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("scene reactions (MFW-60)", () => {
+  const pools = () => poolManagers.at(-1)!;
+  const ground = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
+  beforeEach(() => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+    poolManagers.length = 0;
+  });
+
+  it("IX1: in WORLD_EXPLORE a ground tap launches a firework, counts once and changes no selection or camera", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const flights = r3f.flightStarts.length;
+    const selected = viewport().getAttribute("data-selected-target");
+    fireEvent.click(ground(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "firework");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    expect(viewport().getAttribute("data-selected-target")).toBe(selected);
+    expect(r3f.flightStarts.length).toBe(flights);
+    expect(pools().activeCount("firework")).toBe(1);
+  });
+
+  it("IX2: a prop proxy tap lights the house; a tree tap shakes it; the pier and a villager react too", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.propTapPrefix}house-0"]`)!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "house-lights");
+    expect(pools().activeCount("windowGlow")).toBe(1);
+    fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.propTapPrefix}tree-1"]`)!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "tree-shake");
+    fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierDeck}"]`)!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "pier-bounce");
+    fireEvent.click(container.querySelector(`[name^="${SCENE_OBJECT_NAMES.propTapPrefix}villager-"]`)!);
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "villager-hop");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "4");
+    expect(pools().activeCount("nudge")).toBe(3);
+    expect(viewport()).not.toHaveAttribute("data-selected-target");
+  });
+
+  it.each(["CUSTOMIZE", "RITUAL_RELEASE"] as const)("IX3 %s: no prop proxies and a ground tap records nothing", (mode) => {
+    const { container } = render(<SceneViewport mode={mode} />);
+    expect(container.querySelectorAll(`[name^="${SCENE_OBJECT_NAMES.propTapPrefix}"]`)).toHaveLength(0);
+    fireEvent.click(ground(container));
+    fireEvent.click(container.querySelector(`[name="${SCENE_OBJECT_NAMES.pierDeck}"]`)!);
+    expect(viewport()).not.toHaveAttribute("data-last-gimmick");
+  });
+
+  it("IX4: a lamp tap records lamp-glow, still selects and flies, and releases a sky lantern", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    const flights = r3f.flightStarts.length;
+    fireEvent.click(lampMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "lamp-glow");
+    expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
+    expect(r3f.flightStarts.length).toBe(flights + 1);
+    expect(pools().activeCount("glow")).toBe(1);
+    expect(pools().activeCount("skyLantern")).toBe(1);
+  });
+
+  it("IX5: a water tap still records a ripple through the registry", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(waterMesh(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "ripple");
+    expect(pools().activeCount("ripple")).toBe(1);
+  });
+
+  it("LOW tier: the cheap variant uses the LOW caps and sparks", () => {
+    useDeviceStore.getState().setQualityTier("LOW");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(ground(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "firework");
+    expect(pools().firework.capacity).toBe(EFFECT_POOL_CAPS.LOW.firework);
   });
 });
 

@@ -22,6 +22,13 @@ export const E2E_LAMP_GLOW_NAME = "scene-lamp-glows"; // = SCENE_OBJECT_NAMES.la
 export const E2E_KRATHONG_MARK_NAME = "scene-krathong-mark-cue"; // = SCENE_OBJECT_NAMES.krathongMarkCue
 export const E2E_KRATHONG_MARK_SCALE = 1.2; // = KRATHONG_MARK_CUE.scale
 export const E2E_ADDITIVE_BLENDING = 2; // = three AdditiveBlending
+// MFW-60 scene reactions
+export const E2E_PROP_TAP_PREFIX = "scene-prop-tap-"; // = SCENE_OBJECT_NAMES.propTapPrefix
+export const E2E_LAND_NAMES = ["scene-ground", "scene-bank-left", "scene-bank-right"] as const; // = SCENE_OBJECT_NAMES ground / banks
+export const E2E_FIREWORK_NAME = "scene-fireworks"; // = SCENE_OBJECT_NAMES.fireworks
+export const E2E_WINDOW_GLOW_NAME = "scene-window-glows"; // = SCENE_OBJECT_NAMES.windowGlows
+export const E2E_SKY_LANTERN_NAME = "scene-sky-lanterns"; // = SCENE_OBJECT_NAMES.skyLanterns
+export const E2E_DRAG_START_DISTANCE_PX = 8; // = DRAG_START_DISTANCE_PX
 
 const WATER_GRID_X_FROM = 0.1;
 const WATER_GRID_X_TO = 0.9;
@@ -50,6 +57,10 @@ export interface SceneTargets {
   readonly water: ScreenPoint | null;
   readonly lamp: TapTarget | null;
   readonly krathong: TapTarget | null;
+  /** MFW-60: a bare-land point (ground / bank first on the ray, no tap proxy of any kind on it): a "sky" tap launches a firework. */
+  readonly sky: ScreenPoint | null;
+  /** MFW-60: a house tap proxy that wins its tap under the app's priority rules. */
+  readonly house: TapTarget | null;
 }
 
 /** Browser-side structural types (three / R3F are not importable from the test runner). */
@@ -93,23 +104,25 @@ interface ProbeScene {
 }
 interface ProbeWindow {
   __THREE_DEVTOOLS__?: EventTarget;
-  __mfwProbe?: { scene: ProbeScene | null; camera: ProbeCamera | null };
+  __mfwProbe?: { scene: ProbeScene | null; camera: ProbeCamera | null; renderer: ObservedRenderer | null };
 }
 interface ObservedRenderer {
   isWebGLRenderer?: boolean;
   render: (scene: ProbeScene, camera: ProbeCamera) => unknown;
+  info?: { programs?: unknown[] | null; render?: { calls: number; triangles: number } };
 }
 
 export async function installSceneProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const w = window as unknown as ProbeWindow;
-    const probe = { scene: null as ProbeScene | null, camera: null as ProbeCamera | null };
+    const probe = { scene: null as ProbeScene | null, camera: null as ProbeCamera | null, renderer: null as ObservedRenderer | null };
     w.__mfwProbe = probe;
     const hook = new EventTarget();
     w.__THREE_DEVTOOLS__ = hook;
     hook.addEventListener("observe", (event) => {
       const detail = (event as CustomEvent<ObservedRenderer>).detail;
       if (!detail || !detail.isWebGLRenderer) return;
+      probe.renderer = detail;
       const original = detail.render.bind(detail);
       detail.render = (scene, camera) => {
         probe.scene = scene;
@@ -123,8 +136,8 @@ export async function installSceneProbe(page: Page): Promise<void> {
 /** Screen points (client px) of tappable things; each is verified to be reachable and to hit the intended object first. */
 export async function locateSceneTargets(page: Page): Promise<SceneTargets> {
   return page.evaluate(
-    ({ waterName, lampPrefix, hitPrefix, minPx, grid, ringSamples, ringInset }) => {
-      const none = { water: null, lamp: null, krathong: null };
+    ({ waterName, lampPrefix, hitPrefix, propPrefix, landNames, minPx, grid, ringSamples, ringInset }) => {
+      const none = { water: null, lamp: null, krathong: null, sky: null, house: null };
       const probe = (window as unknown as ProbeWindow).__mfwProbe;
       const canvas = document.querySelector("canvas");
       if (!probe || !probe.scene || !probe.camera || !canvas) return none;
@@ -154,11 +167,35 @@ export async function locateSceneTargets(page: Page): Promise<SceneTargets> {
           .intersectObjects(state.internal.interaction, false)
           .some((h) => h.object.name.startsWith(hitPrefix) || h.object.name.startsWith(lampPrefix));
       };
-      // Like the app (pickNearestRiverHitId): among overlapping river hit proxies the one whose centre is nearest the ray wins.
-      const resolvedName = (x: number, y: number, prefix: string): string | null => {
+      const isProxy = (name: string) => name.startsWith(hitPrefix) || name.startsWith(lampPrefix) || name.startsWith(propPrefix);
+      // MFW-60 app rule 5: bare land takes a tap only when no tap proxy of any kind is on the ray.
+      const landHit = (x: number, y: number): boolean => {
         ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
         state.raycaster.setFromCamera(ndc, camera);
         const hits = state.raycaster.intersectObjects(state.internal.interaction, false).sort((a, b) => a.distance - b.distance);
+        return hits.length > 0 && landNames.includes(hits[0].object.name) && !hits.some((h) => isProxy(h.object.name));
+      };
+      // MFW-60 app rule 2: a prop proxy loses to river / lamp proxies and leaves taps whose nearest real surface is the water.
+      const propWinner = (x: number, y: number): string | null => {
+        ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+        state.raycaster.setFromCamera(ndc, camera);
+        const hits = state.raycaster.intersectObjects(state.internal.interaction, false).sort((a, b) => a.distance - b.distance);
+        if (hits.some((h) => h.object.name.startsWith(hitPrefix) || h.object.name.startsWith(lampPrefix))) return null;
+        const surface = hits.find((h) => !isProxy(h.object.name));
+        if (surface && surface.object.name === waterName) return null;
+        const first = hits[0];
+        return first && first.object.name.startsWith(propPrefix) ? first.object.name : null;
+      };
+      // Like the app (pickNearestRiverHitId): among overlapping river hit proxies the one whose centre is nearest the ray wins.
+      // MFW-60 app rule 2a: krathong and lamp proxies beat prop proxies, so prop proxies are ignored here.
+      const resolvedName = (x: number, y: number, prefix: string): string | null => {
+        if (prefix === propPrefix) return propWinner(x, y);
+        ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+        state.raycaster.setFromCamera(ndc, camera);
+        const hits = state.raycaster
+          .intersectObjects(state.internal.interaction, false)
+          .filter((h) => !h.object.name.startsWith(propPrefix))
+          .sort((a, b) => a.distance - b.distance);
         // A krathong proxy is centred on the water plane, so the water can be hit first; the app defers to the proxy then.
         if (prefix !== hitPrefix || !hits.some((h) => h.object.name.startsWith(prefix))) return hits[0]?.object.name ?? null;
         let bestName: string | null = null;
@@ -189,31 +226,48 @@ export async function locateSceneTargets(page: Page): Promise<SceneTargets> {
         }
       }
 
-      const best = (prefix: string): TapTarget | null => {
+      let skyPoint: ScreenPoint | null = null;
+      for (let gy = grid.yFrom; gy <= grid.yTo && !skyPoint; gy += grid.step) {
+        for (let gx = grid.xFrom; gx <= grid.xTo && !skyPoint; gx += grid.step) {
+          const x = rect.left + gx * rect.width;
+          const y = rect.top + gy * rect.height;
+          if (reachable(x, y) && landHit(x, y)) skyPoint = { x, y };
+        }
+      }
+
+      const best = (prefix: string, rule = prefix): TapTarget | null => {
         let found: TapTarget | null = null;
         scene.traverse((o) => {
           if (!o.name.startsWith(prefix)) return;
           const c = toClient(o);
-          if (!reachable(c.x, c.y) || resolvedName(c.x, c.y, prefix) !== o.name) return;
+          if (!reachable(c.x, c.y) || resolvedName(c.x, c.y, rule) !== o.name) return;
           let ringHits = 0;
           const r = minPx / 2 - ringInset;
           for (let k = 0; k < ringSamples; k++) {
             const a = (k / ringSamples) * 2 * Math.PI;
             const x = c.x + r * Math.cos(a);
             const y = c.y + r * Math.sin(a);
-            if (reachable(x, y) && resolvedName(x, y, prefix) === o.name) ringHits++;
+            if (reachable(x, y) && resolvedName(x, y, rule) === o.name) ringHits++;
           }
           if (!found || ringHits > found.ringHits) found = { x: c.x, y: c.y, name: o.name, ringHits, ringSamples };
         });
         return found;
       };
 
-      return { water: waterPoint, lamp: best(lampPrefix), krathong: best(hitPrefix) };
+      return {
+        water: waterPoint,
+        lamp: best(lampPrefix),
+        krathong: best(hitPrefix),
+        sky: skyPoint,
+        house: best(`${propPrefix}house-`, propPrefix),
+      };
     },
     {
       waterName: E2E_WATER_NAME,
       lampPrefix: E2E_LAMP_TAP_PREFIX,
       hitPrefix: E2E_RIVER_HIT_PREFIX,
+      propPrefix: E2E_PROP_TAP_PREFIX,
+      landNames: [...E2E_LAND_NAMES] as string[],
       minPx: E2E_MIN_TOUCH_TARGET_PX,
       grid: { xFrom: WATER_GRID_X_FROM, xTo: WATER_GRID_X_TO, yFrom: WATER_GRID_Y_FROM, yTo: WATER_GRID_Y_TO, step: WATER_GRID_STEP },
       ringSamples: RING_SAMPLES,
@@ -277,7 +331,8 @@ export async function listRingAndHaloMeshes(page: Page): Promise<string[] | null
       });
       return found;
     },
-    { allowed: [E2E_TAP_RIPPLE_NAME, E2E_LAMP_GLOW_NAME], additive: E2E_ADDITIVE_BLENDING },
+    // MFW-60: the house window light-up is an additive skin over the window glass, like the lamp light-up.
+    { allowed: [E2E_TAP_RIPPLE_NAME, E2E_LAMP_GLOW_NAME, E2E_WINDOW_GLOW_NAME], additive: E2E_ADDITIVE_BLENDING },
   );
 }
 
@@ -291,5 +346,48 @@ export async function readObjectScaleX(page: Page, name: string): Promise<number
       if (value === null && o.name === target && o.scale) value = o.scale.x;
     });
     return value;
+  }, name);
+}
+
+/** Number of shader programs the renderer has compiled (renderer.info.programs.length); null before the first frame. */
+export async function readProgramCount(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const programs = (window as unknown as ProbeWindow).__mfwProbe?.renderer?.info?.programs;
+    return Array.isArray(programs) ? programs.length : null;
+  });
+}
+
+/** Draw calls and triangles of the last rendered frame; null before the first frame. */
+export async function readRenderInfo(page: Page): Promise<{ calls: number; triangles: number } | null> {
+  return page.evaluate(() => {
+    const info = (window as unknown as ProbeWindow).__mfwProbe?.renderer?.info?.render;
+    return info ? { calls: info.calls, triangles: info.triangles } : null;
+  });
+}
+
+/** True when the last rendered scene holds an object with this name. */
+export async function sceneHasObject(page: Page, name: string): Promise<boolean> {
+  return page.evaluate((target) => {
+    const scene = (window as unknown as ProbeWindow).__mfwProbe?.scene;
+    if (!scene) return false;
+    let found = false;
+    scene.traverse((o) => {
+      if (o.name === target) found = true;
+    });
+    return found;
+  }, name);
+}
+
+/** True while the named object is drawn (visible with at least one instance). */
+export async function sceneObjectVisible(page: Page, name: string): Promise<boolean> {
+  return page.evaluate((target) => {
+    const scene = (window as unknown as ProbeWindow).__mfwProbe?.scene;
+    if (!scene) return false;
+    let visible = false;
+    scene.traverse((o) => {
+      const v = o as unknown as { visible?: boolean; count?: number };
+      if (o.name === target && v.visible === true && (v.count === undefined || v.count > 0)) visible = true;
+    });
+    return visible;
   }, name);
 }

@@ -42,4 +42,9 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   villagerHats: "scene-villager-hats",
   villagerBlobShadows: "scene-blob-shadows-villagers",
   ambientMotes: "scene-ambient-motes",
+  // MFW-60 scene reactions
+  windowGlows: "scene-window-glows",
+  fireworks: "scene-fireworks",
+  skyLanterns: "scene-sky-lanterns",
+  propTapPrefix: "scene-prop-tap-",
 });

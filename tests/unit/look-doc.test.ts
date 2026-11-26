@@ -41,4 +41,11 @@ describe("art-direction note (MFW-47 AC1)", () => {
     const doc = readFileSync(DOC, "utf8");
     for (const term of ["flatSurfaceColor", "krathongOutlines", "screenshots/mfw-51/"]) expect(doc).toContain(term);
   });
+
+  it("documents the scene reactions (MFW-60, §16)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    for (const term of ["## 16. Scene reactions (MFW-60", "SCENE_TAP_REACTIONS", "FIREWORK_MIN_LAUNCH_INTERVAL_MS", "WCAG 2.3.1", "screenshots/mfw-60/"]) {
+      expect(doc).toContain(term);
+    }
+  });
 });

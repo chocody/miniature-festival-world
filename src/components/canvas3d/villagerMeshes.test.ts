@@ -8,12 +8,16 @@ import {
   Material,
   Matrix4,
   MeshStandardMaterial,
+  Object3D,
   Quaternion,
   Raycaster,
   Vector3,
 } from "three";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "@/components/models/loyKrathong/riverLayout";
-import { LOY_KRATHONG_VILLAGERS, VILLAGER_MOTION, VILLAGER_PARTS } from "@/config/events/loyKrathong.life.config";
+import { LOY_KRATHONG_VILLAGERS, VILLAGER_HEIGHT, VILLAGER_MOTION, VILLAGER_PARTS } from "@/config/events/loyKrathong.life.config";
+import { REDUCED_MOTION_TAP_CUE, VILLAGER_TAP_HOP } from "@/config/gimmicks.config";
+import { EFFECT_POOL_CAPS } from "@/config/performance.config";
+import { createNudgeFrame, createObjectPoolManager, startNudge } from "@/core/effects";
 import { VILLAGER_LOOK } from "@/config/look.config";
 import { LIVING_WORLD_TIERS, type RenderTier } from "@/config/performance.config";
 import {
@@ -40,6 +44,7 @@ const prepared = (tier: RenderTier) =>
 const planOf = (tier: RenderTier) => planVillagerInstances(prepared(tier).map((v) => v.def));
 
 afterEach(() => vi.restoreAllMocks());
+const createObjectPoolManagerForTest = () => createObjectPoolManager(EFFECT_POOL_CAPS.HIGH).nudge;
 
 describe("villager meshes (MFW-50 AC2, AC5)", () => {
   it("VM1 one shared silhouette material and one geometry per part", () => {
@@ -150,5 +155,71 @@ describe("villager meshes (MFW-50 AC2, AC5)", () => {
     disposeVillagerAssets(assets);
     expect(geometryDispose).toHaveBeenCalledTimes(3);
     expect(materialDispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("villager tap hop (MFW-60)", () => {
+  const setup = (reducedMotion: boolean, nowMs: number) => {
+    const v = prepared("HIGH");
+    const plan = planVillagerInstances(v.map((x) => x.def));
+    const meshes = createVillagerMeshes(createVillagerAssets(), plan);
+    const pool = createObjectPoolManagerForTest();
+    const nudge = { pool, nowMs, reducedMotion, frame: createNudgeFrame() };
+    return { v, plan, meshes, pool, nudge };
+  };
+  const bodyAt = (mesh: InstancedMesh, i: number) => {
+    const m = new Matrix4();
+    mesh.getMatrixAt(i, m);
+    const p = new Vector3();
+    const s = new Vector3();
+    m.decompose(p, new Quaternion(), s);
+    return { p, s };
+  };
+  const blobLog = () => {
+    const writes: [number, number, number][] = [];
+    const handle: DynamicBlobShadowsHandle = { writeAt: (i, x, z) => writes.push([i, x, z]), hideAt: () => {}, commit: () => {} };
+    return { writes, handle };
+  };
+
+  it("VM-a: a hop lifts only the tapped villager; its blob shadow stays on the ground", () => {
+    const D = VILLAGER_TAP_HOP.durationMs;
+    const { v, plan, meshes, pool, nudge } = setup(false, 1_000 + D / 2);
+    const still = createVillagerMeshes(createVillagerAssets(), plan);
+    const a = blobLog();
+    const b = blobLog();
+    writeVillagerInstances(still, plan, v, layout, 0, false, createVillagerWriteScratch(), a.handle);
+    startNudge(pool, "villager", v[1].def.villagerId, 1_000);
+    writeVillagerInstances(meshes, plan, v, layout, 0, false, createVillagerWriteScratch(), b.handle, nudge);
+    expect(bodyAt(meshes.body, 1).p.y - bodyAt(still.body, 1).p.y).toBeCloseTo(VILLAGER_TAP_HOP.heightScale * v[1].def.scale, 5);
+    expect(bodyAt(meshes.body, 0).p.y).toBeCloseTo(bodyAt(still.body, 0).p.y, 6);
+    expect(b.writes).toEqual(a.writes);
+  });
+
+  it("VM-b: tap proxies sit at the body centre (no hop offset)", () => {
+    const { v, plan, meshes, pool, nudge } = setup(false, 1_100);
+    startNudge(pool, "villager", v[0].def.villagerId, 1_000);
+    const proxies = v.map(() => new Object3D());
+    writeVillagerInstances(meshes, plan, v, layout, 0, false, createVillagerWriteScratch(), null, nudge, proxies);
+    const pose = createVillagerPoseOut();
+    v.forEach((villager, i) => {
+      villagerPoseInto(villager, layout.channel, layout.bankProfile, VILLAGER_MOTION, 0, false, pose);
+      expect(proxies[i].position.x).toBeCloseTo(pose.x, 9);
+      expect(proxies[i].position.y).toBeCloseTo(pose.y + (VILLAGER_HEIGHT / 2) * villager.def.scale, 9);
+      expect(proxies[i].position.z).toBeCloseTo(pose.z, 9);
+    });
+  });
+
+  it("VM-c: reduced motion scales the tapped villager (no lift)", () => {
+    const { v, plan, meshes, pool, nudge } = setup(true, 1_100);
+    const still = createVillagerMeshes(createVillagerAssets(), plan);
+    writeVillagerInstances(still, plan, v, layout, 0, false, createVillagerWriteScratch(), null);
+    startNudge(pool, "villager", v[0].def.villagerId, 1_000);
+    writeVillagerInstances(meshes, plan, v, layout, 0, false, createVillagerWriteScratch(), null, nudge);
+    expect(bodyAt(meshes.body, 0).s.x).toBeCloseTo(bodyAt(still.body, 0).s.x * REDUCED_MOTION_TAP_CUE.scale.villager, 5);
+    // scaled about the feet (the pose point): the body part's own offset grows with the cue, nothing is lifted
+    const cue = REDUCED_MOTION_TAP_CUE.scale.villager;
+    const dy = bodyAt(meshes.body, 0).p.y - bodyAt(still.body, 0).p.y;
+    expect(dy).toBeCloseTo(VILLAGER_PARTS.body.yOffset * v[0].def.scale * (cue - 1), 5);
+    expect(bodyAt(meshes.body, 0).p.x).toBeCloseTo(bodyAt(still.body, 0).p.x, 6);
   });
 });

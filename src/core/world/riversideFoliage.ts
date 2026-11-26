@@ -34,11 +34,19 @@ export interface FoliageInstance extends InstanceTransform {
   readonly swayPivotY: number; // world y where the sway shear is zero (the owner's base)
   readonly swayPhaseRad: number; // shared by every clump of one owner, so a tree leans as one piece
 }
+/** Which tappable object a foliage instance belongs to (MFW-60 tap reactions): layout index of the tree, bush or plant. */
+export interface FoliageOwnerRef {
+  readonly kind: "tree" | "bush" | "reed";
+  readonly index: number;
+}
 export interface RiversideFoliageLayout {
   readonly trunks: readonly InstanceTransform[]; // one per tree, same order as layout.trees
   readonly clumps: readonly FoliageInstance[]; // FULL: every tree's clumps (tree order, clump order), then every bush's
   readonly clumpsLow: readonly FoliageInstance[]; // LIGHT: the keepOnLow subset, same relative order
   readonly plants: readonly FoliageInstance[]; // every plant, definition order
+  readonly clumpOwners: readonly FoliageOwnerRef[]; // parallel to clumps (MFW-60)
+  readonly clumpLowOwners: readonly FoliageOwnerRef[]; // parallel to clumpsLow (MFW-60)
+  readonly plantOwners: readonly FoliageOwnerRef[]; // parallel to plants: { kind: "reed", index: i } (MFW-60)
 }
 /** Sway look per part (config: RIVER_FOLIAGE_SWAY). Horizontal shear = displacement per unit height above swayPivotY. */
 export interface FoliageSwayParams {
@@ -130,19 +138,25 @@ export function resolveRiversideFoliage(
   const trunks: InstanceTransform[] = [];
   const clumps: FoliageInstance[] = [];
   const clumpsLow: FoliageInstance[] = [];
-  const addClumps = (o: InstanceTransform, list: readonly FoliageClumpDefinition[], k: number) => {
+  const clumpOwners: FoliageOwnerRef[] = [];
+  const clumpLowOwners: FoliageOwnerRef[] = [];
+  const addClumps = (o: InstanceTransform, list: readonly FoliageClumpDefinition[], k: number, owner: FoliageOwnerRef) => {
     for (const c of list) {
       const instance = placeClump(o, c, phase(k));
       clumps.push(instance);
-      if (c.keepOnLow) clumpsLow.push(instance);
+      clumpOwners.push(owner);
+      if (c.keepOnLow) {
+        clumpsLow.push(instance);
+        clumpLowOwners.push(owner);
+      }
     }
   };
   env.trees.forEach((t, i) => {
     const shape = def.treeShapes[def.trees[i].shape];
     trunks.push(Object.freeze({ position: t.position, yawRad: t.yawRad, scale: t.scale * shape.trunkScale }));
-    addClumps(t, shape.clumps, i);
+    addClumps(t, shape.clumps, i, Object.freeze({ kind: "tree", index: i }));
   });
-  env.bushes.forEach((b, j) => addClumps(b, def.bushClumps, env.trees.length + j));
+  env.bushes.forEach((b, j) => addClumps(b, def.bushClumps, env.trees.length + j, Object.freeze({ kind: "bush", index: j })));
   const plantBase = env.trees.length + env.bushes.length;
   const plants = def.plants.map((p, i) => {
     const t = resolveBankPlacement(env.channel, p, bankSurfaceY(env.bankProfile, p.setback));
@@ -153,5 +167,8 @@ export function resolveRiversideFoliage(
     clumps: Object.freeze(clumps),
     clumpsLow: Object.freeze(clumpsLow),
     plants: Object.freeze(plants),
+    clumpOwners: Object.freeze(clumpOwners),
+    clumpLowOwners: Object.freeze(clumpLowOwners),
+    plantOwners: Object.freeze(plants.map((_, i): FoliageOwnerRef => Object.freeze({ kind: "reed", index: i }))),
   });
 }

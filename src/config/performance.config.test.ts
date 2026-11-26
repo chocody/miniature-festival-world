@@ -3,6 +3,8 @@ import {
   DEFAULT_QUALITY_TIER,
   EFFECT_KINDS,
   EFFECT_POOL_CAPS,
+  FALLBACK_2D_EFFECT_POOL_CAPS,
+  FIREWORK_SPARKS_PER_BURST,
   ENVIRONMENT_RENDER_BUDGETS,
   KRATHONG_RIPPLE_MAX_TRIANGLES,
   LIVING_WORLD_RENDER_BUDGETS,
@@ -86,6 +88,21 @@ describe("performance.config (owner numbers, open question #5)", () => {
       expect(EFFECT_POOL_CAPS.HIGH[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.MEDIUM[kind]);
       expect(EFFECT_POOL_CAPS.MEDIUM[kind]).toBeGreaterThanOrEqual(EFFECT_POOL_CAPS.LOW[kind]);
     }
+  });
+  it("PC1: the MFW-60 kinds are covered by the per-kind caps (DRAFT)", () => {
+    for (const kind of ["nudge", "windowGlow", "firework", "skyLantern"] as const) {
+      expect(EFFECT_KINDS).toContain(kind);
+      expect(EFFECT_POOL_CAPS.LOW[kind]).toBeGreaterThan(0);
+    }
+    expect(FALLBACK_2D_EFFECT_POOL_CAPS).toBe(EFFECT_POOL_CAPS.LOW);
+  });
+  it("PC2: FIREWORK_SPARKS_PER_BURST is a positive integer, HIGH ≥ MEDIUM ≥ LOW, frozen (MFW-60 DRAFT)", () => {
+    expect(Object.isFrozen(FIREWORK_SPARKS_PER_BURST)).toBe(true);
+    for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) {
+      expect(Number.isInteger(FIREWORK_SPARKS_PER_BURST[tier]) && FIREWORK_SPARKS_PER_BURST[tier] > 0).toBe(true);
+    }
+    expect(FIREWORK_SPARKS_PER_BURST.HIGH).toBeGreaterThanOrEqual(FIREWORK_SPARKS_PER_BURST.MEDIUM);
+    expect(FIREWORK_SPARKS_PER_BURST.MEDIUM).toBeGreaterThanOrEqual(FIREWORK_SPARKS_PER_BURST.LOW);
   });
 });
 

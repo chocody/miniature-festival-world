@@ -799,3 +799,130 @@ Production build, WebGL disabled (FALLBACK_2D), reduced motion.
 | Customize, 390×844, day | — | ![after](screenshots/mfw-51/after-phone-390x844-customize-day.png) |
 | Customize, 390×844, night | — | ![after](screenshots/mfw-51/after-phone-390x844-customize-night.png) |
 
+## 16. Scene reactions (MFW-60, backlog 11.4)
+
+Config: `src/config/gimmicks.config.ts` (`SCENE_TAP_REACTIONS`, looks and timings) and `performance.config.ts`
+(`EFFECT_POOL_CAPS`, `FIREWORK_SPARKS_PER_BURST`). Curves: `src/core/effects/reactionCurves.ts` and `sceneNudges.ts`. Config
+wins over this note. Owner decisions (2026-11-25, open questions 35 and 41): "อยาก interact อะไรก็ได้เลย" (anything in the
+scene can be interacted with) and "กดท้องฟ้าแล้วมีการจุดพลุ" (tapping the sky launches a firework); natural feedback, no rings,
+halos or yellow discs (MFW-67). Everything else below is a loop decision, not yet reviewed by the owner. This PR is slice 1;
+chimney smoke, a few falling leaves and a villager wave are slice 2 (MFW-72, backlog 11.6).
+
+### 16.1 Registry: one reaction per object type
+
+| Type (tap target) | Reaction (`data-last-gimmick`) | Normal | Reduced motion | LOW |
+|---|---|---|---|---|
+| house (prop proxy) | windows light up (`house-lights`) | additive warm (#FFB347) skin over both windows, 1.35× the pane, saturating to a bright pane by DAY and NIGHT: attack 120 ms, steady hold, release 700 ms, 2.4 s in all; no flicker | same, no bounce (it never bounces) | same, 1 house at a time |
+| tree (prop proxy) | crown shakes (`tree-shake`) | extra decaying shear on the clumps, same pivot / wind axis as the MFW-70 sway, 1.8 s | steady 1.12× size-up for 0.7 s | shake along `TAP_SHAKE_WIND` (no sway on LOW) |
+| bush, reed (prop proxy) | shake (`bush-shake`, `reed-shake`) | as the tree, 1.6 / 1.5 s, stronger shear | 1.14× / 1.16× size-up | as HIGH |
+| rock (prop proxy) | bounce (`rock-bounce`) | `GIMMICK_BOUNCE` (the lamp / krathong bounce) | 1.12× size-up | as HIGH |
+| pier (deck and piles) | deck bounce (`pier-bounce`) | the bounce at amplitude 0.04 | 1.03× size-up | as HIGH |
+| villager (proxy that follows it) | hop (`villager-hop`) | one 0.12 × scale hop in 420 ms; its blob shadow stays down | 1.1× size-up | as HIGH (standing villagers hop too) |
+| lamp (proxy over the whole post + head, or the head) | light-up + sky lantern (`lamp-glow`) | the MFW-28 glow, plus a sky lantern (โคมลอย) rising from the head | glow steady; lantern static 0.8 above the head for 1.6 s | 1 lantern at a time |
+| water | ripple (`ripple`) | unchanged (MFW-28) | unchanged | unchanged |
+| krathong | inspect popup + mark cue (`inspect`) | unchanged (MFW-30 / MFW-67) | unchanged | unchanged |
+| sky = bare land | firework (`firework`) | shell rises 2.6 world units, 32 sparks burst into a round ~1.3-radius ball, then fall and shrink | static starburst for 0.9 s | 12 sparks, 1 burst at a time |
+
+A prop tap neither selects anything nor moves the camera (like the water tap since MFW-69). The first-visit hint (`SceneTapHint`)
+now reads "แตะอะไรก็ได้ในฉาก เพื่อเล่นได้เลย" (DRAFT); the 2D hint is unchanged (2D keeps its water and krathong taps).
+
+### 16.2 "Sky"
+
+The camera looks down at about 33.5° and MFW-68 frames the scene so that no background pixel is visible, so the view has no sky.
+A short tap on the ground or a bank that no tap proxy claims is the "sky" tap: a firework is launched from that point (at the
+village terrace height, `bankTopY`) and bursts `FIREWORK_LOOK.burstHeight` above it. No `onPointerMissed` handler.
+
+### 16.3 Who takes a tap
+
+Pure helpers in `src/components/canvas3d/effects/riverHitPick.ts`; R3F calls handlers nearest first until one stops the event.
+
+1. River-krathong and lamp proxies (MFW-59) beat everything. Since the MFW-60 polish the lamp proxy is centred halfway up the
+   lamp and covers the whole post and head (`lampTapProxyPlacement`; stretched vertically only if a taller lamp needs it), so a
+   tap on the post lights the lamp instead of launching a firework.
+2. Prop proxies (`scene-prop-tap-<kind>-<index>`: house, tree, bush, reed, rock, villager) take the tap unless (a) a river or
+   lamp proxy is on the ray, or (b) the nearest real surface on the ray is the water and the ray misses the prop's body sphere:
+   the river keeps its taps (backlog story 9-4 AC5). Proxies are ≥ `MIN_TOUCH_TARGET_PX` icosahedra
+   (`propTapProxyRadius`), drawn never (`visible={false}`), derived from the layout (`buildPropTapTargets`, stable kind + index;
+   villagers: `villagerId`), so MFW-58 can offset them per river stretch.
+3. Pier deck and piles take the tap unless a river or lamp proxy is on the ray.
+4. Water: unchanged (defers only to river and lamp proxies).
+5. Ground and banks: the sky tap, unless any tap proxy is on the ray.
+
+Every handler first checks `isTapClick` (a drag, R3F `delta > DRAG_START_DISTANCE_PX`, fires nothing). Proxies and the land / pier
+handlers exist only in WORLD_EXPLORE; CUSTOMIZE and RITUAL_RELEASE keep their raycast set.
+
+### 16.4 Pools, frames and programs
+
+- Four new `EffectKind`s in `ObjectPoolManager` (created once per tier caps in `ToyNightScene`, shared with the nudge consumers):
+
+  | Tier | ripple | glow | nudge | windowGlow | firework | skyLantern | sparks / burst |
+  |---|---|---|---|---|---|---|---|
+  | HIGH | 8 | 6 | 8 | 3 | 3 | 4 | 32 |
+  | MEDIUM | 6 | 4 | 6 | 2 | 2 | 3 | 24 |
+  | LOW | 3 | 2 | 4 | 1 | 1 | 1 | 12 |
+
+- One InstancedMesh per kind (window glows, fireworks, sky lanterns), sized by the cap, created once per cap and disposed on a
+  cap change and on unmount; invisible (no draw call) while idle. A full pool recycles the oldest entry.
+- The nudge has no mesh of its own: the owner of each mesh writes it (foliage `writeFoliageSwayAndShake`, `PropNudges` for rocks
+  and the pier deck, `writeVillagerInstances` for villagers), plus one tail frame that restores the rest pose. Only
+  `SceneEffects` calls `invalidate()`: while any effect or nudge runs, plus one frame after a nudge ends. Nothing registers an
+  idle redraw. Every per-frame writer allocates nothing (`tests/unit/instancing-audit.test.ts`).
+- Every effect material comes from `setupEffectMesh` (unlit, transparent, no depth write, not tone mapped, instance colours):
+  the program of the ripple and lamp glow. Fireworks and lanterns use `NormalBlending` and fade by shrinking (no additive
+  halo); only ripples, lamp glows and window glows are additive skins. No `RingGeometry` was added.
+- Each firework spark is a head and a smaller tail nearer the centre, so the burst reads as radial streaks; the rising shell
+  has two trail dots. A sky lantern is a warm six-sided paper lantern with a pale flame dot under its opening.
+
+### 16.5 WCAG 2.3.1
+
+- Fireworks: launches closer than `FIREWORK_MIN_LAUNCH_INTERVAL_MS` = 1000 / 3 ms are ignored (and not counted), so bursts never
+  exceed three per second, in both motion modes.
+- Lamp and house glows re-trigger without dipping (`retriggerGlow`: a re-tap keeps the glow at its peak instead of restarting
+  the attack from dark; this also fixes the MFW-28 lamp re-tap).
+- The window glow has no flicker. Sparks and lanterns shrink to nothing once (no blinking).
+- Checked by sampling the curves at 1 ms with a flash counter (`reactionCurves.test.ts` RC8) and the launch limit through
+  `SceneEffects` (SE4, RC8). The small-area exception is not relied on.
+
+### 16.6 DRAFT values (owner to confirm)
+
+`TAP_SHAKE_LOOKS` (tree 0.45 / 360 / 600 / 1 800 ms, bush 0.55 / 320 / 550 / 1 600 ms, reed 0.8 / 300 / 500 / 1 500 ms),
+`TAP_BOUNCE_LOOKS.pier.amplitude` 0.04, `VILLAGER_TAP_HOP` (0.12, 420 ms), `REDUCED_MOTION_TAP_CUE` (hold 700 ms; tree 1.12,
+bush 1.14, reed 1.16, rock 1.12, pier 1.03, villager 1.1), `WINDOW_GLOW_LOOK` (#FFB347, peak 1.6, shell 1.35, 2 400 ms,
+release 700 ms), `FIREWORK_LOOK` (rise 750 ms, burst 2 000 ms, height 2.6, radius 1.3, sag 0.6, spark 0.1, tail at 0.6 × 0.65
+size, shell 0.08 with 2 trail dots 0.2 apart, reduced-motion hold 900 ms, palette #FFC93C #FF5C9A #4FC8FF #B98CFF #FFF1C4),
+`SKY_LANTERN_LOOK` (body 0.18 / 0.135 / 0.3, flame #FFF4C2 × 0.35, rise 3.2, drift 0.6, sway 0.05 / 2 000 ms, 6 000 ms, fade
+from 70 %, reduced motion 0.8 above the head for 1 600 ms), the new `EFFECT_POOL_CAPS` columns and `FIREWORK_SPARKS_PER_BURST`
+(32 / 24 / 12; the spec's 24 / 16 / 8 did not read as a firework in the screenshots), the hint copy. Polish round (after QA):
+the burst spans about 120–170 px across on a 390 × 844 phone (zoom 72.2) and about 340 px at 1440 × 900 (zoom 143); the
+lantern is about 26 px wide on the phone (was about 14 px); the tree shake moves 330–1 690 px of a 120 × 140 crop (QA measured
+179–306 before).
+
+### 16.7 Measured (production build, SwiftShader, NIGHT, local container)
+
+Probe: the renderer's `info` after two frames. HIGH pinned at 360×640, LOW at 390×844.
+
+| | HIGH calls / triangles / programs | LOW calls / triangles / programs |
+|---|---|---|
+| Idle, pier view, before (42c5a19) | 91 / 16 766 / 9 | 54 / 8 016 / 5 |
+| Idle, pier view, after | 91 / 16 766 / 9 | 54 / 8 016 / 5 |
+| During a firework burst, after | 92 / 18 046 / 9 | 55 / 8 496 / 5 |
+| Lamp view idle (before = after) | 61 / 13 258 / 9 | 24 / 4 508 / 5 |
+| Lamp light-up, before | 62 / 13 278 / 9 | 25 / 4 528 / 5 |
+| Lamp light-up + sky lantern, after | 63 / 13 326 / 9 | 26 / 4 576 / 5 |
+
+A firework is one draw call (HIGH 64 spark instances × 20 triangles); the window glow is one draw call of 2 × 12 triangles per
+lit house; the lantern adds one draw call of 2 × 24 triangles per lantern. No shader program is added (HIGH compiles 9 with its
+shadow-map programs both before and after; LOW stays at 5 ≤ `E2E_MAX_SHADER_PROGRAMS`).
+
+### 16.8 Screenshots (MFW-60)
+
+Production build, SwiftShader, phone 390×844, after the release (pier view).
+
+| | |
+|---|---|
+| Firework, night | ![night firework](screenshots/mfw-60/night-firework.png) |
+| Firework, day | ![day firework](screenshots/mfw-60/day-firework.png) |
+| Sky lantern, night | ![night sky lantern](screenshots/mfw-60/night-sky-lantern.png) |
+| House lights, day | ![day house lights](screenshots/mfw-60/day-house-lights.png) |
+| Tree shake, day | ![day tree shake](screenshots/mfw-60/day-tree-shake.png) |
+| Reduced-motion firework, night | ![night reduced-motion firework](screenshots/mfw-60/night-reduced-motion-firework.png) |
