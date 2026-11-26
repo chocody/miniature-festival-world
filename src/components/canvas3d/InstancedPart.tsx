@@ -16,7 +16,7 @@ export interface InstancedPartProps {
   readonly onClick?: (event: ThreeEvent<MouseEvent>) => void;
   /** Runtime emissive intensity (e.g. village lights per light preset, MFW-49): a uniform, so the material is not re-created. */
   readonly emissiveIntensity?: number;
-  /** The drawn mesh (MFW-70 sway writer). */
+  /** The drawn mesh (MFW-70 sway writer; MFW-50 lantern flicker on the lamp heads). */
   readonly meshRef?: RefObject<InstancedMesh | null>;
 }
 

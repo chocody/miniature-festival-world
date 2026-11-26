@@ -58,7 +58,8 @@ describe("FlameFlicker (MFW-48)", () => {
     useDeviceStore.getState().setQualityTier(tier);
     const spy = vi.spyOn(window, "setInterval");
     render(<Scene />);
-    expect(spy).toHaveBeenCalledWith(r3f.invalidate, FLAME_FLICKER_REDRAW_INTERVAL_MS[tier]);
+    // The interval comes from the shared idle-redraw ticker (MFW-50 fix round): its handler wraps invalidate.
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), FLAME_FLICKER_REDRAW_INTERVAL_MS[tier]);
     expect(r3f.invalidate).toHaveBeenCalled();
   });
 

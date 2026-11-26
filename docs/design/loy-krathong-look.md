@@ -594,3 +594,125 @@ Captured on the production build with SwiftShader WebGL, 390×844 at device pixe
 | River on HIGH (medium LOD), night | — | ![after](screenshots/mfw-69/after-river-high-night.png) |
 | River on LOW (low LOD), day | — | ![after](screenshots/mfw-69/after-river-low-day.png) |
 | Lotus base, style_02, orchids (own krathong), day | — | ![after](screenshots/mfw-69/after-variant-lotus-style02-orchid-day.png) |
+
+## 14. Living riverside (MFW-50, backlog 9.4)
+
+Config: `src/config/events/loyKrathong.life.config.ts` (villager parts, `LOY_KRATHONG_VILLAGERS`, motion, `AMBIENT_MOTES`,
+`AMBIENT_MOTE_FAN`, `LANTERN_FLICKER`), `look.config.ts` (`VILLAGER_LOOK`, `AMBIENT_MOTE_LOOK`) and
+`performance.config.ts` (`LIVING_WORLD_TIERS`, `LIVING_WORLD_RENDER_BUDGETS`). Pure motion: `src/core/world/villagers.ts`
+and `ambientLife.ts`. Config wins over this note.
+
+### 14.1 Villagers
+
+- Simple dark silhouettes (owner, 2026-11-25: "คนอาจจะแค่เป็นเงาๆก็พอ"): a tapered robe-like body (8-sided cylinder), a
+  round head (smooth icosahedron) and a conical hat on 3 of 8; about 0.345 world units tall (`VILLAGER_HEIGHT`, two-thirds
+  of a house wall). One muted palette colour for every part (`VILLAGER_LOOK.silhouette` = `shadowTint` #40564A); no
+  faces, no outfit colours.
+- Three InstancedMeshes (bodies, heads, hats) share ONE material and the environment parts' shader program
+  (`createInstancedPartMaterial`; the hat's facets are baked into its normals). Plus one soft blob-shadow mesh
+  (`DynamicBlobShadows`, radius 0.11) on the village terrace. No real shadows, never culled (constant draw calls).
+- They walk the MFW-49 riverside paths (§11.4) through `riversidePathPoseInto` only: `LOY_KRATHONG_VILLAGERS` gives each a
+  short segment of path 1 or 2, a fixed `across` in the strip, a speed, a phase, an optional watch stop and a scale.
+  Villagers whose segments overlap on one path walk on opposite sides of the strip, so they pass side by side.
+
+### 14.2 Motion
+
+- `villagerPoseInto` is a pure function of (definition, path, wall clock): a ping-pong walk over the segment; on each leg an
+  optional stop at `watch.atFraction` for `watch.durationMs`, turned to face the water ("some stop to watch the river").
+  One small hop and one side waddle per step (`VILLAGER_MOTION`: step 0.1, hop 0.02, waddle 0.08 rad), derived from the
+  distance walked. No physics, no randomness, no stored state: every device shows the same villagers at the same time.
+- Reduced motion and LOW: the time-independent STAND pose (at the watch spot, or mid-segment, facing the water), written
+  once.
+- MFW-60 hook (no tap built here): the stable `villagerId`, `VillagerInstancePlan.villagerIds` (body and head instance →
+  id) and `.hatVillagerIds`, and `villagerPoseInto` for the current pose.
+
+### 14.3 Ambient life (lead pick, D3)
+
+- Foliage sway is MFW-70's (§12.4, `RIVER_FOLIAGE_SWAY`); MFW-50's own tree sway was dropped when MFW-70 replaced the
+  canopies. The living world adds two kinds:
+- Floating light motes: tiny soft points (owner, 2026-11-25: no discs with visible edges, no rings or halos) — the
+  vertex-alpha blob fan (alpha 1 at the centre → 0 at the rim) crossed in three planes, so it reads as a soft point from
+  every camera yaw without billboarding; pale pollen by DAY, warm fireflies at NIGHT (`AMBIENT_MOTE_LOOK`, one material
+  recoloured on a preset switch). They drift on a small circle, bob and pulse slowly over both banks, never over the water.
+  One draw call, the blob/fan program.
+- Flickering lanterns at NIGHT: the shared lamp-head emissive breathes ±12 % (two slow sines, 1.9 s and 3.1 s). Only the
+  existing emissive changes: no halo, no new light. DAY lanterns are off.
+- Rejected: chimney smoke (MFW-60 uses it as the house tap reaction; there are no chimneys), ducks / birds (they would move
+  over the water where krathongs float, and need new models).
+
+### 14.4 Reduced motion and WCAG 2.3.1
+
+Reduced motion freezes all of it: villagers stand, motes hang at their t = 0 frame, lanterns
+get the preset base, and the living world registers no idle redraw. Nothing changes luminance faster than WCAG 2.3.1 allows (≤ 3 cycles
+per second): every period is ≥ 1000/3 ms (lanterns 1 900 / 3 100 ms, mote pulse 2 300 ms), checked on the config and by
+sampling the maxima per second (`ambientLife.test.ts` W1–W3).
+
+### 14.5 Tiers, idle redraw and budget
+
+| Tier | Villagers (hats) | Walk | Motes | Lantern flicker | Idle redraw (WORLD_EXPLORE only) | Draw calls | Triangles |
+|---|---|---|---|---|---|---|---|
+| HIGH | 8 (3) | yes | 16 | yes | every 50 ms | 5 | 1 232 |
+| MEDIUM | 5 (2) | yes | 10 | yes | every 67 ms | 5 | 712 |
+| LOW | 2 (1) | stand | 0 | no | none | 4 | 180 |
+
+- Draw calls = bodies + heads + hats (when any) + villager blobs + motes (when any). Triangles: body 32, head 20, hat 16,
+  mote 24 (3 × 8), blob fan 48 / 36 / 30 per tier. Guard: `LIVING_WORLD_RENDER_BUDGETS` 5 / 1 250, 5 / 750, 4 / 200
+  (`livingWorldBudget.test.tsx`). Shader programs added: 0.
+- ONE idle-redraw source per canvas (`src/components/canvas3d/idleRedraw.ts`, MFW-50 fix round): consumers register the
+  interval they want (`useIdleRedraw`); a single timer runs at the smallest registered interval and calls `invalidate()`
+  once per tick. No timer while nobody is registered; none in a hidden tab (cleared on `hidden`, re-armed on `visible`). The
+  MFW-48 flame flicker registers `FLAME_FLICKER_REDRAW_INTERVAL_MS` (100 / 125 / 150 ms).
+- The living world (`AmbientTicker`) registers `LIVING_WORLD_TIERS[tier].idleRedrawIntervalMs` ONLY in the shared world view
+  (WORLD_EXPLORE), only while villagers, motes or lanterns move (never for MFW-70's foliage sway alone), and never on LOW or
+  under reduced motion. In CUSTOMIZE and RITUAL it registers nothing: villagers, motes, lanterns and the foliage sway advance
+  only on frames drawn anyway (the flame cadence), so those views render no extra frame. In the shared world RiverFlow
+  already redraws every frame while krathongs drift; the cadence matters only for an empty river.
+- Every per-frame writer is allocation-free (`tests/unit/instancing-audit.test.ts`).
+
+### 14.6 Never covering krathongs (AC5)
+
+A layout guarantee, tested (`livingWorldLayout.test.ts`): the camera is orthographic and MFW-57 only pans and turns it
+about +Y, so a point at height H projects onto the water at most H / tan(elevation) away. From any camera yaw, no villager
+silhouette (hop, waddle and hat included) or mote reaches the krathong lane band (smallest margin 0.55 world units for
+villagers, 1.45 for motes); from the default camera, camera-side villagers and motes stay visually on land (margins 0.12
+and 0.69). Every living-world mesh has `NO_RAYCAST` and no handler, so none is in R3F's interaction set: water, lamps and the
+MFW-59 krathong tap proxies win unchanged (e2e `living-world.spec.ts`).
+
+### 14.7 Measured numbers (local container, SwiftShader)
+
+BASE = main abf3ee5 (MFW-49). Production build, `?pinTier=1`, 390×844.
+
+- `?perfProbe=1`, HIGH world view (calls / triangles / programs): DAY 87 / 9 378 / 9 → 92 / 10 610 / 9; NIGHT 88 / 9 762 / 9
+  → 93 / 10 994 / 9 (+5 calls, +1 232 triangles, no new program).
+- FPS (3 s rAF count, medians of 3 alternating rounds; the container load average was 14–25 during the run, so the numbers
+  are noisy):
+
+| Tier | CUSTOMIZE BASE → MFW-50 | RITUAL BASE → MFW-50 | WORLD BASE → MFW-50 |
+|---|---|---|---|
+| HIGH | 9 → 11 | 13 → 13 | 8 → 8 |
+| MEDIUM | 24 → 16 | 23 → 15 | 12 → 10 |
+| LOW | 30 → 35 | 45 → 40 | 16 → 16 |
+
+  That first version redrew CUSTOMIZE / RITUAL at its own 50 / 67 ms on top of the flame timer, so MEDIUM CUSTOMIZE / RITUAL
+  dropped. Fixed (§14.5): one shared idle-redraw timer, and the living world registers only in the shared world view.
+- Re-measured after the fix, rebased on MFW-70 (BASE = ce6ad2d), MEDIUM, medians of 3 alternating rounds, load ≈ 6–7:
+  CUSTOMIZE 50 → 50, RITUAL 53 → 50, WORLD 28 → 25 fps (BASE → MFW-50). `[perf-audit]` HIGH CUSTOMIZE: 92 calls, 12 182
+  triangles, 6 programs; HIGH world one / full zone 47 / 47 calls.
+
+### 14.8 DRAFT values (MFW-50)
+
+`VILLAGER_LOOK`, `AMBIENT_MOTE_LOOK`, `VILLAGER_PARTS`, `VILLAGER_BLOB_SHADOW_RADIUS`, `VILLAGER_MOTION`,
+`LOY_KRATHONG_VILLAGERS`, `AMBIENT_MOTES` (radius 0.035 → 0.06 for the soft point), `AMBIENT_MOTE_FAN`,
+`LANTERN_FLICKER`, `LIVING_WORLD_TIERS`. Lead guard (not a product number): `LIVING_WORLD_RENDER_BUDGETS`. The walking path
+stays invisible.
+
+### 14.9 Before / after (MFW-50)
+
+Production build, SwiftShader WebGL, HIGH tier (pinned), shared world view after release, on MFW-70 (foliage).
+
+| | Before (MFW-70) | After (MFW-50) |
+|---|---|---|
+| World, 1440×900, day | ![before](screenshots/mfw-70/after-desktop-1440x900-world-day.png) | ![after](screenshots/mfw-50/after-desktop-1440x900-world-day.png) |
+| World, 1440×900, night | ![before](screenshots/mfw-70/after-desktop-1440x900-world-night.png) | ![after](screenshots/mfw-50/after-desktop-1440x900-world-night.png) |
+| World, 390×844, day | ![before](screenshots/mfw-70/after-phone-390x844-world-day.png) | ![after](screenshots/mfw-50/after-phone-390x844-world-day.png) |
+| World, 390×844, night | ![before](screenshots/mfw-70/after-phone-390x844-world-night.png) | ![after](screenshots/mfw-50/after-phone-390x844-world-night.png) |

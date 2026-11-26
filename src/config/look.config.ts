@@ -173,6 +173,21 @@ export const KRATHONG_BLOB_SHADOW = Object.freeze({ radius: 1.45, liftY: 0.02 })
 export const RIVER_KRATHONG_BLOB_SHADOW_RADIUS = KRATHONG_BLOB_SHADOW.radius * RIVER_KRATHONG_SCALE;
 
 /**
+ * MFW-50 villagers: simple dark silhouettes (owner, 2026-11-25: "คนอาจจะแค่เป็นเงาๆก็พอ") — body, head and an optional
+ * conical hat in ONE muted palette colour; no faces, no outfit colours. DRAFT (owner reviews from the PR screenshots).
+ */
+export const VILLAGER_LOOK = Object.freeze({ silhouette: LOOK_PALETTE.shadowTint });
+
+/**
+ * MFW-50 floating light motes: pale pollen by DAY, warm fireflies at NIGHT. Tiny soft points (vertex-alpha, no hard edge, no
+ * halo; owner, 2026-11-25). Same material, recoloured on a preset switch. DRAFT.
+ */
+export const AMBIENT_MOTE_LOOK: Readonly<Record<LightPresetId, Readonly<{ color: string; opacity: number }>>> = Object.freeze({
+  DAY: Object.freeze({ color: LOOK_PALETTE.flowerCream, opacity: 0.6 }),
+  NIGHT: Object.freeze({ color: LOOK_PALETTE.flameCore, opacity: 0.9 }),
+});
+
+/**
  * Lead regression guard (not a product number): minimum estimated linear luminance (Lambert, before tone mapping) of
  * every environment surface, up-facing and camera-facing side, in both presets. The MFW-27 night look scores ≤ 0.014.
  */

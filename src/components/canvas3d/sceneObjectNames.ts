@@ -36,4 +36,10 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   shoreHighlights: "scene-water-shore-highlights",
   waterGlints: "scene-water-glints",
   krathongRipples: "scene-krathong-ripples",
+  villagers: "scene-villagers",
+  villagerBodies: "scene-villager-bodies",
+  villagerHeads: "scene-villager-heads",
+  villagerHats: "scene-villager-hats",
+  villagerBlobShadows: "scene-blob-shadows-villagers",
+  ambientMotes: "scene-ambient-motes",
 });

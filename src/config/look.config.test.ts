@@ -19,6 +19,8 @@ import {
   RIVER_KRATHONG_BLOB_SHADOW_RADIUS,
   VILLAGE_LIGHTS,
   WATER_HIGHLIGHT_LOOK,
+  AMBIENT_MOTE_LOOK,
+  VILLAGER_LOOK,
 } from "./look.config";
 import { KRATHONG_BASE_MODELS } from "./krathongModel.config";
 import { KRATHONG_MODEL_FOOTPRINT_RADIUS, RIVER_KRATHONG_SCALE } from "./riverFlow.config";
@@ -154,5 +156,27 @@ describe("candle light (MFW-67)", () => {
         expect(peak(intensity * s * s, h * s)).toBeCloseTo(peak(intensity, h), 12);
       }
     }
+  });
+});
+
+describe("villager and mote look (MFW-50)", () => {
+  const paletteValues: readonly string[] = Object.values(LOOK_PALETTE);
+  it("L1 frozen, #RRGGBB", () => {
+    for (const o of [VILLAGER_LOOK, AMBIENT_MOTE_LOOK, AMBIENT_MOTE_LOOK.DAY, AMBIENT_MOTE_LOOK.NIGHT]) expect(Object.isFrozen(o)).toBe(true);
+    expect(VILLAGER_LOOK.silhouette).toMatch(HEX);
+    for (const id of LIGHT_PRESET_IDS) expect(AMBIENT_MOTE_LOOK[id].color).toMatch(HEX);
+  });
+  it("L2 every colour comes from the palette (no new palette key)", () => {
+    expect(paletteValues).toContain(VILLAGER_LOOK.silhouette);
+    for (const id of LIGHT_PRESET_IDS) expect(paletteValues).toContain(AMBIENT_MOTE_LOOK[id].color);
+  });
+  it("L3 mote opacities in (0, 1]; the silhouette is dark against the land but never black (owner 2026-11-25)", () => {
+    for (const id of LIGHT_PRESET_IDS) {
+      expect(AMBIENT_MOTE_LOOK[id].opacity).toBeGreaterThan(0);
+      expect(AMBIENT_MOTE_LOOK[id].opacity).toBeLessThanOrEqual(1);
+    }
+    const silhouette = relativeLuminance(VILLAGER_LOOK.silhouette);
+    expect(silhouette).toBeLessThan(relativeLuminance(LOOK_PALETTE.grass));
+    expect(silhouette).toBeGreaterThan(relativeLuminance("#000000"));
   });
 });
