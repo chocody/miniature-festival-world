@@ -16,3 +16,4 @@ export * from "./findMyFocus";
 export * from "./timeOfDay";
 export * from "./litLuminance";
 export * from "./blobShadow";
+export * from "./riversideFoliage";

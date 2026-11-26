@@ -13,6 +13,7 @@ import {
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { MatteMaterialSpec, PartGeometrySpec } from "@/config/scene.config";
 import type { BankGeometryData, RibbonGeometryData, RiverGroundLayout } from "@/core/world";
+import { createBladeTuftGeometry, createLeafClumpGeometry, createTrunkGeometry } from "./foliageGeometry";
 
 /** three's MeshStandardMaterial default. */
 const DEFAULT_EMISSIVE_INTENSITY = 1;
@@ -40,6 +41,12 @@ export function createPartGeometry(spec: PartGeometrySpec): BufferGeometry {
       return createGableGeometry(spec.width, spec.depth, spec.height);
     case "roundedBox":
       return new RoundedBoxGeometry(spec.width, spec.height, spec.depth, spec.segments, spec.radius);
+    case "leafClump":
+      return createLeafClumpGeometry(spec);
+    case "trunk":
+      return createTrunkGeometry(spec);
+    case "bladeTuft":
+      return createBladeTuftGeometry(spec);
     default: {
       const never: never = spec;
       throw new RangeError(`unknown part geometry ${JSON.stringify(never)}`);

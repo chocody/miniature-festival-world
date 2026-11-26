@@ -4,7 +4,13 @@ import { KRATHONG_MARK_CUE, MS_PER_SECOND, RIVER_KRATHONG_TAP_RADIUS } from "./g
 import { RIVER_KRATHONG_SCALE } from "./riverFlow.config";
 import { LIGHT_PRESETS } from "./look.config";
 import { TOY_MATTE_MATERIALS } from "./scene.config";
-import { PIER_DECK_MATERIAL, RIVER_BANK_MATERIAL, RIVER_ENVIRONMENT_PARTS } from "./events/loyKrathong.river.config";
+import {
+  LOY_KRATHONG_TREE_SHAPES,
+  PIER_DECK_MATERIAL,
+  RIVER_BANK_MATERIAL,
+  RIVER_ENVIRONMENT_PARTS,
+} from "./events/loyKrathong.river.config";
+import { foliageClumpsExtent } from "@/core/world/foliageExtent";
 
 /** Flat vector 2D fallback (spec §6.8 Task 8.1, MFW-33). PLACEHOLDER = spec silent (art/feel), owner may tune (plan §11 Q1). */
 
@@ -48,7 +54,11 @@ export const FLAT_RIVER_MARK_SCALE = KRATHONG_MARK_CUE.scale;
 export const FLAT_RIVER_PROP_SIZES = Object.freeze({
   houseHalfWidth: RIVER_ENVIRONMENT_PARTS.houseBody.geometry.width / 2,
   houseHalfDepth: RIVER_ENVIRONMENT_PARTS.houseBody.geometry.depth / 2,
-  treeRadius: RIVER_ENVIRONMENT_PARTS.treeCanopy.geometry.radius,
+  // MFW-70: the round crown's footprint (leaf clumps), so the 2D tree is as large as the 3D one.
+  treeRadius: foliageClumpsExtent(
+    LOY_KRATHONG_TREE_SHAPES.round.clumps,
+    RIVER_ENVIRONMENT_PARTS.leafClump.geometry.lumpAmplitude,
+  ).footprintRadius,
   lampRadius: RIVER_ENVIRONMENT_PARTS.lampHead.geometry.radius,
 });
 /** Unlit flat colours = the 3D materials' base colours (no new colour). */
@@ -59,7 +69,7 @@ export const FLAT_VIEW_COLORS = Object.freeze({
   pier: PIER_DECK_MATERIAL.color,
   house: RIVER_ENVIRONMENT_PARTS.houseBody.material.color,
   roof: RIVER_ENVIRONMENT_PARTS.houseRoof.material.color,
-  tree: RIVER_ENVIRONMENT_PARTS.treeCanopy.material.color,
+  tree: RIVER_ENVIRONMENT_PARTS.leafClump.material.color,
   lamp: RIVER_ENVIRONMENT_PARTS.lampHead.material.color,
 });
 /** Accessible names. DRAFT Thai copy (owner review, §11 Q4). */

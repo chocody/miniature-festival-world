@@ -1,4 +1,5 @@
 import { cleanup, render } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoxGeometry, BufferGeometry, InstancedMesh, Material, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from "three";
 import type { ScenePartSpec } from "@/config/scene.config";
@@ -74,6 +75,13 @@ describe("InstancedPart", () => {
     one.unmount();
     const none = render(<InstancedPart name="x" part={PART} transforms={[]} shadows={false} />);
     expect(none.container.querySelector("instancedMesh")).toBeNull();
+  });
+
+  it("exposes the drawn mesh through meshRef (MFW-70)", () => {
+    const ref = createRef<InstancedMesh>();
+    render(<InstancedPart name="x" part={PART} transforms={[T0, T1]} shadows={false} meshRef={ref} />);
+    expect(ref.current).not.toBeNull();
+    expect((ref.current as unknown as Element).getAttribute("name")).toBe("x");
   });
 
   it("disposes only on unmount, never on re-render", () => {

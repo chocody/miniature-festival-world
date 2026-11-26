@@ -2,18 +2,30 @@ import type { RiverLaneDefinition, WorldVec3 } from "@/core/coordinates";
 import type {
   BankPlacement,
   BankProfilePoint,
+  FoliageClumpDefinition,
+  FoliageSwayParams,
   HouseFacadeDefinition,
   HousePlacement,
   RiverEnvironmentDefinition,
   RiverGroundDefinition,
+  RiversideFoliageDefinition,
   RiversidePathDefinition,
+  TreePlacement,
+  TreeShapeDefinition,
+  TreeShapeId,
 } from "@/core/world";
 import { RIVER_COLLISION_RADIUS } from "@/config/riverFlow.config";
 import { SPLINE_LATERAL_OFFSET_LIMIT } from "@/config/ritual.config";
 import { CANDLE_COLOR_PALETTE, LEAF_COLOR_PALETTE } from "@/config/events/loyKrathong.config";
 import { KRATHONG_BASE_MODELS, KRATHONG_FLOWER_MODELS } from "@/config/krathongModel.config";
 import { LOOK_PALETTE, VILLAGE_LIGHTS } from "@/config/look.config";
-import { type MatteMaterialSpec, type ScenePartSpec } from "@/config/scene.config";
+import type { FoliageVariant } from "@/config/performance.config";
+import {
+  type FoliageBladeSpec,
+  type MatteMaterialSpec,
+  type ScenePartSpec,
+  type TrunkBranchSpec,
+} from "@/config/scene.config";
 
 /** Water surface height (existing: the MFW-15 disc sat at y = -0.24). */
 export const RIVER_WATER_SURFACE_Y = -0.24;
@@ -173,6 +185,56 @@ export const RIVER_WATER_HIGHLIGHTS = Object.freeze({
   ripple: Object.freeze({ radius: 0.42, pulseAmplitude: 0.12, periodMs: 2_400, innerRatio: 0.72, peakRatio: 0.86, segments: 8 }),
 });
 
+// ---- Foliage (MFW-70) ----
+// Every value in this section is DRAFT (MFW-70, owner review from the PR screenshots) unless marked technical.
+
+/**
+ * Unit leaf clump (radius 1 × instance scale): a lumpy, smooth-shaded icosahedron. DRAFT (MFW-70).
+ * HIGH / MEDIUM: detail 1 (80 triangles, 42 vertices). The lead's planned detail 0 (20 triangles, 12 vertices) still read as
+ * faceted crystals in the screenshots, so the lead allowed spending more triangles here (lead override, MFW-70; see
+ * ENVIRONMENT_RENDER_BUDGETS). LOW keeps detail 0 (LEAF_CLUMP_LIGHT_GEOMETRY).
+ */
+const LEAF_CLUMP_GEOMETRY = { kind: "leafClump", detail: 1, lumpAmplitude: 0.12, seed: 1.7 } as const;
+/** LOW: the same clump at detail 0 (20 triangles). DRAFT (MFW-70). */
+const LEAF_CLUMP_LIGHT_GEOMETRY = { ...LEAF_CLUMP_GEOMETRY, detail: 0 } as const;
+/** Two branch stubs leaving the bent trunk; their tips end inside the crown clumps. DRAFT (MFW-70). */
+const TRUNK_BRANCHES: readonly TrunkBranchSpec[] = Object.freeze([
+  Object.freeze({ atHeight: 0.3, yawRad: 0.4, tiltRad: 0.85, length: 0.2, radius: 0.022, radialSegments: 4 }),
+  Object.freeze({ atHeight: 0.36, yawRad: 3.5, tiltRad: 0.8, length: 0.18, radius: 0.02, radialSegments: 4 }),
+]);
+/** Tapered, slightly bent trunk with two branches (28 triangles). DRAFT (MFW-70). */
+const TREE_TRUNK_FULL_GEOMETRY = {
+  kind: "trunk",
+  height: 0.5,
+  radiusBottom: 0.07,
+  radiusTop: 0.04,
+  radialSegments: 5,
+  heightSegments: 2,
+  bend: 0.035,
+  branches: TRUNK_BRANCHES,
+} as const;
+/** LOW: one height segment and one branch (14 triangles). DRAFT (MFW-70). */
+const TREE_TRUNK_LIGHT_GEOMETRY = { ...TREE_TRUNK_FULL_GEOMETRY, heightSegments: 1, branches: [TRUNK_BRANCHES[0]] } as const;
+/** Reed blades (scaled down = grass tufts). DRAFT (MFW-70). */
+const REED_BLADES: readonly FoliageBladeSpec[] = Object.freeze([
+  Object.freeze({ angleRad: 0, distance: 0.02, height: 0.34, width: 0.035, leanRad: 0.1 }),
+  Object.freeze({ angleRad: 1.2, distance: 0.04, height: 0.26, width: 0.03, leanRad: 0.25 }),
+  Object.freeze({ angleRad: 2.3, distance: 0.035, height: 0.3, width: 0.032, leanRad: 0.18 }),
+  Object.freeze({ angleRad: 3.4, distance: 0.045, height: 0.22, width: 0.028, leanRad: 0.3 }),
+  Object.freeze({ angleRad: 4.4, distance: 0.03, height: 0.28, width: 0.03, leanRad: 0.2 }),
+  Object.freeze({ angleRad: 5.4, distance: 0.05, height: 0.18, width: 0.026, leanRad: 0.35 }),
+]);
+const RIVERSIDE_PLANT_FULL_GEOMETRY = { kind: "bladeTuft", blades: REED_BLADES, thicknessRatio: 0.4 } as const;
+/** LOW: three blades. DRAFT (MFW-70). */
+const RIVERSIDE_PLANT_LIGHT_GEOMETRY = {
+  ...RIVERSIDE_PLANT_FULL_GEOMETRY,
+  blades: [REED_BLADES[0], REED_BLADES[2], REED_BLADES[4]],
+} as const;
+/** Smooth matte clay; all three share the lit environment program (MFW-70 AC3). */
+const TREE_TRUNK_MATERIAL = matte(LOOK_PALETTE.trunk, { flatShading: false });
+const LEAF_CLUMP_MATERIAL = matte(LOOK_PALETTE.canopy, { flatShading: false });
+const RIVERSIDE_PLANT_MATERIAL = matte(LOOK_PALETTE.leafLight, { flatShading: false });
+
 /** Repeated parts, one InstancedMesh each. PLACEHOLDER (spec silent) sizes/colours; MFW-49 parts are DRAFT. */
 export const RIVER_ENVIRONMENT_PARTS = {
   houseBody: {
@@ -223,15 +285,6 @@ export const RIVER_ENVIRONMENT_PARTS = {
     castShadow: false,
     receiveShadow: false,
   },
-  /** Puffy rounded bush (squashed icosahedron, smooth-shaded). DRAFT (MFW-49). */
-  bush: {
-    geometry: { kind: "icosahedron", radius: 0.2, detail: 0, scaleY: 0.75 },
-    material: matte(LOOK_PALETTE.canopy, { flatShading: false }),
-    yOffset: 0.12,
-    yawOffsetRad: 0,
-    castShadow: false,
-    receiveShadow: false,
-  },
   /** Small faceted riverside rock. DRAFT (MFW-49). */
   rock: {
     geometry: { kind: "icosahedron", radius: 0.1, detail: 0, scaleY: 0.6 },
@@ -241,20 +294,33 @@ export const RIVER_ENVIRONMENT_PARTS = {
     castShadow: false,
     receiveShadow: false,
   },
+  /** Bent, tapered, branched trunk (MFW-70; base at y = 0). DRAFT. */
   treeTrunk: {
-    geometry: { kind: "cylinder", radiusTop: 0.05, radiusBottom: 0.07, height: 0.3, radialSegments: 8 },
-    material: matte(LOOK_PALETTE.trunk, { flatShading: false }),
-    yOffset: 0.15,
+    geometry: TREE_TRUNK_FULL_GEOMETRY,
+    material: TREE_TRUNK_MATERIAL,
+    yOffset: 0,
     yawOffsetRad: 0,
     castShadow: true,
     receiveShadow: false,
   },
-  treeCanopy: {
-    geometry: { kind: "icosahedron", radius: 0.36, detail: 1 },
-    material: matte(LOOK_PALETTE.canopy, { flatShading: false }),
-    yOffset: 0.57,
+  /** One leaf clump of a tree crown or a bush (MFW-70); instance scale = clump radius. DRAFT. */
+  leafClump: {
+    geometry: LEAF_CLUMP_GEOMETRY,
+    material: LEAF_CLUMP_MATERIAL,
+    yOffset: 0,
     yawOffsetRad: 0,
-    castShadow: true,
+    // No shadow-map pass for the clumps (MFW-70 dev, SwiftShader e2e frame budget): 33 detail-1 clumps would add 2 640
+    // triangles to the HIGH shadow pass. Trees keep their soft blob shadows (RIVER_ENVIRONMENT_BLOB_SHADOWS.trees).
+    castShadow: false,
+    receiveShadow: false,
+  },
+  /** Reed / grass tuft at the water edge (MFW-70); yOffset −0.02 sinks the blade bases into the bank lip. DRAFT. */
+  riversidePlant: {
+    geometry: RIVERSIDE_PLANT_FULL_GEOMETRY,
+    material: RIVERSIDE_PLANT_MATERIAL,
+    yOffset: -0.02,
+    yawOffsetRad: 0,
+    castShadow: false,
     receiveShadow: false,
   },
   lampPost: {
@@ -295,6 +361,99 @@ export const RIVER_ENVIRONMENT_PARTS = {
 
 export type RiverEnvironmentPartId = keyof typeof RIVER_ENVIRONMENT_PARTS;
 
+export interface RiverFoliageParts {
+  readonly treeTrunk: ScenePartSpec;
+  readonly leafClump: ScenePartSpec;
+  readonly riversidePlant: ScenePartSpec;
+}
+const FULL_FOLIAGE_PARTS: RiverFoliageParts = Object.freeze({
+  treeTrunk: RIVER_ENVIRONMENT_PARTS.treeTrunk,
+  leafClump: RIVER_ENVIRONMENT_PARTS.leafClump,
+  riversidePlant: RIVER_ENVIRONMENT_PARTS.riversidePlant,
+});
+/**
+ * FULL = the RIVER_ENVIRONMENT_PARTS entries; LIGHT = the same specs and the SAME material objects with lighter geometry
+ * (a tier drop re-creates the geometries, never the materials).
+ */
+export const RIVER_FOLIAGE_PARTS: Readonly<Record<FoliageVariant, RiverFoliageParts>> = Object.freeze({
+  FULL: FULL_FOLIAGE_PARTS,
+  LIGHT: Object.freeze({
+    treeTrunk: Object.freeze({ ...FULL_FOLIAGE_PARTS.treeTrunk, geometry: TREE_TRUNK_LIGHT_GEOMETRY }),
+    leafClump: Object.freeze({ ...FULL_FOLIAGE_PARTS.leafClump, geometry: LEAF_CLUMP_LIGHT_GEOMETRY }),
+    riversidePlant: Object.freeze({ ...FULL_FOLIAGE_PARTS.riversidePlant, geometry: RIVERSIDE_PLANT_LIGHT_GEOMETRY }),
+  }),
+});
+
+/** Tree crowns: "round" lollipop and "tall" egg shapes (reference image), clumps in tree-local units. DRAFT (MFW-70). */
+export const LOY_KRATHONG_TREE_SHAPES: Readonly<Record<TreeShapeId, TreeShapeDefinition>> = Object.freeze({
+  // Three smooth clumps per crown (lead override: the planned 5 / 4 detail-0 clumps read faceted; 3 detail-1 clumps fit the budget).
+  round: Object.freeze({
+    trunkScale: 1,
+    clumps: Object.freeze([
+      Object.freeze({ x: 0, y: 0.62, z: 0, radius: 0.3, yawRad: 0, keepOnLow: true }), // crown core
+      Object.freeze({ x: -0.17, y: 0.55, z: 0.08, radius: 0.2, yawRad: 1.8, keepOnLow: false }), // left-low lobe
+      Object.freeze({ x: 0.15, y: 0.74, z: -0.06, radius: 0.21, yawRad: 2.7, keepOnLow: true }), // right-top lobe
+    ]),
+  }),
+  tall: Object.freeze({
+    trunkScale: 0.85,
+    clumps: Object.freeze([
+      Object.freeze({ x: 0, y: 0.5, z: 0, radius: 0.22, yawRad: 0, keepOnLow: true }), // lower mass
+      Object.freeze({ x: -0.03, y: 0.69, z: 0.04, radius: 0.2, yawRad: 1.3, keepOnLow: true }), // middle
+      Object.freeze({ x: 0.05, y: 0.85, z: -0.02, radius: 0.15, yawRad: 2.6, keepOnLow: false }), // tip
+    ]),
+  }),
+});
+/** Bush = one low, lumpy clump half sunk into the bank (a mound; lead override: one detail-1 clump instead of two). DRAFT (MFW-70). */
+export const LOY_KRATHONG_BUSH_CLUMPS: readonly FoliageClumpDefinition[] = Object.freeze([
+  Object.freeze({ x: 0, y: 0.07, z: 0, radius: 0.17, yawRad: 0, keepOnLow: true }),
+]);
+/** The MFW-49 tree positions (unchanged); MFW-70 adds the crown shape and a yaw for variety (DRAFT). */
+export const LOY_KRATHONG_TREES: readonly TreePlacement[] = Object.freeze([
+  Object.freeze({ progress: 0.33, side: -1, setback: 2.5, scale: 1, yawOffsetRad: 0, shape: "round" }),
+  Object.freeze({ progress: 0.43, side: -1, setback: 2.7, scale: 1.1, yawOffsetRad: 1.2, shape: "tall" }),
+  Object.freeze({ progress: 0.52, side: -1, setback: 2.4, scale: 0.9, yawOffsetRad: 2.5, shape: "round" }),
+  Object.freeze({ progress: 0.62, side: -1, setback: 2.8, scale: 1, yawOffsetRad: 0.7, shape: "tall" }),
+  Object.freeze({ progress: 0.36, side: -1, setback: 3.6, scale: 1.15, yawOffsetRad: 4.1, shape: "round" }),
+  Object.freeze({ progress: 0.35, side: 1, setback: 1.7, scale: 1, yawOffsetRad: 3.3, shape: "round" }),
+  Object.freeze({ progress: 0.5, side: 1, setback: 1.9, scale: 1.1, yawOffsetRad: 5.0, shape: "tall" }),
+  Object.freeze({ progress: 0.6, side: 1, setback: 1.6, scale: 0.9, yawOffsetRad: 1.9, shape: "round" }),
+  Object.freeze({ progress: 0.66, side: 1, setback: 2.2, scale: 1, yawOffsetRad: 2.9, shape: "tall" }),
+] satisfies TreePlacement[]);
+/**
+ * Reeds on the bank lip (1–8), then grass tufts (9–10, the same tuft at half scale). DRAFT (MFW-70). The lead's ordered cut 1
+ * (grass tufts 4 → 2, planned plants 10 and 12 removed) keeps MEDIUM inside its budget with detail-1 leaf clumps.
+ */
+export const LOY_KRATHONG_RIVERSIDE_PLANTS: readonly BankPlacement[] = Object.freeze([
+  Object.freeze({ progress: 0.3, side: 1, setback: 0.04, scale: 1, yawOffsetRad: 0 }),
+  Object.freeze({ progress: 0.37, side: 1, setback: 0.05, scale: 1.1, yawOffsetRad: 1.3 }),
+  Object.freeze({ progress: 0.43, side: 1, setback: 0.04, scale: 0.95, yawOffsetRad: 2.6 }),
+  Object.freeze({ progress: 0.55, side: 1, setback: 0.05, scale: 1.05, yawOffsetRad: 3.9 }),
+  Object.freeze({ progress: 0.64, side: 1, setback: 0.04, scale: 1, yawOffsetRad: 5.2 }),
+  Object.freeze({ progress: 0.33, side: -1, setback: 0.05, scale: 1.05, yawOffsetRad: 0.6 }),
+  Object.freeze({ progress: 0.46, side: -1, setback: 0.04, scale: 1.15, yawOffsetRad: 1.9 }),
+  Object.freeze({ progress: 0.56, side: -1, setback: 0.05, scale: 0.95, yawOffsetRad: 3.2 }),
+  Object.freeze({ progress: 0.38, side: 1, setback: 1.25, scale: 0.5, yawOffsetRad: 0.4 }),
+  Object.freeze({ progress: 0.505, side: -1, setback: 0.95, scale: 0.5, yawOffsetRad: 4.4 }),
+] satisfies BankPlacement[]);
+
+/** Gentle sway (MFW-70 AC4), DRAFT; phaseStepRad technical (golden angle: neighbouring owners never sway in step). */
+export const RIVER_FOLIAGE_SWAY = Object.freeze({
+  leafClump: Object.freeze({ shear: 0.03, periodMs: 4_200, windDirX: 1, windDirZ: 0 }) satisfies FoliageSwayParams,
+  riversidePlant: Object.freeze({ shear: 0.08, periodMs: 2_800, windDirX: 1, windDirZ: 0 }) satisfies FoliageSwayParams,
+  phaseStepRad: Math.PI * (3 - Math.sqrt(5)),
+});
+
+/** Foliage of the riverside (MFW-70), resolved by LOY_KRATHONG_RIVER_FOLIAGE in riverLayout.ts. */
+export const LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION: RiversideFoliageDefinition = Object.freeze({
+  trees: LOY_KRATHONG_TREES,
+  treeShapes: LOY_KRATHONG_TREE_SHAPES,
+  bushClumps: LOY_KRATHONG_BUSH_CLUMPS,
+  plants: LOY_KRATHONG_RIVERSIDE_PLANTS,
+  clumpLumpAmplitude: LEAF_CLUMP_GEOMETRY.lumpAmplitude,
+  swayPhaseStepRad: RIVER_FOLIAGE_SWAY.phaseStepRad,
+});
+
 /**
  * Soft blob shadow ellipses under the static props (MFW-47). DRAFT. Radii are local units, multiplied by the instance
  * scale; X runs along the part's local x after the instance yaw.
@@ -328,25 +487,17 @@ export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
     { progress: 0.71, side: 1, setback: 2.6, scale: 1, yawOffsetRad: Math.PI, roof: "gable" },
   ] satisfies HousePlacement[],
   houseFacade: HOUSE_FACADE,
-  trees: [
-    { progress: 0.33, side: -1, setback: 2.5, scale: 1, yawOffsetRad: 0 },
-    { progress: 0.43, side: -1, setback: 2.7, scale: 1.1, yawOffsetRad: 0 },
-    { progress: 0.52, side: -1, setback: 2.4, scale: 0.9, yawOffsetRad: 0 },
-    { progress: 0.62, side: -1, setback: 2.8, scale: 1, yawOffsetRad: 0 },
-    { progress: 0.36, side: -1, setback: 3.6, scale: 1.15, yawOffsetRad: 0 },
-    { progress: 0.35, side: 1, setback: 1.7, scale: 1, yawOffsetRad: 0 },
-    { progress: 0.5, side: 1, setback: 1.9, scale: 1.1, yawOffsetRad: 0 },
-    { progress: 0.6, side: 1, setback: 1.6, scale: 0.9, yawOffsetRad: 0 },
-    { progress: 0.66, side: 1, setback: 2.2, scale: 1, yawOffsetRad: 0 },
-  ] satisfies BankPlacement[],
+  trees: LOY_KRATHONG_TREES, // MFW-70: same positions, plus crown shape and yaw
+
   // Bushes 8 → 6 and rocks 6 → 4: the lead's third ordered cut for the SwiftShader CI frame budget (MFW-49 dev).
   bushes: [
+    // MFW-70: yaw offsets for clump variety (DRAFT); positions unchanged.
     { progress: 0.35, side: -1, setback: 1.1, scale: 1, yawOffsetRad: 0 },
-    { progress: 0.44, side: -1, setback: 1.15, scale: 0.9, yawOffsetRad: 0 },
-    { progress: 0.53, side: -1, setback: 1.1, scale: 1.1, yawOffsetRad: 0 },
-    { progress: 0.33, side: 1, setback: 1.4, scale: 1, yawOffsetRad: 0 },
-    { progress: 0.46, side: 1, setback: 1.5, scale: 0.9, yawOffsetRad: 0 },
-    { progress: 0.56, side: 1, setback: 1.35, scale: 1.1, yawOffsetRad: 0 },
+    { progress: 0.44, side: -1, setback: 1.15, scale: 0.9, yawOffsetRad: 1.7 },
+    { progress: 0.53, side: -1, setback: 1.1, scale: 1.1, yawOffsetRad: 3.1 },
+    { progress: 0.33, side: 1, setback: 1.4, scale: 1, yawOffsetRad: 0.8 },
+    { progress: 0.46, side: 1, setback: 1.5, scale: 0.9, yawOffsetRad: 2.4 },
+    { progress: 0.56, side: 1, setback: 1.35, scale: 1.1, yawOffsetRad: 4.6 },
   ] satisfies BankPlacement[],
   rocks: [
     { progress: 0.37, side: -1, setback: 0.12, scale: 1, yawOffsetRad: 0 },

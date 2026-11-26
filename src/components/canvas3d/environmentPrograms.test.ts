@@ -5,6 +5,7 @@ import {
   PIER_DECK_MATERIAL,
   RIVER_BANK_MATERIAL,
   RIVER_ENVIRONMENT_PARTS,
+  RIVER_FOLIAGE_PARTS,
   RIVER_WATER_HIGHLIGHTS,
 } from "@/config/events/loyKrathong.river.config";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, WATER_HIGHLIGHT_LOOK } from "@/config/look.config";
@@ -52,6 +53,13 @@ describe("environment programs (MFW-49 AC5)", () => {
       expect(m.side).toBe(FrontSide);
       expect(m.alphaTest).toBe(0);
       m.dispose();
+    }
+  });
+
+  it("P5: LIGHT foliage parts share the FULL material specs (MFW-70: no new program, no material re-creation on a tier drop)", () => {
+    for (const key of ["treeTrunk", "leafClump", "riversidePlant"] as const) {
+      expect(RIVER_FOLIAGE_PARTS.LIGHT[key].material, key).toBe(RIVER_FOLIAGE_PARTS.FULL[key].material);
+      expect(RIVER_FOLIAGE_PARTS.FULL[key], key).toBe(RIVER_ENVIRONMENT_PARTS[key]);
     }
   });
 

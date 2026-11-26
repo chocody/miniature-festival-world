@@ -25,7 +25,7 @@ import type { ScenePartSpec } from "@/config/scene.config";
 import { buildRingFanData, buildShoreHighlightData, type InstanceTransform, type RiverEnvironmentLayout } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverEnvironment } from "./RiverEnvironment";
-import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "./riverLayout";
+import { LOY_KRATHONG_RIVER_FOLIAGE, LOY_KRATHONG_RIVER_LAYOUT as layout, foliageForTier } from "./riverLayout";
 
 vi.mock("@react-three/fiber", () => ({
   useThree: (selector: (state: { invalidate: () => void }) => unknown) => selector({ invalidate: () => {} }),
@@ -72,9 +72,10 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
   part(parts.houseRoofGable, l.housesByRoof.gable); // 7
   part(parts.houseDoor, l.houseDoors); // 8
   part(parts.houseWindow, l.houseWindows); // 9
-  part(parts.treeTrunk, l.trees); // 10
-  part(parts.treeCanopy, l.trees); // 11
-  part(parts.bush, l.bushes); // 12
+  const f = foliageForTier(LOY_KRATHONG_RIVER_FOLIAGE, tier); // MFW-70 foliage variant per tier
+  part(f.parts.treeTrunk, f.trunks); // 10
+  part(f.parts.leafClump, f.clumps); // 11
+  part(f.parts.riversidePlant, f.plants); // 12
   part(parts.rock, l.rocks); // 13
   part(parts.lampPost, l.lamps); // 14
   part(parts.lampHead, l.lamps); // 15
@@ -99,6 +100,29 @@ describe("environment render budget per tier (MFW-49 AC5, lead regression guard)
 
   it("LOW is never heavier than HIGH", () => {
     expect(summarize(layout, "LOW").triangles).toBeLessThanOrEqual(summarize(layout, "HIGH").triangles);
+  });
+
+  it("MFW-70: foliage is three draw calls on every tier and LOW foliage is lighter than MFW-49's (1 128 triangles)", () => {
+    // MFW-49 foliage on every tier: 9 canopies (icosahedron detail 1) + 9 trunks (8-segment capped cylinder) + 6 bushes (detail 0).
+    const MFW49_FOLIAGE_TRIANGLES = 9 * 80 + 9 * 32 + 6 * 20;
+    const foliage = (tier: RenderTier) => {
+      const f = foliageForTier(LOY_KRATHONG_RIVER_FOLIAGE, tier);
+      const lists = [
+        [f.parts.treeTrunk, f.trunks],
+        [f.parts.leafClump, f.clumps],
+        [f.parts.riversidePlant, f.plants],
+      ] as const;
+      const calls = lists.filter(([, list]) => list.length > 0).length;
+      const triangles = lists.reduce(
+        (sum, [p, list]) => sum + list.length * tris(createInstancedPartGeometry(p.geometry, p.material.flatShading)),
+        0,
+      );
+      return { calls, triangles };
+    };
+    for (const tier of TIERS) expect(foliage(tier).calls, tier).toBe(3);
+    expect(foliage("LOW").triangles).toBeLessThanOrEqual(MFW49_FOLIAGE_TRIANGLES);
+    expect(foliage("LOW").triangles).toBeLessThan(foliage("HIGH").triangles);
+    expect(foliage("LOW").triangles).toBeLessThan(foliage("MEDIUM").triangles);
   });
 
   it("one krathong ripple ring stays within KRATHONG_RIPPLE_MAX_TRIANGLES", () => {
