@@ -56,9 +56,22 @@ Inc.
 npm packages (Next.js, React, three.js, React Three Fiber, drei, react-spring, Zustand, Playwright, Vitest and others)
 keep their own licenses. They are installed from the registry and are not redistributed by this repository.
 
+## 8. Christmas 3D models (owner-made with Hunyuan3D) — terms unverified
+
+| | |
+|---|---|
+| What | The Christmas ornaments `ball_01`, `star_01`, `bow_01`; more designs follow in 16.38 |
+| Files | `assets/christmas/decimated/*.glb` (decimated sources), `public/models/christmas/*.glb` (coloured outputs served by the app), `public/ui/ornament-designs/*.png` (thumbnails rendered from them) and `docs/design/screenshots/mfw-101/` |
+| Source | Made by the owner with Hunyuan3D on 2026-11-27 (`model-0.glb`–`model-2.glb`). Which Hunyuan3D offering (web service or open weights) and its terms are **not recorded** (**unverified**). The original full-resolution uploads are not in this repository. |
+| Terms | Owner-made for this project. The Hunyuan3D terms may restrict public or commercial use (the open-weights community licences are known to carry territory and user-count limits) — **unverified**. |
+| You may not | Download, copy, extract, re-export or reuse these models, their decimated or coloured versions, or their thumbnails in any other project, game, product or dataset; or use them commercially in any way. |
+
+Processing notes (decimation, colouring script, budgets) are in [docs/design/models.md](docs/design/models.md) §12.
+
 ## Owner checklist before a public or commercial launch
 
 - [ ] Confirm the author, tool and terms of the five krathong models (§1); decide whether the launch counts as commercial use.
 - [ ] Confirm the house model's licence and add the required credit in the app, or replace the model (§2).
 - [ ] Confirm the source of the look reference image (§3).
+- [ ] Confirm the Hunyuan3D service terms allow public use before 20 Dec (§8).
 - [ ] Decide whether the code should stay "all rights reserved" or get an open-source license (LICENSE.md).

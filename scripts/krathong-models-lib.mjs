@@ -13,7 +13,8 @@ import { CREASE_DEG, FOOTPRINT } from "./krathong-models.designs.mjs";
  *   | { kind: "box", min: number[], max: number[] }
  *   | { kind: "sphere", c: number[], radius: number }
  *   | { kind: "any" }} Shape
- * @typedef {{ region: Region, color: string, shape: Shape }} Rule
+ * @typedef {{ region: string, color: string, shape: Shape }} Rule region: a Region for krathong designs; any label for other
+ *   packs (classification ignores it; extractFlames compares it to "flame")
  * @typedef {{ x: number, y: number, z: number, height: number, radius: number }} AddedFlame flame anchor in SOURCE coordinates
  *   (y = flame base), for a flame the model lacks (MFW-76)
  * @typedef {{ id: string, sourceFile: string, referenceImage: string, rules: Rule[],
@@ -21,7 +22,8 @@ import { CREASE_DEG, FOOTPRINT } from "./krathong-models.designs.mjs";
  *   maxFlames: the most flame islands per LOD that are cut out (the tallest win; the rest stay in the body in their rule
  *   colour); a missing LOD means no limit. addedFlames: anchors appended after the cut ones at every LOD.
  * @typedef {"full" | "medium" | "low"} Lod
- * @typedef {{ positions: Float32Array, normals: Float32Array, colors: Uint8Array, indices: Uint16Array | Uint32Array | number[], flames: number[][] }} GlbInput
+ * @typedef {{ positions: Float32Array, normals: Float32Array, colors: Uint8Array, indices: Uint16Array | Uint32Array | number[], flames?: number[][] }} GlbInput
+ *   flames: written as extras.krathongFlames when writeGlb gets no `extras` option
  */
 
 const GLB_MAGIC = 0x46546c67; // "glTF"
@@ -223,6 +225,8 @@ function makeUnionFind(/** @type {number} */ n) {
 }
 
 const round = (/** @type {number} */ v) => Number(v.toFixed(ANCHOR_DECIMALS));
+/** Rounds an anchor coordinate to the contract's 4 decimals. */
+export const roundAnchor = round;
 const edgeKey = (/** @type {number} */ a, /** @type {number} */ b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
 
 /**
@@ -454,11 +458,16 @@ export function srgbHexToLinearBytes(hex) {
 const pad4 = (/** @type {number} */ n) => (n + 3) & ~3;
 
 /**
- * Writes the krathong design GLB (contract: docs/design/models.md). Indices are uint16 when there are ≤ 65 535 vertices.
+ * Writes the design GLB (contract: docs/design/models.md). Indices are uint16 when there are ≤ 65 535 vertices.
+ * `options.generator` defaults to GLB_GENERATOR. `options.extras`: undefined writes `{ krathongFlames: input.flames }`,
+ * null omits `meshes[0].extras`, an object is written as-is.
  * @param {GlbInput} input
+ * @param {{ generator?: string, extras?: Record<string, unknown> | null }} [options]
  * @returns {Uint8Array}
  */
-export function writeGlb({ positions, normals, colors, indices, flames }) {
+export function writeGlb({ positions, normals, colors, indices, flames }, options = {}) {
+  const generator = options.generator ?? GLB_GENERATOR;
+  const extras = options.extras === undefined ? { krathongFlames: flames } : options.extras;
   const vertexCount = positions.length / 3;
   if (normals.length !== positions.length || colors.length !== vertexCount * 4) throw new Error("attribute lengths differ");
   const wide = vertexCount > MAX_UINT16_VERTICES;
@@ -483,14 +492,14 @@ export function writeGlb({ positions, normals, colors, indices, flames }) {
   });
   const binLength = offset;
   const json = {
-    asset: { version: "2.0", generator: GLB_GENERATOR },
+    asset: { version: "2.0", generator },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0 }],
     meshes: [
       {
         primitives: [{ attributes: { POSITION: 0, NORMAL: 1, COLOR_0: 2 }, indices: 3, mode: TRIANGLES }],
-        extras: { krathongFlames: flames },
+        ...(extras === null ? {} : { extras }),
       },
     ],
     accessors: [
@@ -529,6 +538,47 @@ export function writeGlb({ positions, normals, colors, indices, flames }) {
 }
 
 /**
+ * Crease normals, per-face vertex colour and corner de-duplication: every face corner becomes one output vertex keyed by
+ * (input vertex, normal bits, colour), in first-seen order, with alpha 255.
+ * @param {{ positions: ArrayLike<number>, indices: ArrayLike<number>, creaseDeg: number,
+ *   faceRgb: (face: number) => readonly number[] }} input faceRgb: linear RGB bytes of a face
+ * @returns {{ positions: Float32Array, normals: Float32Array, colors: Uint8Array, indices: number[] }}
+ */
+export function colourAndWeld({ positions: inPositions, indices: inIndices, creaseDeg, faceRgb }) {
+  const cornerNormals = computeCreaseNormals(inPositions, inIndices, creaseDeg);
+  const normalBits = new Uint32Array(new Float32Array(cornerNormals).buffer);
+  /** @type {Map<string, number>} */
+  const seen = new Map();
+  /** @type {number[]} */
+  const positions = [];
+  /** @type {number[]} */
+  const normals = [];
+  /** @type {number[]} */
+  const colors = [];
+  const indices = new Array(inIndices.length);
+  for (let i = 0; i < inIndices.length; i++) {
+    const v = inIndices[i];
+    const rgb = faceRgb(Math.floor(i / 3));
+    const key = `${v}/${normalBits[i * 3]}/${normalBits[i * 3 + 1]}/${normalBits[i * 3 + 2]}/${rgb[0]}/${rgb[1]}/${rgb[2]}`;
+    let out = seen.get(key);
+    if (out === undefined) {
+      out = positions.length / 3;
+      seen.set(key, out);
+      positions.push(inPositions[v * 3], inPositions[v * 3 + 1], inPositions[v * 3 + 2]);
+      normals.push(cornerNormals[i * 3], cornerNormals[i * 3 + 1], cornerNormals[i * 3 + 2]);
+      colors.push(rgb[0], rgb[1], rgb[2], 255);
+    }
+    indices[i] = out;
+  }
+  return {
+    positions: Float32Array.from(positions),
+    normals: Float32Array.from(normals),
+    colors: Uint8Array.from(colors),
+    indices,
+  };
+}
+
+/**
  * The whole pipeline for one design at one LOD (see the header). Byte-identical across runs.
  * @param {Uint8Array} sourceBytes decimated source GLB
  * @param {DesignSpec} design
@@ -549,37 +599,12 @@ export function buildDesignLod(sourceBytes, design, lod) {
       flames.push([round((a.x - cx) * s), round((a.y - minY) * s + FOOTPRINT.bottomY), round((a.z - cz) * s), round(a.height * s), round(a.radius * s)]);
   }
   if (flames.length === 0) throw new Error("no flame found");
-  const cornerNormals = computeCreaseNormals(cut.positions, cut.indices, crease);
   const ruleBytes = design.rules.map((rule) => srgbHexToLinearBytes(rule.color));
-  const normalBits = new Uint32Array(new Float32Array(cornerNormals).buffer);
-  /** @type {Map<string, number>} */
-  const seen = new Map();
-  /** @type {number[]} */
-  const positions = [];
-  /** @type {number[]} */
-  const normals = [];
-  /** @type {number[]} */
-  const colors = [];
-  const indices = new Array(cut.indices.length);
-  for (let i = 0; i < cut.indices.length; i++) {
-    const v = cut.indices[i];
-    const rgb = ruleBytes[faceRules[cut.capFaceSource[Math.floor(i / 3)]]];
-    const key = `${v}/${normalBits[i * 3]}/${normalBits[i * 3 + 1]}/${normalBits[i * 3 + 2]}/${rgb[0]}/${rgb[1]}/${rgb[2]}`;
-    let out = seen.get(key);
-    if (out === undefined) {
-      out = positions.length / 3;
-      seen.set(key, out);
-      positions.push(cut.positions[v * 3], cut.positions[v * 3 + 1], cut.positions[v * 3 + 2]);
-      normals.push(cornerNormals[i * 3], cornerNormals[i * 3 + 1], cornerNormals[i * 3 + 2]);
-      colors.push(rgb[0], rgb[1], rgb[2], 255);
-    }
-    indices[i] = out;
-  }
-  return writeGlb({
-    positions: Float32Array.from(positions),
-    normals: Float32Array.from(normals),
-    colors: Uint8Array.from(colors),
-    indices,
-    flames,
+  const welded = colourAndWeld({
+    positions: cut.positions,
+    indices: cut.indices,
+    creaseDeg: crease,
+    faceRgb: (f) => ruleBytes[faceRules[cut.capFaceSource[f]]],
   });
+  return writeGlb({ ...welded, flames });
 }

@@ -52,4 +52,7 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   fallingLeaves: "scene-falling-leaves",
   // MFW-75 lamp light
   lampGroundLights: "scene-lamp-ground-lights",
+  // MFW-101 Christmas ornament models
+  ornamentDesignBody: "ornament-design-body",
+  ornamentFallback: "ornament-fallback",
 });

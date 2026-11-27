@@ -59,6 +59,9 @@ const NOT_AN_OBJECT: readonly NameKey[] = [
   "waterGlints",
   "krathongRipples",
   "ambientMotes",
+  // MFW-101: the Christmas ornament hero; not mounted in the Loy scene (no Loy tap kind). Its taps belong to the tree (16.18).
+  "ornamentDesignBody",
+  "ornamentFallback",
 ];
 
 describe("scene target coverage (MFW-60 AC2)", () => {
