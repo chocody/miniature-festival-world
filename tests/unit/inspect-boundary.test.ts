@@ -12,6 +12,8 @@ const CUSTOMIZATION_VALUE_IMPORT = /^import\s+(?!type\b).*from\s+["']@\/core\/cu
 const FILES = [
   "src/components/ui/InspectPopup.tsx",
   "src/components/ui/inspectedCreation.ts",
+  "src/components/ui/WishBubble.tsx",
+  "src/components/ui/WishReportControl.tsx",
   "src/components/ui/krathongAppearanceSummary.ts",
   "src/services/api/reportClient.ts",
   "src/config/inspect.config.ts",

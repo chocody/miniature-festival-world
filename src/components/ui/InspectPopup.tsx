@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
 import { getReportSession, type ReportSession } from "@/services/api/reportClient";
 import type { InspectedCreation } from "./inspectedCreation";
 import { describeKrathongAppearance } from "./krathongAppearanceSummary";
 import { UI_CLASSES, UI_GLYPHS } from "./uiClasses";
+import { WishReportControl } from "./WishReportControl";
 
 export interface InspectPopupProps {
   readonly creation: InspectedCreation;
@@ -17,8 +18,6 @@ export interface InspectPopupProps {
   readonly ownerSection?: ReactNode;
 }
 
-type ReportUiState = "idle" | "confirming" | "sending" | "received" | "failed";
-
 /**
  * Card for a tapped river krathong. An open wish shows name (or "ไม่ระบุชื่อ") + wish + Report; a closed wish shows only the
  * krathong's appearance (owner decision 29, MFW-63). No id or time is ever shown.
@@ -27,7 +26,6 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
   const session = reportSession ?? getReportSession();
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
-  const [state, setState] = useState<ReportUiState>(() => (session.hasReported(creation.id) ? "received" : "idle"));
   const copy = INSPECT_POPUP_COPY;
   const rows = describeKrathongAppearance(creation.appearance);
   const isOpen = creation.publicWishText !== null;
@@ -35,13 +33,6 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
-
-  const send = () => {
-    setState("sending");
-    void session.submit(creation.id).then((outcome) => setState(outcome === "received" ? "received" : "failed"));
-  };
-
-  const statusText = state === "received" ? copy.reportReceived : state === "failed" ? copy.reportFailed : "";
 
   return (
     <section
@@ -91,39 +82,7 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
         </>
       )}
       {ownerSection}
-      {isOpen && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {state === "idle" && (
-            <button type="button" className={UI_CLASSES.ghostButton} onClick={() => setState("confirming")}>
-              {copy.report}
-            </button>
-          )}
-          {state === "confirming" && (
-            <>
-              <p className="w-full">{copy.reportPrompt}</p>
-              <button type="button" className={UI_CLASSES.secondaryButton} onClick={send}>
-                {copy.reportConfirm}
-              </button>
-              <button type="button" className={UI_CLASSES.ghostButton} onClick={() => setState("idle")}>
-                {copy.reportCancel}
-              </button>
-            </>
-          )}
-          {state === "sending" && (
-            <button type="button" className={UI_CLASSES.ghostButton} disabled>
-              {copy.reportSending}
-            </button>
-          )}
-          {state === "failed" && (
-            <button type="button" className={UI_CLASSES.ghostButton} onClick={send}>
-              {copy.reportRetry}
-            </button>
-          )}
-          <p aria-live="polite" className={`w-full ${UI_CLASSES.caption}`}>
-            {statusText}
-          </p>
-        </div>
-      )}
+      {isOpen && <WishReportControl creationId={creation.id} session={session} variant="text" />}
     </section>
   );
 }

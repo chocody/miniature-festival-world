@@ -51,7 +51,8 @@ import {
 import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
-import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { INSPECT_POPUP_COPY, WISH_BUBBLE_TIMING } from "@/config/inspect.config";
+import { WISH_BUBBLE_ANCHOR_NAME } from "./WishBubbleAnchor";
 import { KRATHONG_INSTANCE_BUCKET_COUNT } from "@/core/customization";
 import { FLAME_FLICKER_REDRAW_INTERVAL_MS } from "@/config/krathongModel.config";
 import { PERF_PROBE_GLOBAL_NAME } from "@/config/perfProbe.config";
@@ -1088,35 +1089,108 @@ describe("scene gimmicks (MFW-28)", () => {
     expect(container.querySelectorAll('[name^="river-hit-"]')).toHaveLength(0);
   });
 
-  it("river krathong tap opens the inspect popup", () => {
-    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
-    fireEvent.click(hit(container));
-    const dialog = screen.getByRole("dialog", { name: INSPECT_POPUP_COPY.dialogTitle });
-    expect(dialog).toHaveTextContent(WISH);
-    expect(viewport()).toHaveAttribute("data-last-gimmick", "inspect");
-    expect(viewport().contains(dialog)).toBe(false);
-    for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
-      const value = viewport().getAttribute(attr)!;
-      expect(value).not.toContain(ITEM_ID);
-      expect(value).not.toContain(WISH);
-    }
-    fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
+  describe("MFW-80 wish bubble", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      useDeviceStore.setState({ reducedMotion: false });
+    });
+    const bubble = () => screen.queryByTestId("wish-bubble");
 
-  it("the popup closes on mode change and when the item leaves", () => {
-    const items = [item()];
-    const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
-    fireEvent.click(hit(container));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    rerender(<SceneViewport mode="RITUAL_RELEASE" riverItems={items} />);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    fireEvent.click(hit(container));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    it("S1: another person's open wish shows only a bubble, no dialog and no sheet slot", async () => {
+      const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+      fireEvent.click(hit(container));
+      const el = screen.getByTestId("wish-bubble");
+      expect(await screen.findByText(WISH)).toBeInTheDocument(); // inserted shortly after mount (live region)
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(document.querySelector('[data-overlay-slot="sheet"]')).toBeNull();
+      expect(viewport()).toHaveAttribute("data-last-gimmick", "inspect");
+      expect(viewport().contains(el)).toBe(false);
+      for (const attr of viewport().getAttributeNames().filter((n) => n.startsWith("data-"))) {
+        const value = viewport().getAttribute(attr)!;
+        expect(value).not.toContain(ITEM_ID);
+        expect(value).not.toContain(WISH);
+      }
+      expect(container.querySelector(`[name="${WISH_BUBBLE_ANCHOR_NAME}"]`)).not.toBeNull();
+    });
+
+    it("S2: another person's closed wish shows nothing but still counts the inspect gimmick", () => {
+      const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[{ ...item(), publicWishText: null }]} />);
+      fireEvent.click(hit(container));
+      expect(bubble()).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
+      expect(viewport()).toHaveAttribute("data-last-gimmick", "inspect");
+    });
+
+    it("S3: your own krathong opens the popup in the sheet slot, no bubble", () => {
+      const unregister = registerOwnedCreationPredicate((id) => id === ITEM_ID);
+      try {
+        const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+        fireEvent.click(hit(container));
+        const dialog = screen.getByRole("dialog", { name: INSPECT_POPUP_COPY.dialogTitle });
+        expect(dialog.closest('[data-overlay-slot="sheet"]')).not.toBeNull();
+        expect(bubble()).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: INSPECT_POPUP_COPY.close }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+      } finally {
+        unregister();
+      }
+    });
+
+    it("S4: the bubble goes on mode change, when the item leaves and after its lifetime; a new tap shows it again", () => {
+      vi.useFakeTimers();
+      const items = [item()];
+      const { container, rerender } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+      fireEvent.click(hit(container));
+      expect(bubble()).not.toBeNull();
+      rerender(<SceneViewport mode="RITUAL_RELEASE" riverItems={items} />);
+      expect(bubble()).toBeNull();
+      rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+      expect(bubble()).toBeNull();
+      fireEvent.click(hit(container));
+      expect(bubble()).not.toBeNull();
+      rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={[]} />);
+      expect(bubble()).toBeNull();
+      rerender(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
+      fireEvent.click(hit(container));
+      expect(bubble()).not.toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(WISH_BUBBLE_TIMING.visibleMs + WISH_BUBBLE_TIMING.fadeMs);
+      });
+      expect(bubble()).toBeNull();
+      fireEvent.click(hit(container));
+      expect(bubble()).not.toBeNull();
+    });
+
+    it("S5: two taps give one bubble and restart its lifetime", () => {
+      vi.useFakeTimers();
+      const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+      fireEvent.click(hit(container));
+      act(() => {
+        vi.advanceTimersByTime(WISH_BUBBLE_TIMING.visibleMs - 1);
+      });
+      fireEvent.click(hit(container));
+      expect(screen.getAllByTestId("wish-bubble")).toHaveLength(1);
+      act(() => {
+        vi.advanceTimersByTime(WISH_BUBBLE_TIMING.visibleMs - 1);
+      });
+      expect(bubble()).toHaveAttribute("data-wish-bubble-phase", "shown");
+    });
+
+    it("S6: reduced motion gives a bubble with data-motion=reduced", () => {
+      useDeviceStore.setState({ reducedMotion: true });
+      const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+      fireEvent.click(hit(container));
+      expect(bubble()).toHaveAttribute("data-motion", "reduced");
+    });
+
+    it.each(["HIGH", "LOW"] as const)("S7: the %s tier shows the same bubble", async (tier) => {
+      useDeviceStore.getState().setQualityTier(tier);
+      const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item()]} />);
+      fireEvent.click(hit(container));
+      expect(await screen.findByText(WISH)).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 });
 
@@ -1248,7 +1322,8 @@ describe("owner private wish reveal in the popup (MFW-31)", () => {
   it("AC1: someone else's private krathong shows no reveal", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={[item(null)]} />);
     fireEvent.click(hit(container));
-    expect(screen.getByRole("dialog")).not.toHaveTextContent(INSPECT_POPUP_COPY.wishHeading);
+    expect(screen.queryByRole("dialog")).toBeNull(); // MFW-80: another person's closed wish shows nothing
+    expect(screen.queryByTestId("wish-bubble")).toBeNull();
     expect(screen.queryByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeNull();
   });
 
@@ -1732,6 +1807,7 @@ describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
 
   it("the inspect popup sits in the sheet slot", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
+    const unregister = registerOwnedCreationPredicate((id) => id === "950118ce-7d93-4cb6-bd84-44d91c5de9e3");
     const ITEM_ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
     const items = [
       {
@@ -1745,6 +1821,7 @@ describe("full-screen stage framing (MFW-54, backlog 10.2)", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" riverItems={items} />);
     fireEvent.click(container.querySelector(`[name="river-hit-${ITEM_ID}"]`)!);
     expect(screen.getByRole("dialog").closest('[data-overlay-slot="sheet"]')).not.toBeNull();
+    unregister();
   });
 
   it("LOW and HIGH render a big screen within their pixel budget", () => {

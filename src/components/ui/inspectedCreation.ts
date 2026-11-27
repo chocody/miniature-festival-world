@@ -39,3 +39,12 @@ export function findInspectedCreation(items: readonly InspectableSource[], id: s
   }
   return null;
 }
+
+/** What a tap on a river krathong shows: the owner's popup, someone else's wish bubble, or nothing (a closed wish of someone else). */
+export type InspectTapOutcome = "panel" | "bubble" | "none";
+
+/** Own krathong → "panel" (owner switch, reveal); another person's open wish → "bubble"; another person's closed wish → "none". */
+export function inspectTapOutcome(c: InspectedCreation, isOwned: (id: string) => boolean): InspectTapOutcome {
+  if (isOwned(c.id)) return "panel";
+  return c.publicWishText !== null ? "bubble" : "none";
+}
