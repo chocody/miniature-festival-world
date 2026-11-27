@@ -4,11 +4,11 @@ import { INSPECT_DIALOG_TITLE } from "../fixtures/wishCopy";
 import { waitForActiveEvent } from "./activeEvent";
 import { locateKrathongById, waitForCameraRest } from "./sceneProbe";
 import { completeWishStep, type WishStepOptions } from "./wishStep";
+import { expectWorldAfterRelease } from "./release";
 
 // Shared by wish-switch.spec.ts (MFW-63), own-krathong-popup.spec.ts and own-popup-screenshots.spec.ts (MFW-81).
 const FIND_MY_BUTTON = "ค้นหาของฉัน";
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
-const root = (page: Page) => page.locator("[data-flow-state]");
 const entries = (page: Page) => page.locator('[data-testid="my-creations-list"] li');
 const INSPECT_DIALOG = (page: Page) => page.getByRole("dialog", { name: INSPECT_DIALOG_TITLE });
 
@@ -47,5 +47,5 @@ export async function walkToWorld(page: Page, text?: string, options: WishStepOp
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page, text, options);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 }

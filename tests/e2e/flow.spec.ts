@@ -3,6 +3,7 @@ import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import { E2E_WORLD_ROTATE_BUTTON_NAME } from "./helpers/cameraProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /** Accessible-name filter: every button except the 3D world rotate button (MFW-57). */
 const NOT_WORLD_ROTATE_BUTTON = new RegExp(`^(?!${E2E_WORLD_ROTATE_BUTTON_NAME}$)`);
@@ -45,7 +46,7 @@ test("flow walks from the active event to SHARED_WORLD_EXPLORE", async ({ page }
   await expect(page.getByRole("note")).toHaveCount(0);
   await expect(root).toHaveAttribute("data-interaction-mode", "RITUAL_RELEASE");
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
   // MFW-57 / MFW-74 / MFW-85: the HUD column holds the rotate button (open question 34), Find My, the day/night toggle and the
   // sky-launch switch; every other button stays absent.

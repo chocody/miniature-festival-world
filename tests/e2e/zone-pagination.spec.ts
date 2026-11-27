@@ -6,6 +6,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_WORLD_ROTATE_BUTTON_NAME } from "./helpers/cameraProbe";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /** Accessible-name filter: every button except the 3D world rotate button (MFW-57). */
 const NOT_WORLD_ROTATE_BUTTON = new RegExp(`^(?!${E2E_WORLD_ROTATE_BUTTON_NAME}$)`);
@@ -37,7 +38,7 @@ async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 }
 
 test("3D LOW: starts on the newest zone; a full zone shows 80 of 85", async ({ page }) => {

@@ -14,12 +14,12 @@ import {
 } from "./helpers/hud";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL, installSceneProbe, locateKrathongById } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 // MFW-74 Part A: the world HUD column (Find My picker, day/night toggle, rotate), LOW tier pinned so the FPS watcher cannot step it down.
 test.use({ timezoneId: "Asia/Bangkok", viewport: { width: 390, height: 844 } });
 
 const SCENE = '[aria-label="Toy-like night river preview"]';
-const root = (page: Page) => page.locator("[data-flow-state]");
 const ROW = /^\d{1,2} [A-Z]{3} \d{4} \d{2}:\d{2}$/;
 
 async function lowTier(page: Page) {
@@ -50,7 +50,7 @@ async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
 }
 

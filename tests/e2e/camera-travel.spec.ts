@@ -22,6 +22,7 @@ import {
   touchDrag,
   worldPointUnder,
 } from "./helpers/cameraProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-57 (backlog 11.1): in WORLD_EXPLORE a one-finger / mouse drag moves the camera and the world under the pointer follows
@@ -83,7 +84,7 @@ async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 }
 
 function collectErrors(page: Page) {

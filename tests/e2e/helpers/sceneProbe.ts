@@ -46,7 +46,13 @@ const WATER_GRID_Y_TO = 0.8;
 const WATER_GRID_STEP = 0.05;
 const RING_SAMPLES = 8;
 const RING_INSET_PX = 2;
-const CAMERA_REST_TIMEOUT_MS = 5_000;
+/**
+ * Technical (test only): how long waitForCameraRest polls. One poll watches CAMERA_REST_FRAMES (8) rAFs; on the 2-vCPU CI runner
+ * SwiftShader draws ≈ 6–10 FPS (HIGH 360×640, LOW 390×844), so one poll took 1.0–1.4 s (endless-river E1 HIGH trace, PR #84, MFW-1,
+ * 2026-11-27) and the former 5 s fitted only ≈ 3 polls; runner speed varies ≈ 1.8×. 15 s fits ≈ 10 such polls. A camera that never
+ * rests still fails; only the time allowed changes.
+ */
+const CAMERA_REST_TIMEOUT_MS = 15_000;
 const CAMERA_REST_EPSILON = 1e-4;
 /** Frames watched per rest check: a flight started by a tap begins a few frames later, so two frames can look at rest. */
 const CAMERA_REST_FRAMES = 8;
