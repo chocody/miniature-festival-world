@@ -39,11 +39,14 @@ const batch = vi.hoisted(() => ({
   commit: vi.fn(),
 }));
 
+const NO_DESIGNS = vi.hoisted(() => ({ flames: () => null }));
 vi.mock("@/components/models/loyKrathong", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/models/loyKrathong")>();
   const React = await import("react");
   return {
     ...actual,
+    // MFW-65: no assets provider here; no design is ever loaded, so RiverFlow plans the procedural parts.
+    useKrathongDesignPlanSource: () => NO_DESIGNS,
     RiverKrathongBatch: (p: { plan: { items: readonly unknown[] }; shadows: boolean; ref?: React.Ref<unknown> }) => {
       batch.props = p;
       React.useImperativeHandle(p.ref, () => ({ meshes: [], writeItem: batch.writeItem, commit: batch.commit }));

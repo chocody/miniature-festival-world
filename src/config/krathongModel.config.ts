@@ -507,8 +507,9 @@ export const KRATHONG_INCENSE_MODEL: ColoredPartModelSpec & { readonly count: nu
 /**
  * Lead guards (not product numbers): triangles of one assembled krathong, worst appearance, per LOD (MFW-69).
  * full: design 3 560 + headroom; medium: = MFW-48 worst 1 088 (a MEDIUM river is never heavier than v2); low: design 824 + headroom.
+ * full 3 800 → 6 000: raised for the owner-supplied close-up model (MFW-65, loop decision, DRAFT); hero only — the river uses medium/low.
  */
-export const KRATHONG_MAX_TRIANGLES_BY_LOD: Readonly<Record<KrathongLod, number>> = Object.freeze({ full: 3800, medium: 1088, low: 900 });
+export const KRATHONG_MAX_TRIANGLES_BY_LOD: Readonly<Record<KrathongLod, number>> = Object.freeze({ full: 6000, medium: 1088, low: 900 });
 /** Lead guard: the flower centre rises at least this far above the petal bases (flower-local, before tilt). */
 export const KRATHONG_FLOWER_CENTRE_MIN_RAISE = 0.06;
 /** Lead guard: WCAG contrast ratio between a flower's petal colour and its centre. */

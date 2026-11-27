@@ -74,7 +74,7 @@ import {
   RITUAL_CHIP_START_PERCENT,
   WORLD_VIEW_ROTATE_STEP_RADIANS,
 } from "@/config/interaction.config";
-import { FlameFlicker, KrathongAssetsProvider, LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong";
+import { FlameFlicker, KrathongAssetsProvider, LOY_KRATHONG_RIVER_LAYOUT, useKrathongModelLoadStatus } from "@/components/models/loyKrathong";
 import { LOY_KRATHONG_HOUSE_SMOKE_ORIGINS, LOY_KRATHONG_TREE_LEAF_ANCHORS } from "@/components/models/loyKrathong";
 import {
   buildRiverStretchSlots,
@@ -868,6 +868,7 @@ export function SceneViewport({
         : null,
     [sceneShown, qualityTier],
   );
+  const krathongModels = useKrathongModelLoadStatus(); // MFW-65: owner-supplied model files (e2e waits for "ready")
 
   if (!sceneShown) return null;
 
@@ -882,6 +883,7 @@ export function SceneViewport({
       style={{ backgroundColor: LIGHT_PRESETS[lightPreset].background }}
       data-light-preset={lightPreset}
       data-quality-tier={qualityTier}
+      data-krathong-models={krathongModels}
       data-selected-target={selectedTarget ?? undefined}
       data-find-my={selectedTarget === "riverKrathong" ? "following" : undefined}
       data-interaction-mode={mode ?? undefined}

@@ -16,6 +16,7 @@ import {
   readProgramCount,
   sceneObjectVisible,
   waitForCameraRest,
+  waitForKrathongModels,
 } from "./helpers/sceneProbe";
 
 /**
@@ -56,6 +57,7 @@ async function openWorld(page: Page, memory: number, cores: number, startUrl: st
   await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   await expect(page.locator("canvas")).toHaveCount(1);
   await waitForCameraRest(page);
+  await waitForKrathongModels(page); // MFW-65: the design files are in before any program count is sampled
   return { pageErrors, consoleErrors };
 }
 

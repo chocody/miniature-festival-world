@@ -8,6 +8,7 @@ import {
   LEAF_FOLD_STYLE_IDS,
   RIM_SOCKET_COUNT,
 } from "@/config/events/loyKrathong.config";
+import { KRATHONG_DESIGN_IDS, KRATHONG_DESIGN_MAX_FLAMES } from "@/config/krathongDesigns.config";
 import { KRATHONG_INCENSE_MODEL, KRATHONG_LEAF_COUNT } from "@/config/krathongModel.config";
 import {
   assembleKrathong,
@@ -33,11 +34,20 @@ function countsFor(appearance: KrathongAppearance): number[] {
 describe("krathong instance buckets", () => {
   it("has one bucket per geometry/material pair of the catalogue", () => {
     expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(
-      KRATHONG_BASE_IDS.length + LEAF_FOLD_STYLE_IDS.length * LEAF_COLOR_PALETTE.length + FLOWER_KINDS.length + CANDLE_COLOR_PALETTE.length + 3, // + flowerCentre (MFW-48)
+      KRATHONG_BASE_IDS.length + LEAF_FOLD_STYLE_IDS.length * LEAF_COLOR_PALETTE.length + FLOWER_KINDS.length + CANDLE_COLOR_PALETTE.length + 3 // + flowerCentre (MFW-48)
+        + KRATHONG_DESIGN_IDS.length, // + one body per owner-supplied design (MFW-65)
     );
-    expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(18);
+    expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(19);
     expect(new Set(KRATHONG_INSTANCE_BUCKETS.map((b) => b.key)).size).toBe(KRATHONG_INSTANCE_BUCKET_COUNT);
-    for (const b of KRATHONG_INSTANCE_BUCKETS) {
+    // MFW-65: the design buckets come after incense, so every earlier index is unchanged.
+    const designBuckets = KRATHONG_INSTANCE_BUCKETS.slice(-KRATHONG_DESIGN_IDS.length);
+    expect(KRATHONG_INSTANCE_BUCKETS[KRATHONG_INSTANCE_BUCKET_COUNT - KRATHONG_DESIGN_IDS.length - 1].role).toBe("incense");
+    designBuckets.forEach((b, i) => {
+      expect(b).toEqual({ key: `design:${KRATHONG_DESIGN_IDS[i]}|designBody`, role: "designBody", geometryKey: `design:${KRATHONG_DESIGN_IDS[i]}`, materialKey: "designBody", maxPerKrathong: 1 });
+      expect(krathongInstanceBucketIndex(b.geometryKey, b.materialKey)).toBe(KRATHONG_INSTANCE_BUCKET_COUNT - KRATHONG_DESIGN_IDS.length + i);
+    });
+    expect(KRATHONG_INSTANCE_BUCKETS.find((b) => b.role === "flame")?.maxPerKrathong).toBe(Math.max(1, KRATHONG_DESIGN_MAX_FLAMES));
+    for (const b of KRATHONG_INSTANCE_BUCKETS.slice(0, -KRATHONG_DESIGN_IDS.length)) {
       expect(KRATHONG_GEOMETRY_KEYS).toContain(b.geometryKey);
       expect(KRATHONG_MATERIAL_KEYS).toContain(b.materialKey);
     }
@@ -60,6 +70,7 @@ describe("krathong instance buckets", () => {
             for (const flowers of patterns) {
               const counts = countsFor({ base, lotusFold, leafColor, candleColor, flowers });
               counts.forEach((c, i) => expect(c).toBeLessThanOrEqual(KRATHONG_INSTANCE_BUCKETS[i].maxPerKrathong));
+              expect(counts.filter((c, i) => KRATHONG_INSTANCE_BUCKETS[i].role === "flame")).toEqual([1]);
               checked += 1;
             }
     expect(checked).toBe(54 * patterns.length);

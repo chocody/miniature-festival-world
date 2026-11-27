@@ -5,6 +5,7 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   bankLeft: "scene-bank-left",
   bankRight: "scene-bank-right",
   krathong: "scene-krathong",
+  krathongDesignBody: "krathong-design-body", // MFW-65: the owner-supplied model body of the hero krathong
   krathongPose: "scene-krathong-pose",
   krathongMarkCue: "scene-krathong-mark-cue",
   pierFocus: "scene-pier-focus",

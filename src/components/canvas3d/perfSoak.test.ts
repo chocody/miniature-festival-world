@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { PERF_SOAK_LATERAL_OFFSETS } from "@/config/perfProbe.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import { parsePersistableCoord } from "@/core/coordinates";
-import { KRATHONG_INSTANCE_BUCKET_COUNT, parseKrathongAppearance } from "@/core/customization";
+import { KRATHONG_INSTANCE_BUCKET_COUNT, KRATHONG_INSTANCE_BUCKETS, parseKrathongAppearance } from "@/core/customization";
 import { planKrathongInstances } from "@/components/models/loyKrathong/riverKrathongBatch";
 import { readRendererSample, type RendererSample } from "./perfProbe";
 import { buildPerfSoakZones, createPerfSoakRunner, perfSoakAppearance } from "./perfSoak";
 import type { RiverFlowItem } from "./RiverFlow";
 
 const T = 1_700_000_000_000;
+const DESIGN_FLAME = Object.freeze({ x: 0, y: 1, z: 0, height: 0.4, radius: 0.1 });
 
 describe("buildPerfSoakZones", () => {
   it("builds valid, unique, in-range items that exercise every bucket", () => {
@@ -27,7 +28,15 @@ describe("buildPerfSoakZones", () => {
       }
       const plan = planKrathongInstances(zone.map((i) => i.appearance));
       expect(plan.bucketCounts).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
-      for (const c of plan.bucketCounts) expect(c).toBeGreaterThan(0);
+      // Every procedural bucket; the design buckets (MFW-65) fill only once a design has loaded (below).
+      plan.bucketCounts.forEach((c, b) => {
+        if (KRATHONG_INSTANCE_BUCKETS[b].role !== "designBody") expect(c, String(b)).toBeGreaterThan(0);
+        else expect(c, String(b)).toBe(0);
+      });
+      const loaded = planKrathongInstances(zone.map((i) => i.appearance), ZONE_ITEM_CAP, { flames: () => [DESIGN_FLAME] });
+      KRATHONG_INSTANCE_BUCKETS.forEach((bucket, b) => {
+        if (bucket.role === "designBody") expect(loaded.bucketCounts[b], String(b)).toBe(ZONE_ITEM_CAP);
+      });
     }
     expect(ids.size).toBe(2 * ZONE_ITEM_CAP);
   });
