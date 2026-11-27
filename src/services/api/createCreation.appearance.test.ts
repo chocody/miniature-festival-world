@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CREATE_NOW_MS,
   defaultAppearanceJson,
@@ -12,9 +12,6 @@ import { handleCreateCreation, type CreateCreationDeps } from "./createCreation"
 import { getCreationPlacementStrategy } from "./creationPlacement";
 import { createInMemoryCreationRepository } from "./inMemoryCreationRepository";
 import type { PublicCreation } from "./creationTypes";
-
-// Christmas has no retention end date yet: a test seam keeps the handler from answering 409 before the appearance gate.
-vi.mock("@/services/api/retention", () => ({ computeCreationExpiresAt: () => new Date("2099-01-01T00:00:00.000Z") }));
 
 async function setup() {
   const repo = createInMemoryCreationRepository({ now: () => CREATE_NOW_MS });
