@@ -1,6 +1,4 @@
 import { FALLING_LEAF_LOOK, TAP_SHAKE_WIND } from "@/config/gimmicks.config";
-import type { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
-import type { ScenePartSpec } from "@/config/scene.config";
 import type { RiverLane, WorldVec3 } from "@/core/coordinates";
 import { GOLDEN_ANGLE_RAD } from "@/core/effects/reactionCurves";
 import {
@@ -10,39 +8,35 @@ import {
   type BankProfilePoint,
   type FoliageInstance,
   type FoliageOwnerRef,
-  type HouseRoofKind,
   type InstanceTransform,
 } from "@/core/world";
 import { foliageBody } from "./propTapTargets";
 
 /*
- * MFW-72: where the chimney smoke and the falling leaves of each house / tree start, in stretch-0 world-view space. Derived once from
- * the resolved layout and existing part constants (never per frame); render-time only — NEVER persisted or sent (invariant A).
+ * MFW-72 / MFW-84: where the chimney smoke and the falling leaves of each house / tree start, in stretch-0 world-view space. Derived
+ * once from the resolved layout and existing constants (never per frame); render-time only — NEVER persisted or sent (invariant A).
  */
 
-type RoofParts = Pick<typeof RIVER_ENVIRONMENT_PARTS, "houseRoof" | "houseRoofGable">;
-
-function partTopY(part: ScenePartSpec): number {
-  const g = part.geometry;
-  const height = "height" in g ? g.height : 0;
-  return part.yOffset + height / 2;
-}
-
 /**
- * One smoke origin per house: the roof top centre (pyramid apex / gable ridge middle: part.yOffset + height / 2, × the house scale)
- * + liftY above the house base. No chimney model (MFW-72 D1). Frozen. Mismatched lengths → RangeError.
+ * One smoke origin per house (MFW-84): the chimney top `chimneyTopLocal` (house-local) through the house transform — world = position
+ * + scale·(c.x·cos yaw + c.z·sin yaw, c.y, −c.x·sin yaw + c.z·cos yaw) — plus liftY. This is the three.js Y rotation that
+ * composeInstanceMatrix uses (local +Z → (sin yaw, 0, cos yaw)). Frozen.
  */
 export function buildHouseSmokeOrigins(
   houses: readonly InstanceTransform[],
-  roofKinds: readonly HouseRoofKind[],
-  parts: RoofParts,
+  chimneyTopLocal: Readonly<{ x: number; y: number; z: number }>,
   liftY: number,
 ): readonly WorldVec3[] {
-  if (houses.length !== roofKinds.length) throw new RangeError("houses and roofKinds must have the same length");
+  const c = chimneyTopLocal;
   return Object.freeze(
-    houses.map((h, i) => {
-      const roofTop = partTopY(roofKinds[i] === "gable" ? parts.houseRoofGable : parts.houseRoof);
-      return Object.freeze({ x: h.position.x, y: h.position.y + roofTop * h.scale + liftY, z: h.position.z });
+    houses.map((h) => {
+      const cos = Math.cos(h.yawRad);
+      const sin = Math.sin(h.yawRad);
+      return Object.freeze({
+        x: h.position.x + h.scale * (c.x * cos + c.z * sin),
+        y: h.position.y + h.scale * c.y + liftY,
+        z: h.position.z + h.scale * (-c.x * sin + c.z * cos),
+      });
     }),
   );
 }

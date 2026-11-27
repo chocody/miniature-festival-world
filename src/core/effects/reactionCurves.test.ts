@@ -16,6 +16,7 @@ import {
   WCAG_MAX_FLASHES_PER_SECOND,
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
+import { CHIMNEY_SMOKE_PUFFS_PER_TAP } from "@/config/performance.config";
 import { createBounceFrame, createLampGlowFrame, writeBounceAt, writeLampGlowFrameAt } from "./gimmickCurves";
 import {
   chimneySmokeDurationMs,
@@ -261,7 +262,7 @@ describe("RC8 WCAG 2.3.1 flash counter", () => {
   });
 });
 
-describe("chimney smoke curve (MFW-72)", () => {
+describe("chimney smoke curve (MFW-72 / MFW-84)", () => {
   const L = CHIMNEY_SMOKE_LOOK;
 
   it("RC9: puffs are staggered, rise and drift from the origin, grow then shrink to 0; done after the puff life", () => {
@@ -277,7 +278,7 @@ describe("chimney smoke curve (MFW-72)", () => {
     expect([f.dx, f.dy, f.dz]).toEqual([0, 0, 0]);
     expect(f.radius).toBe(L.startRadius);
     writeSmokePuffAt(0.5 * L.puffLifeMs, 0, 1, 0, f);
-    expect(f.dy).toBeCloseTo(0.75 * L.riseHeight, 9);
+    expect(f.dy).toBeCloseTo(0.5 * L.riseHeight, 9); // MFW-84: a linear rise
     let prev = -Infinity;
     let a = 0;
     for (; a < L.fadeStartRatio * L.puffLifeMs; a += 10) {
@@ -301,10 +302,10 @@ describe("chimney smoke curve (MFW-72)", () => {
     expect(f.done).toBe(true);
     expect(f.visible).toBe(false);
     expect(f.radius).toBe(0);
-    // Fix round: stagger 220 → 140 ms (denser plume), 6 puffs on HIGH.
-    expect(chimneySmokeDurationMs(5)).toBe(4 * 140 + 1_800);
-    expect(chimneySmokeDurationMs(6)).toBe(2_500);
-    expect(chimneySmokeEmitMs(6)).toBe(700);
+    for (const puffs of Object.values(CHIMNEY_SMOKE_PUFFS_PER_TAP)) {
+      expect(chimneySmokeDurationMs(puffs)).toBe((puffs - 1) * L.staggerMs + L.puffLifeMs);
+      expect(chimneySmokeEmitMs(puffs)).toBe((puffs - 1) * L.staggerMs);
+    }
   });
 
   it("RC9: the drift follows the wind and stays within driftDistance + wobble; the rise is monotonic", () => {
@@ -410,49 +411,63 @@ describe("MFW-72 curve robustness", () => {
   });
 });
 
-describe("smoke drift toward the middle of the screen (MFW-72 fix round)", () => {
-  const e = (33.46 * Math.PI) / 180; // the MFW-68 camera elevation
-  const back = { x: 0, y: Math.sin(e), z: Math.cos(e) }; // yaw 0: the viewer is at +z
-  /** Screen motion (right, up) per unit of a horizontal world move, for this camera. */
-  const screenOf = (d: { x: number; z: number }) => ({ right: d.x, up: -d.z * Math.sin(e) });
+describe("smoke drift and direction (MFW-84)", () => {
+  const L = CHIMNEY_SMOKE_LOOK;
+  const wind = { x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ };
 
-  it("RC13: a smoke near the top right drifts toward the viewer and left: its screen motion points at the centre", () => {
-    const d = writeSmokeDriftInto(0.55, 0.68, 390 / 844, 1, 0, back.x, back.y, back.z, { x: 0, z: 0 });
-    expect(d.z).toBeGreaterThan(0); // toward the viewer = down the screen
-    expect(d.x).toBeLessThan(0); // toward the middle horizontally
-    const s = screenOf(d);
-    const want = { right: -0.55 * (390 / 844), up: -0.68 };
-    const cross = s.right * want.up - s.up * want.right;
-    expect(Math.abs(cross) / (Math.hypot(s.right, s.up) * Math.hypot(want.right, want.up))).toBeLessThan(1e-9); // parallel
-    expect(s.right * want.right + s.up * want.up).toBeGreaterThan(0); // same direction
-    expect(Math.hypot(s.right, s.up)).toBeCloseTo(1, 9); // one screen unit per unit of drift
-  });
-
-  it("RC13: a smoke low on the screen drifts away from the viewer (up the screen); rotated cameras keep the screen rule", () => {
-    const d = writeSmokeDriftInto(0, -0.7, 1, 1, 0, back.x, back.y, back.z, { x: 0, z: 0 });
-    expect(d.z).toBeLessThan(0);
-    expect(d.x).toBeCloseTo(0, 9);
-    const yaw = 0.9; // camera yawed: right = (cos, −sin), back = (sin, ·, cos)
-    const r = writeSmokeDriftInto(0.6, 0, 1, Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw) * back.z, back.y, Math.cos(yaw) * back.z, { x: 0, z: 0 });
-    expect(r.x).toBeCloseTo(-Math.cos(yaw), 9); // straight screen-left
-    expect(r.z).toBeCloseTo(Math.sin(yaw), 9);
-  });
-
-  it("RC13: the centre, a degenerate camera or non-finite input fall back to TAP_SHAKE_WIND; the out object is returned", () => {
+  it("RC13: the drift is the camera's horizontal right axis, normalised and signed downwind; bad input → TAP_SHAKE_WIND", () => {
     const out = { x: 9, z: 9 };
-    expect(writeSmokeDriftInto(0.01, 0.01, 1, 1, 0, 0, 0.5, 0.8, out)).toBe(out);
-    expect(out).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
-    expect(writeSmokeDriftInto(0.5, 0.5, 1, 0, 0, 0, 0.5, 0.8, out)).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
-    expect(writeSmokeDriftInto(Number.NaN, 0.5, 1, 1, 0, 0, 0.5, 0.8, out)).toEqual({ x: TAP_SHAKE_WIND.windDirX, z: TAP_SHAKE_WIND.windDirZ });
-    // A near-horizontal camera never explodes the toward-viewer part.
-    const flat = writeSmokeDriftInto(0, 0.9, 1, 1, 0, 0, 0.01, 1, out);
-    expect(Math.abs(flat.z)).toBeCloseTo(1 / CHIMNEY_SMOKE_LOOK.minElevationSin, 9);
+    expect(writeSmokeDriftInto(1, 0, out)).toBe(out);
+    expect(out).toEqual({ x: 1, z: 0 });
+    expect(writeSmokeDriftInto(-1, 0, { x: 0, z: 0 })).toEqual({ x: 1, z: 0 }); // the sign follows TAP_SHAKE_WIND (+x)
+    expect(writeSmokeDriftInto(2, 0, { x: 0, z: 0 })).toEqual({ x: 1, z: 0 }); // normalised
+    const yaw = 0.9; // camera yawed: right = (cos, −sin), back = (sin, cos)
+    const r = writeSmokeDriftInto(Math.cos(yaw), -Math.sin(yaw), { x: 0, z: 0 });
+    expect(r.x).toBeCloseTo(Math.cos(yaw), 12);
+    expect(r.z).toBeCloseTo(-Math.sin(yaw), 12);
+    expect(Math.hypot(r.x, r.z)).toBeCloseTo(1, 12);
+    expect(Math.abs(r.x * Math.sin(yaw) + r.z * Math.cos(yaw))).toBeLessThan(1e-12); // never toward / away from the viewer
+    expect(writeSmokeDriftInto(0, 1, { x: 0, z: 0 })).toEqual({ x: 0, z: 1 }); // right ⟂ wind: a tie keeps +right
+    for (const [x, z] of [
+      [0, 0],
+      [Number.NaN, 0],
+      [Number.POSITIVE_INFINITY, 0],
+    ]) {
+      expect(writeSmokeDriftInto(x, z, { x: 9, z: 9 })).toEqual(wind);
+    }
   });
 
-  it("RC13: the puff follows the drift and wobbles across it", () => {
+  it("RC14: the smoke never moves down: each puff's centre, top and bottom never decrease and dy ≥ 0", () => {
     const f = createSmokePuffFrame();
-    writeSmokePuffAt(CHIMNEY_SMOKE_LOOK.puffLifeMs / 2, 0, 0, 2, f);
-    expect(f.dz).toBeCloseTo(2 * CHIMNEY_SMOKE_LOOK.driftDistance * (1 - 0.5 ** CHIMNEY_SMOKE_LOOK.driftEaseExponent), 9);
-    expect(Math.abs(f.dx)).toBeLessThanOrEqual(CHIMNEY_SMOKE_LOOK.wobbleAmplitude + 1e-12);
+    for (let k = 0; k < CHIMNEY_SMOKE_PUFFS_PER_TAP.HIGH; k++) {
+      let prev: { dy: number; top: number; bottom: number } | null = null;
+      for (let age = k * L.staggerMs; age <= k * L.staggerMs + L.puffLifeMs - 1; age += 5) {
+        writeSmokePuffAt(age, k, 1, 0, f);
+        if (!f.visible) continue;
+        const now = { dy: f.dy, top: f.dy + f.radius, bottom: f.dy - f.radius };
+        expect(f.dy, `puff ${k} at ${age}`).toBeGreaterThanOrEqual(0);
+        if (prev) {
+          expect(now.dy, `puff ${k} centre at ${age}`).toBeGreaterThanOrEqual(prev.dy - 1e-12);
+          expect(now.top, `puff ${k} top at ${age}`).toBeGreaterThanOrEqual(prev.top - 1e-12);
+          expect(now.bottom, `puff ${k} bottom at ${age}`).toBeGreaterThanOrEqual(prev.bottom - 1e-12);
+        }
+        prev = now;
+      }
+      expect(prev, `puff ${k} was drawn`).not.toBeNull();
+    }
+  });
+
+  it("RC15: the horizontal offset (drift and wobble) runs along the drift and stays within driftDistance + wobble", () => {
+    const f = createSmokePuffFrame();
+    for (const age of [0, 137, 450, 900, 1_333, L.puffLifeMs - 1]) {
+      writeSmokePuffAt(age, 1, 0.6, 0.8, f);
+      writeSmokePuffAt(age + L.staggerMs, 1, 0.6, 0.8, f);
+      expect(Math.abs(f.dx * 0.8 - f.dz * 0.6), `age ${age}`).toBeLessThan(1e-12);
+      expect(Math.hypot(f.dx, f.dz)).toBeLessThanOrEqual(L.driftDistance + L.wobbleAmplitude + 1e-9);
+    }
+    for (const age of [100, 700, 1_500]) {
+      writeSmokePuffAt(age, 0, 0, 0, f);
+      expect(f.dz).toBe(0); // a zero drift wobbles along x only
+    }
   });
 });

@@ -7,6 +7,7 @@ import {
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
+  type MeshStandardMaterial,
   NormalBlending,
   Quaternion,
   RingGeometry,
@@ -26,7 +27,7 @@ import {
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
 import { LIGHT_PRESET_IDS, type LightPresetId } from "@/config/look.config";
-import type { PartGeometrySpec, ScenePartSpec } from "@/config/scene.config";
+import type { MatteMaterialSpec, PartGeometrySpec, ScenePartSpec } from "@/config/scene.config";
 import type { WorldVec3 } from "@/core/coordinates";
 import { buildLeafShellMeshData } from "@/core/customization/krathongMeshData";
 import {
@@ -70,7 +71,7 @@ import {
 import { stretchOffsetInto, type EndlessRiverFrame, type MutableXZ } from "@/core/coordinates/endlessRiverFrame";
 import type { InstanceTransform } from "@/core/world";
 import { createBlobShadowGeometry, createBlobShadowInstances, createFanMaterial } from "../blobShadowMeshes";
-import { createPartGeometry } from "../geometry";
+import { createInstancedPartMaterial, createPartGeometry } from "../geometry";
 import { composeInstanceMatrix } from "../instancing";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
 import { TREE_LEAF_PATH_STRIDE, type TreeLeafAnchor } from "./sceneEffectAnchors";
@@ -147,6 +148,7 @@ function assertCapacity(capacity: number): void {
  * The ONE effect material setup: unlit, transparent, no depth write, not tone mapped, instanceColor set before the first render, no
  * map, no vertex colours. Every effect mesh shares the shader program of the ripple and lamp glow (three does not key the program on
  * `blending` when `transparent` is true). MFW-60: fireworks and sky lanterns use NormalBlending (they fade by shrinking: no additive halo).
+ * MFW-84: `opacity` (default 1) is a uniform, so a faint effect (the chimney smoke) still shares the same program.
  */
 function setupEffectMesh(
   geometry: BufferGeometry,
@@ -154,12 +156,14 @@ function setupEffectMesh(
   capacity: number,
   name: string,
   blending: "additive" | "normal" = "additive",
+  opacity: number = 1,
 ): EffectMesh {
   const material = new MeshBasicMaterial({
     blending: blending === "additive" ? AdditiveBlending : NormalBlending,
     transparent: true,
     depthWrite: false,
     toneMapped: false,
+    opacity,
   });
   const mesh = new InstancedMesh(geometry, material, capacity);
   mesh.name = name;
@@ -170,6 +174,22 @@ function setupEffectMesh(
   mesh.count = 0;
   mesh.visible = false; // no draw call while idle
   return { mesh, baseColor: new Color(color), capacity };
+}
+
+/**
+ * MFW-84: a pooled effect drawn with a lit scene material (the falling leaves use the crown's matte instanced material). No
+ * instanceColor (like the crown's InstancedPart, so it reuses the crown's program), no shadows, no raycast, invisible while idle.
+ */
+function setupLitEffectMesh(geometry: BufferGeometry, material: MeshStandardMaterial, capacity: number, name: string): EffectMesh {
+  const mesh = new InstancedMesh(geometry, material, capacity);
+  mesh.name = name;
+  mesh.frustumCulled = false; // instances move; the cached bounding sphere would be stale
+  mesh.raycast = NO_RAYCAST;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.count = 0;
+  mesh.visible = false; // no draw call while idle
+  return { mesh, baseColor: material.color.clone(), capacity };
 }
 
 export function createRippleMesh(capacity: number): EffectMesh {
@@ -515,7 +535,10 @@ function presetPalettes(palette: Readonly<Record<LightPresetId, readonly string[
   return Object.freeze(out);
 }
 
-/** Chimney smoke (MFW-72): `puffsPerSmoke` soft round puffs per smoke, NormalBlending (fades by shrinking: no halo, MFW-67). */
+/**
+ * Chimney smoke (MFW-72 / MFW-84): `puffsPerSmoke` soft round puffs per smoke, NormalBlending (fades by shrinking: no halo, MFW-67), at
+ * the faint CHIMNEY_SMOKE_LOOK.opacity (a uniform of the shared effect program).
+ */
 export interface ChimneySmokeMesh extends EffectMesh {
   readonly puffsPerSmoke: number;
   readonly palettes: Readonly<Record<LightPresetId, readonly Color[]>>;
@@ -530,6 +553,7 @@ export function createChimneySmokeMesh(smokeCapacity: number, puffsPerSmoke: num
     smokeCapacity * puffsPerSmoke,
     SCENE_OBJECT_NAMES.chimneySmoke,
     "normal",
+    CHIMNEY_SMOKE_LOOK.opacity,
   );
   return { ...base, puffsPerSmoke, palettes: presetPalettes(CHIMNEY_SMOKE_LOOK.palette) };
 }
@@ -584,10 +608,12 @@ export function writeChimneySmokeInstances(
   return smokes;
 }
 
-/** Falling leaves (MFW-72): `leavesPerFall` MFW-69 leaf shells per fall, NormalBlending (they fade by shrinking). */
+/**
+ * Falling leaves (MFW-72 / MFW-84): `leavesPerFall` MFW-69 leaf shells per fall, drawn with the tree crown's own lit material (same
+ * colour under the same lights on every tier and light preset; the crown's program). Opaque: they fade by shrinking.
+ */
 export interface FallingLeafMesh extends EffectMesh {
   readonly leavesPerFall: number;
-  readonly palettes: Readonly<Record<LightPresetId, readonly Color[]>>;
 }
 
 const VECTOR3_ITEM_SIZE = 3;
@@ -604,24 +630,24 @@ function createFallingLeafGeometry(): BufferGeometry {
   return geometry;
 }
 
-export function createFallingLeafMesh(fallCapacity: number, leavesPerFall: number): FallingLeafMesh {
+/** `material` = the crown's MatteMaterialSpec (RIVER_FOLIAGE_PARTS.*.leafClump.material), built like the crown's InstancedPart. */
+export function createFallingLeafMesh(fallCapacity: number, leavesPerFall: number, material: MatteMaterialSpec): FallingLeafMesh {
   assertCapacity(fallCapacity);
   assertCapacity(leavesPerFall);
-  const base = setupEffectMesh(
+  const base = setupLitEffectMesh(
     createFallingLeafGeometry(),
-    FALLING_LEAF_LOOK.palette.DAY[0],
+    createInstancedPartMaterial(material),
     fallCapacity * leavesPerFall,
     SCENE_OBJECT_NAMES.fallingLeaves,
-    "normal",
   );
-  return { ...base, leavesPerFall, palettes: presetPalettes(FALLING_LEAF_LOOK.palette) };
+  return { ...base, leavesPerFall };
 }
 
 /**
  * Same release rules as the smoke (reduced motion, missing anchor, bad stretch, age ≥ fallingLeavesDurationMs). Per leaf slot
  * k < min(leavesPerFall, anchor.slots): position = lerp(spawn, landing, fall) + (−windZ, 0, windX)·sway + s·T; rotation
- * Euler(tilt, yaw, 0, "YXZ"); scale = length·size; colour palettes[lightPreset][k mod len]. Returns the number of active falls.
- * Allocation-free.
+ * Euler(tilt, yaw, 0, "YXZ"); scale = length·size; the colour is the material's (the crown's lit material, MFW-84). Returns the number
+ * of active falls. Allocation-free.
  */
 export function writeFallingLeafInstances(
   target: FallingLeafMesh,
@@ -629,7 +655,6 @@ export function writeFallingLeafInstances(
   anchors: readonly TreeLeafAnchor[],
   nowMs: number,
   reducedMotion: boolean,
-  lightPreset: LightPresetId,
   scratch: EffectFrameScratch,
   frame: EndlessRiverFrame | null = null,
 ): number {
@@ -640,7 +665,6 @@ export function writeFallingLeafInstances(
   }
   let n = 0;
   let falls = 0;
-  const palette = target.palettes[lightPreset];
   const life = fallingLeavesDurationMs(target.leavesPerFall);
   const wx = TAP_SHAKE_WIND.windDirX;
   const wz = TAP_SHAKE_WIND.windDirZ;
@@ -670,7 +694,6 @@ export function writeFallingLeafInstances(
       scratch.scale.set(size, size, size);
       scratch.matrix.compose(scratch.position, scratch.quaternion, scratch.scale);
       target.mesh.setMatrixAt(n, scratch.matrix);
-      target.mesh.setColorAt(n, palette[k % palette.length]);
       n++;
     }
   }

@@ -73,6 +73,8 @@ export interface SceneTargets {
   readonly sky: ScreenPoint | null;
   /** MFW-60: a house tap proxy that wins its tap under the app's priority rules. */
   readonly house: TapTarget | null;
+  /** MFW-84: a tree tap proxy that wins its tap under the app's priority rules. */
+  readonly tree: TapTarget | null;
 }
 
 /** Browser-side structural types (three / R3F are not importable from the test runner). */
@@ -159,7 +161,7 @@ export async function installSceneProbe(page: Page): Promise<void> {
 export async function locateSceneTargets(page: Page): Promise<SceneTargets> {
   return page.evaluate(
     ({ waterName, lampPrefix, hitPrefix, propPrefix, landNames, minPx, grid, ringSamples, ringInset }) => {
-      const none = { water: null, lamp: null, krathong: null, sky: null, house: null };
+      const none = { water: null, lamp: null, krathong: null, sky: null, house: null, tree: null };
       const probe = (window as unknown as ProbeWindow).__mfwProbe;
       const canvas = document.querySelector("canvas");
       if (!probe || !probe.scene || !probe.camera || !canvas) return none;
@@ -282,6 +284,7 @@ export async function locateSceneTargets(page: Page): Promise<SceneTargets> {
         krathong: best(hitPrefix),
         sky: skyPoint,
         house: best(`${propPrefix}house-`, propPrefix),
+        tree: best(`${propPrefix}tree-`, propPrefix),
       };
     },
     {

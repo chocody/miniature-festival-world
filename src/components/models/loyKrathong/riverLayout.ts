@@ -4,7 +4,7 @@ import {
   buildTreeLeafAnchors,
   type TreeLeafAnchor,
 } from "@/components/canvas3d/effects/sceneEffectAnchors";
-import { CHIMNEY_SMOKE_LOOK } from "@/config/gimmicks.config";
+import { CHIMNEY_SMOKE_LOOK, HOUSE_CHIMNEY_TOP_LOCAL } from "@/config/gimmicks.config";
 import {
   LOY_KRATHONG_BUSH_CLUMPS,
   LOY_KRATHONG_RIVER_ENVIRONMENT,
@@ -88,11 +88,10 @@ export const LOY_KRATHONG_PROP_TAP_TARGETS: readonly PropTapTarget[] = buildProp
   LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude,
 );
 
-/** MFW-72: one chimney-smoke origin per house (its roof top, no chimney model), derived once from the layout. Render-time only. */
+/** MFW-72 / MFW-84: one chimney-smoke origin per house (just above its chimney top), derived once from the layout. Render-time only. */
 export const LOY_KRATHONG_HOUSE_SMOKE_ORIGINS: readonly WorldVec3[] = buildHouseSmokeOrigins(
   LOY_KRATHONG_RIVER_LAYOUT.houses,
-  LOY_KRATHONG_RIVER_ENVIRONMENT.houses.map((h) => h.roof),
-  RIVER_ENVIRONMENT_PARTS,
+  HOUSE_CHIMNEY_TOP_LOCAL,
   CHIMNEY_SMOKE_LOOK.originLiftY,
 );
 

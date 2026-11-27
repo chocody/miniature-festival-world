@@ -235,7 +235,7 @@ export function writeSkyLanternAt(ageMs: number, reducedMotion: boolean, out: La
  */
 
 export interface SmokePuffFrame {
-  dx: number; // offsets from the smoke origin (roof top)
+  dx: number; // offsets from the smoke origin (chimney top)
   dy: number;
   dz: number;
   radius: number; // world radius of the puff
@@ -247,11 +247,12 @@ export function createSmokePuffFrame(): SmokePuffFrame {
 }
 
 /**
- * Puff k of a smoke drifting along the horizontal world vector (driftX, driftZ) (from writeSmokeDriftInto; its length may exceed 1):
- * a = age − k·staggerMs; a < 0 → invisible, not done; u = a / puffLifeMs ≥ 1 → invisible, done, radius 0. Else e = 1 − (1 − u)²;
- * dy = riseHeight·e; w = wobbleAmplitude·sin(2π·a / wobblePeriodMs + k·GOLDEN_ANGLE_RAD) across the drift; g = driftDistance·(1 − (1 − u)^
- * driftEaseExponent); dx = driftX·g + w·(−driftZ)/|d|; dz = driftZ·g + w·driftX/|d|; grow = start + (end − start)·e; radius = grow for u < fadeStartRatio,
- * else grow·(1 − u)/(1 − fadeStartRatio); visible = radius > 0. A zero drift only wobbles along x.
+ * Puff k of a smoke drifting along the horizontal world unit vector (driftX, driftZ) (from writeSmokeDriftInto: screen-sideways,
+ * downwind): a = age − k·staggerMs; a < 0 → invisible, not done; u = a / puffLifeMs ≥ 1 → invisible, done, radius 0. Else
+ * dy = riseHeight·u (linear: the puff never sinks, GC6); g = driftDistance·(1 − (1 − u)^driftEaseExponent);
+ * w = wobbleAmplitude·sin(2π·a / wobblePeriodMs + k·GOLDEN_ANGLE_RAD) ALONG the drift (screen-sideways, never toward the viewer);
+ * (ux, uz) = drift / |drift| ((1, 0) for a zero drift); dx = driftX·g + ux·w; dz = driftZ·g + uz·w; grow = start + (end − start)·u;
+ * radius = grow for u < fadeStartRatio, else grow·(1 − u)/(1 − fadeStartRatio); visible = radius > 0.
  */
 export function writeSmokePuffAt(ageMs: number, puffIndex: number, driftX: number, driftZ: number, out: SmokePuffFrame): SmokePuffFrame {
   const L = CHIMNEY_SMOKE_LOOK;
@@ -271,16 +272,15 @@ export function writeSmokePuffAt(ageMs: number, puffIndex: number, driftX: numbe
     out.done = true;
     return out;
   }
-  const ease = 1 - (1 - u) ** 2;
   const w = L.wobbleAmplitude * Math.sin((TAU * a) / L.wobblePeriodMs + puffIndex * GOLDEN_ANGLE_RAD);
   const len = Math.hypot(driftX, driftZ);
-  const px = len > 0 ? -driftZ / len : 0;
-  const pz = len > 0 ? driftX / len : 1;
-  out.dy = L.riseHeight * ease;
-  const drift = L.driftDistance * (1 - (1 - u) ** L.driftEaseExponent);
-  out.dx = driftX * drift + px * w;
-  out.dz = driftZ * drift + pz * w;
-  const grow = L.startRadius + (L.endRadius - L.startRadius) * ease;
+  const ux = len > 0 ? driftX / len : 1;
+  const uz = len > 0 ? driftZ / len : 0;
+  out.dy = L.riseHeight * u;
+  const g = L.driftDistance * (1 - (1 - u) ** L.driftEaseExponent);
+  out.dx = driftX * g + ux * w;
+  out.dz = driftZ * g + uz * w;
+  const grow = L.startRadius + (L.endRadius - L.startRadius) * u;
   out.radius = u < L.fadeStartRatio ? grow : (grow * (1 - u)) / (1 - L.fadeStartRatio);
   out.visible = out.radius > 0;
   out.done = false;
@@ -294,38 +294,23 @@ export interface SmokeDrift {
 }
 
 /**
- * The drift of one smoke, chosen once per tap so the plume leans toward the middle of the screen (it never hides under the top card
- * or runs off an edge). Inputs: the smoke origin in NDC (ndcX, ndcY), the view aspect (width / height), the camera's +X axis (right)
- * and +Z axis (back, toward the viewer) in world space. Screen target s = normalise(−ndcX·aspect, −ndcY) (screen right / up); world
- * drift = rightH·sx − backH·sy / max(backY, minElevationSin) (rightH, backH = the horizontal unit parts; moving toward the viewer moves
- * down the screen by sin(elevation) per unit, hence the division). Near the centre (|s| < centreFallbackNdc), a degenerate camera or
- * non-finite input → TAP_SHAKE_WIND. Allocation-free.
+ * The drift of one smoke (MFW-84, replaces MFW-72's "toward the middle of the screen"), chosen once per tap: the camera's horizontal
+ * right axis (rightX, rightZ) normalised, signed so it points downwind (dot with TAP_SHAKE_WIND ≥ 0; a tie keeps +right). In the
+ * orthographic scene camera without roll, moving along it never changes the screen y, so only the rise moves the smoke vertically.
+ * A zero or non-finite axis → TAP_SHAKE_WIND. Allocation-free; returns `out`.
  */
-export function writeSmokeDriftInto(
-  ndcX: number,
-  ndcY: number,
-  aspect: number,
-  rightX: number,
-  rightZ: number,
-  backX: number,
-  backY: number,
-  backZ: number,
-  out: SmokeDrift,
-): SmokeDrift {
-  const L = CHIMNEY_SMOKE_LOOK;
-  out.x = TAP_SHAKE_WIND.windDirX;
-  out.z = TAP_SHAKE_WIND.windDirZ;
-  const sxRaw = -ndcX * (Number.isFinite(aspect) && aspect > 0 ? aspect : 1);
-  const syRaw = -ndcY;
-  const sLen = Math.hypot(sxRaw, syRaw);
-  const rLen = Math.hypot(rightX, rightZ);
-  const bLen = Math.hypot(backX, backZ);
-  if (!(sLen >= L.centreFallbackNdc) || !(rLen > 0) || !(bLen > 0) || !Number.isFinite(backY)) return out;
-  const sx = sxRaw / sLen;
-  const sy = syRaw / sLen;
-  const toward = -sy / Math.max(backY, L.minElevationSin);
-  out.x = (rightX / rLen) * sx + (backX / bLen) * toward;
-  out.z = (rightZ / rLen) * sx + (backZ / bLen) * toward;
+export function writeSmokeDriftInto(rightX: number, rightZ: number, out: SmokeDrift): SmokeDrift {
+  const len = Math.hypot(rightX, rightZ);
+  if (!Number.isFinite(len) || !(len > 0)) {
+    out.x = TAP_SHAKE_WIND.windDirX;
+    out.z = TAP_SHAKE_WIND.windDirZ;
+    return out;
+  }
+  const ux = rightX / len;
+  const uz = rightZ / len;
+  const sign = TAP_SHAKE_WIND.windDirX * ux + TAP_SHAKE_WIND.windDirZ * uz < 0 ? -1 : 1;
+  out.x = sign * ux + 0; // + 0 turns −0 into 0
+  out.z = sign * uz + 0;
   return out;
 }
 

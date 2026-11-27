@@ -310,37 +310,42 @@ export const LAMP_GROUND_LIGHT_LOOK = Object.freeze({
 
 /*
  * MFW-72 (backlog 11.6, slice 2 of open question 35): chimney smoke and falling leaves. Owner decision (open question 35, 2026-11-25):
- * house tap → windows light up with a puff of chimney smoke; tree tap → leaves shake and a few fall. How they are built and every
- * number below is a loop decision, not yet reviewed by the owner (DRAFT, listed in docs/follow-ups.md, MFW-72). No chimney model: the
- * smoke rises from the roof top. Both fade by shrinking (NormalBlending, the existing effect program: no ring, no halo, MFW-67).
+ * house tap → windows light up with a puff of chimney smoke; tree tap → leaves shake and a few fall. Both fade by shrinking
+ * (NormalBlending: no ring, no halo, MFW-67).
+ * MFW-84 (backlog 15.2), owner 2026-11-27: "กดบ้าน ควันมันควรลอยขึ้นข้างบนจางๆไม่เยอะมาก ไม่ใช่ลงล่าง" / "กดต้นไม้ใบควรเล็กกว่านี้และเป็นสีเดียวกับต้นไม้".
+ * The smoke now leaves the chimney top, rises, drifts only sideways on screen (downwind) and is faint; the leaves are smaller and use
+ * the crown's lit material. Values marked DRAFT (MFW-84) are loop decisions sized from the owner's words, listed in docs/follow-ups.md.
  */
 
 /**
- * Smoke puff from a tapped house's roof top: `puffs` (CHIMNEY_SMOKE_PUFFS_PER_TAP[tier]) soft round blobs leave one after the other
- * (staggerMs), billow out (ease-out) along a drift chosen at tap time, rise a little, wobble across the drift, grow, then shrink to
- * nothing over the last (1 − fadeStartRatio) of their life. World units / ms.
- * Fix round (QA, MFW-72): at the default framing the house nearest the top card has its roof UNDER the card, so a column that rose
- * straight up was hidden. The drift now leans toward the middle of the screen (`writeSmokeDriftInto`, computed once per tap from the
- * camera): a house near the top of the screen puffs toward the viewer (down the screen), one near an edge puffs inward; with no camera
- * (tests) it follows TAP_SHAKE_WIND. The plume is low, wide and dense instead of a tall thin column.
- * NIGHT tones are grey-blue because the effect program is unlit. DRAFT (MFW-72).
+ * The chimney-cap top centre of the owner house model, house-local (before the house transform), measured from
+ * LOY_KRATHONG_HOUSE_MODEL.shell (pinned by sceneEffectAnchors.test.ts A1c); the lite shell keeps the same chimney cap. Kept here (no
+ * river / model import) because the river config and the generated model file are not edited by effect tickets. Technical, not DRAFT.
+ */
+export const HOUSE_CHIMNEY_TOP_LOCAL = Object.freeze({ x: -0.2101, y: 0.7711, z: 0.1131 });
+
+/**
+ * Smoke from a tapped house's chimney (MFW-84): `puffs` (CHIMNEY_SMOKE_PUFFS_PER_TAP[tier]) small soft blobs leave the chimney top one
+ * after the other (staggerMs), rise linearly by riseHeight over their life, drift a little sideways on screen (along the camera's
+ * horizontal right axis, signed downwind: writeSmokeDriftInto, chosen once per tap) with an ease-out, wobble along that same axis, grow,
+ * then shrink to nothing over the last (1 − fadeStartRatio) of their life. Nothing moves the smoke toward or away from the viewer, so on
+ * screen it only rises. riseHeight ≥ endRadius / (1 − fadeStartRatio) keeps the top edge of a shrinking puff from sinking (GC6).
+ * "Faint" = the material opacity (a uniform: no new program). World units / ms. NIGHT tones are grey-blue because the effect program is
+ * unlit. DRAFT (MFW-84) unless marked.
  */
 export const CHIMNEY_SMOKE_LOOK = Object.freeze({
-  originLiftY: 0.04, // above the roof top
-  staggerMs: 140,
-  puffLifeMs: 1_800,
-  riseHeight: 0.25, // a low plume (fix round; was a 1.8 column)
-  driftDistance: 2.2, // world units along the tap-time drift (× 1 / sin(camera elevation) for its toward-viewer part)
-  driftEaseExponent: 1.5, // drift progress 1 − (1 − u)^k: slower than the rise's ease-out, so the plume stays joined to the roof
-  wobbleAmplitude: 0.06,
+  originLiftY: 0.04, // above the chimney top
+  staggerMs: 300,
+  puffLifeMs: 2_200,
+  riseHeight: 0.8,
+  driftDistance: 0.25, // world units along the screen-sideways, downwind drift
+  driftEaseExponent: 1.5, // drift progress 1 − (1 − u)^k: the puff leaves the chimney straight up first
+  wobbleAmplitude: 0.03, // along the drift axis (screen-sideways)
   wobblePeriodMs: 900,
-  startRadius: 0.16, // large first puffs near the roof
-  endRadius: 0.38,
-  fadeStartRatio: 0.7,
-  /** Technical: floor of sin(camera elevation) in the toward-viewer compensation (a near-horizontal camera never explodes the drift). */
-  minElevationSin: 0.3,
-  /** Technical: below this screen distance from the centre (NDC units) the drift falls back to TAP_SHAKE_WIND. */
-  centreFallbackNdc: 0.05,
+  startRadius: 0.05,
+  endRadius: 0.14,
+  fadeStartRatio: 0.6,
+  opacity: 0.45, // faint: material opacity of the whole smoke mesh
   geometry: Object.freeze({ kind: "icosahedron", radius: 1, detail: 1 } as const), // detail 1 = a round outline
   palette: Object.freeze({
     DAY: Object.freeze(["#F5F2EA", "#E3DED3"]),
@@ -351,9 +356,9 @@ export const CHIMNEY_SMOKE_LOOK = Object.freeze({
 /**
  * A few leaves (FALLING_LEAVES_PER_TAP[tier]) drop from a tapped tree's crown one after the other, fall (smoothstep) with a downwind
  * drift, flutter (pitched up by `flightPitchRad` so the face shows, ± tiltAmplitudeRad, spinning), settle flat on the bank (restMs) and
- * shrink away (fadeMs). The leaf is the MFW-69 leaf shell at unit length, scaled to `length` (toy-scale for visibility).
- * Fix round (QA, MFW-72): a flat 0.26 leaf read as 8–12 px flecks; it is now longer, pitched up while it falls, and orange / russet so
- * it stands out on the DAY grass. DRAFT (MFW-72).
+ * shrink away (fadeMs). The leaf is the MFW-69 leaf shell at unit length, scaled to `length`.
+ * MFW-84: the leaf is drawn with the crown's own lit material (RIVER_FOLIAGE_PARTS.*.leafClump.material), so it has the crown's colour
+ * on every tier and under each light preset; there is no separate leaf palette. DRAFT (MFW-72) unless marked.
  */
 export const FALLING_LEAF_LOOK = Object.freeze({
   shell: Object.freeze({
@@ -369,7 +374,7 @@ export const FALLING_LEAF_LOOK = Object.freeze({
     rows: 3,
     columns: 3,
   } satisfies LeafShellSpec) as LeafShellSpec,
-  length: 0.4, // world units (was 0.26)
+  length: 0.2, // world units; DRAFT (MFW-84, was 0.4)
   spawnRadiusRatio: 0.75, // × crown radius, horizontal
   spawnDropRatio: 0.45, // × crown radius, below the crown centre
   staggerMs: 140,
@@ -383,8 +388,4 @@ export const FALLING_LEAF_LOOK = Object.freeze({
   flightPitchRad: 1.35, // spine pitched up in flight (the face shows); 0 = lying flat on landing
   tiltAmplitudeRad: 0.3,
   restLiftY: 0.015, // above the bank surface
-  palette: Object.freeze({
-    DAY: Object.freeze(["#E39A2C", "#C2582A"]), // orange-gold, russet (were #D8B24A / #B5BF55: too close to the DAY grass)
-    NIGHT: Object.freeze(["#D2A24E", "#C07A45"]), // were #C2A253 / #A3AE5C (themselves brightened from #8E7C47 / #6F7E46)
-  } satisfies Record<LightPresetId, readonly string[]>) as Readonly<Record<LightPresetId, readonly string[]>>,
 });

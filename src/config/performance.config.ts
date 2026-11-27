@@ -140,8 +140,11 @@ export const EFFECT_POOL_CAPS: Readonly<Record<RenderTier, EffectPoolCaps>> = Ob
  */
 export const FIREWORK_SPARKS_PER_BURST: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 32, MEDIUM: 24, LOW: 12 });
 
-/** Smoke puffs per house tap per 3D tier (LOW = the cheap variant: fewer puffs; fix round 5/4/3 → 6/5/3, denser). DRAFT (MFW-72 loop decision, not yet reviewed by the owner). */
-export const CHIMNEY_SMOKE_PUFFS_PER_TAP: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 6, MEDIUM: 5, LOW: 3 });
+/**
+ * Smoke puffs per house tap per 3D tier (LOW = the cheap variant: fewer puffs). MFW-84: 6/5/3 → 4/3/2 (owner, 2026-11-27: "จางๆไม่เยอะมาก",
+ * faint, not much). DRAFT (MFW-84 loop decision, not yet reviewed by the owner).
+ */
+export const CHIMNEY_SMOKE_PUFFS_PER_TAP: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 4, MEDIUM: 3, LOW: 2 });
 /** Falling leaves per tree tap per 3D tier (LOW = the cheap variant: fewer leaves; fix round 6/5/3 → 8/6/3). DRAFT (MFW-72 loop decision, not yet reviewed by the owner). */
 export const FALLING_LEAVES_PER_TAP: Readonly<Record<RenderTier, number>> = Object.freeze({ HIGH: 8, MEDIUM: 6, LOW: 3 });
 /** Leaf paths precomputed per tree: enough for the largest per-tap count (technical, MFW-72). */

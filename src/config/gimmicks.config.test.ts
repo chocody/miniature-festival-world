@@ -5,6 +5,7 @@ import {
   CHIMNEY_SMOKE_LOOK,
   FALLING_LEAF_LOOK,
   GIMMICK_BOUNCE,
+  HOUSE_CHIMNEY_TOP_LOCAL,
   KRATHONG_MARK_CUE,
   LAMP_GLOW_LOOK,
   MS_PER_SECOND,
@@ -204,7 +205,7 @@ describe("scene reactions part 2 (MFW-72)", () => {
     for (const [k, v] of Object.entries(o)) if (typeof v === "number") expect(Number.isFinite(v) && v > 0, `${label}.${k}`).toBe(true);
   };
 
-  it("GC5: smoke and leaf looks are finite and > 0, the smoke grows then fades, palettes are #rrggbb per light preset", () => {
+  it("GC5: smoke and leaf looks are finite and > 0, the smoke grows then fades and is faint; the smoke palette is #rrggbb per light preset", () => {
     positive(CHIMNEY_SMOKE_LOOK, "smoke");
     positive(CHIMNEY_SMOKE_LOOK.geometry, "smoke geometry");
     expect(CHIMNEY_SMOKE_LOOK.fadeStartRatio).toBeLessThan(1);
@@ -212,21 +213,29 @@ describe("scene reactions part 2 (MFW-72)", () => {
     expect(CHIMNEY_SMOKE_LOOK.geometry.kind).toBe("icosahedron");
     expect(CHIMNEY_SMOKE_LOOK.geometry.detail).toBeGreaterThanOrEqual(1); // a round blob, not a faceted 20-face shape
     positive(FALLING_LEAF_LOOK, "leaf");
-    for (const look of [CHIMNEY_SMOKE_LOOK, FALLING_LEAF_LOOK]) {
-      expect(Object.isFrozen(look)).toBe(true);
-      expect(Object.keys(look.palette).sort()).toEqual([...LIGHT_PRESET_IDS].sort());
-      for (const id of LIGHT_PRESET_IDS) {
-        expect(look.palette[id].length).toBeGreaterThan(0);
-        for (const hex of look.palette[id]) expect(hex).toMatch(/^#[0-9a-f]{6}$/i);
-      }
+    for (const look of [CHIMNEY_SMOKE_LOOK, FALLING_LEAF_LOOK]) expect(Object.isFrozen(look)).toBe(true);
+    expect(Object.keys(CHIMNEY_SMOKE_LOOK.palette).sort()).toEqual([...LIGHT_PRESET_IDS].sort());
+    for (const id of LIGHT_PRESET_IDS) {
+      expect(CHIMNEY_SMOKE_LOOK.palette[id].length).toBeGreaterThan(0);
+      for (const hex of CHIMNEY_SMOKE_LOOK.palette[id]) expect(hex).toMatch(/^#[0-9a-f]{6}$/i);
     }
+    expect("palette" in FALLING_LEAF_LOOK).toBe(false); // MFW-84: the leaves use the crown's material
+    expect(CHIMNEY_SMOKE_LOOK.opacity).toBeGreaterThan(0);
+    expect(CHIMNEY_SMOKE_LOOK.opacity).toBeLessThan(1);
     expect(FALLING_LEAF_LOOK.flightPitchRad).toBeGreaterThan(FALLING_LEAF_LOOK.tiltAmplitudeRad); // pitched up all the way down
     expect(FALLING_LEAF_LOOK.flightPitchRad).toBeLessThan(Math.PI / 2);
-    expect(CHIMNEY_SMOKE_LOOK.minElevationSin).toBeLessThan(1);
     expect(FALLING_LEAF_LOOK.shell.length).toBe(1); // unit length: the instance scale is FALLING_LEAF_LOOK.length
     const data = buildLeafShellMeshData(FALLING_LEAF_LOOK.shell);
     expect(data.triangleCount).toBeGreaterThan(0);
     expect(data.indices.length).toBe(3 * data.triangleCount);
+  });
+
+  it("GC6 (MFW-84): the smoke's top edge never sinks, it rises more than it drifts; the chimney top is frozen and finite", () => {
+    const L = CHIMNEY_SMOKE_LOOK;
+    expect(L.riseHeight).toBeGreaterThanOrEqual(L.endRadius / (1 - L.fadeStartRatio));
+    expect(L.riseHeight).toBeGreaterThan(L.driftDistance + L.wobbleAmplitude);
+    expect(Object.isFrozen(HOUSE_CHIMNEY_TOP_LOCAL)).toBe(true);
+    for (const v of [HOUSE_CHIMNEY_TOP_LOCAL.x, HOUSE_CHIMNEY_TOP_LOCAL.y, HOUSE_CHIMNEY_TOP_LOCAL.z]) expect(Number.isFinite(v)).toBe(true);
   });
 });
 
