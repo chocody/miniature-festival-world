@@ -3,6 +3,7 @@ export * from "./types";
 export * from "./sockets";
 export * from "./krathongAppearance";
 export * from "./ornamentAppearance";
+export * from "./starAppearance";
 export * from "./krathongBuilder";
 export * from "./krathongAssetKeys";
 export * from "./krathongAssembler";
