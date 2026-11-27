@@ -5,6 +5,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT, E2E_WATER_TAP_OFFSET_PX } from "./fixtures/stageFixtures";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -40,7 +41,7 @@ async function openWorld(page: Page, memory: number, cores: number, startUrl = "
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   return { pageErrors, consoleErrors };
 }

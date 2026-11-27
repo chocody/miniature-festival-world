@@ -21,6 +21,7 @@ import {
   waitForCameraRest,
   waitForKrathongModels,
 } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-60 (backlog 11.4): scene reactions on the production build (SwiftShader). A sky tap (bare land) launches a firework, a house
@@ -61,7 +62,7 @@ async function openWorld(page: Page, memory: number, cores: number, startUrl: st
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await waitForCameraRest(page);
   await waitForKrathongModels(page); // MFW-65: the design files are in before any program count is sampled

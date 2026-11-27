@@ -5,6 +5,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { lowTier } from "./helpers/ownKrathongPopup";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { WISH_SUBMIT_LABEL, WISH_SWITCH_LABEL, WISH_TEXT_LABEL } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /** MFW-83: the design bar floats centred above the bottom edge; the wish switch is symmetric in both states; no visible "คุ้งน้ำ". */
 const root = (page: Page) => page.locator("[data-flow-state]");
@@ -80,7 +81,7 @@ test("[360×640] the wish switch is symmetric in both states; the world shows no
   }
   await page.getByRole("button", { name: WISH_SUBMIT_LABEL }).click();
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.getByTestId("zone-navigator")).toHaveAttribute("data-zone-count", "3");
   await expect(page.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /คุ้งน้ำก่อนหน้า/ })).toBeVisible();

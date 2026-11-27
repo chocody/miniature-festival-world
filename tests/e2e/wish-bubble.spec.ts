@@ -87,8 +87,22 @@ test("W2: the report icon on the bubble sends a report for that creation", async
   const point = await locateKrathongById(page, E2E_BUBBLE_ITEM_ID);
   await page.touchscreen.tap(point.x, point.y);
   await expect(bubble(page)).toBeVisible();
-  await bubble(page).getByRole("button", { name: E2E_REPORT_LABEL }).click();
-  await bubble(page).getByRole("button", { name: E2E_REPORT_CONFIRM }).click();
+  // The bubble follows the drifting krathong: at the ≈ 10 FPS of the CI runner it moves every frame (more than
+  // WISH_BUBBLE_MIN_MOVE_PX), so Playwright's click never sees a "stable" element and times out once the bubble fades. Focus pauses
+  // the bubble's lifetime (WishBubble B11), the checks below hold right before the click, and the click is dispatched on the button
+  // itself. Pointer hit-testing of the moving bubble is therefore not exercised here; the handlers are covered by WishBubble.test.tsx
+  // (B5, B6) and WishReportControl's unit tests.
+  const report = bubble(page).getByRole("button", { name: E2E_REPORT_LABEL });
+  await expect(report).toBeVisible();
+  await expect(report).toBeEnabled();
+  await report.focus();
+  await expect(bubble(page)).toHaveAttribute("data-wish-bubble-phase", "shown");
+  await report.dispatchEvent("click");
+  // An open report keeps the bubble (WishBubble B5).
+  const confirm = bubble(page).getByRole("button", { name: E2E_REPORT_CONFIRM });
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await confirm.dispatchEvent("click");
   await expect(bubble(page)).toContainText(E2E_REPORT_RECEIVED);
   expect(bodies).toEqual([{ creationId: E2E_BUBBLE_ITEM_ID }]);
 });

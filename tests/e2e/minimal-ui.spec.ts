@@ -7,6 +7,7 @@ import { seedSecondOwnEntry } from "./helpers/hud";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { SCENE_SELECTOR, forceTier } from "./helpers/stage";
 import { CLEAN_WISH, WISH_TEXT_LABEL, completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * Backlog 10.3 (MFW-55): a minimal UI over the scene. One primary action per step, the scene centre stays visible, HUD
@@ -131,7 +132,7 @@ for (const vp of [
       await expectTranslucent(page.locator(PANEL_SLOT));
 
       await page.getByRole("button", { name: RELEASE }).click();
-      await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+      await expectWorldAfterRelease(page);
       expect(await visiblePrimaryCount(page)).toBe(0);
       await expectSceneCentreVisible(page, SCENE_SELECTOR);
       await expectTranslucent(page.locator(PANEL_SLOT));
@@ -160,7 +161,7 @@ test.describe("390×844 touch", () => {
     await expectTouchTargets(page);
 
     await page.getByRole("button", { name: RELEASE }).tap();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+    await expectWorldAfterRelease(page);
     await expectTouchTargets(page);
 
     await page.getByRole("button", { name: FIND_MY_BUTTON }).tap();
@@ -205,7 +206,7 @@ test.describe("390×844 keyboard", () => {
     await tabTo(page, release);
     await expectFocusRing(release);
     await page.keyboard.press("Enter");
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+    await expectWorldAfterRelease(page);
 
     const findMy = page.getByRole("button", { name: FIND_MY_BUTTON });
     await tabTo(page, findMy);

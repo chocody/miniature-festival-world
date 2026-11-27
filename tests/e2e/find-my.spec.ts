@@ -14,6 +14,7 @@ import {
   listRingAndHaloMeshes,
   readObjectScaleX,
 } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
@@ -66,7 +67,7 @@ async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 }
 
 /** Release into zone 2, move to zone 3, open the drawer. */

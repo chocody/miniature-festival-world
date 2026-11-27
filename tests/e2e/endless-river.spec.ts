@@ -29,6 +29,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { readStagePixels } from "./helpers/backgroundProbe";
 import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-58 (backlog 11.2): the endless river on the production build (SwiftShader). Travelling along the river never reaches an edge,
@@ -95,7 +96,7 @@ async function walkToWorld(page: Page, url: string) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
 }
 

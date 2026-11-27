@@ -4,6 +4,17 @@ import type { Page } from "@playwright/test";
 export const E2E_CREATION_ID = "0f8b6c1e-3a2d-4c5b-9e7f-1a2b3c4d5e6f";
 export const E2E_OWNER_TOKEN_STORAGE_KEY = "mfw:deviceOwnerToken:v1"; // = DEVICE_OWNER_TOKEN_STORAGE_KEY
 const E2E_LATERAL_LIMIT = 0.5;
+/**
+ * Technical (test only): how long a test waits after tapping "ปล่อยกระทง" for SHARED_WORLD_EXPLORE (Playwright's default expect
+ * timeout is 5 s). The release ends on the react-spring onRest of the lower + settle springs; react-spring clamps one frame's step to
+ * 64 ms, so on frames slower than that the flight takes a fixed ≈ 30–37 frames instead of a fixed time, and RELEASE_SCENE_WATCHDOG_MS
+ * (6 s after the save) is the app's ceiling. Measured click → SHARED_WORLD_EXPLORE at 390 × 844 on SwiftShader (MFW-1, 2026-11-27):
+ * quiet LOW 2.1–2.7 s / HIGH 2.2–3.4 s; two workers on two cores LOW 2.5–3.0 s / HIGH 4.5–4.7 s; two workers on two cores with one
+ * core busy LOW 2.2–3.6 s / HIGH 5.8–9.1 s (frames 150–233 ms). 15 s is ≈ 1.6× the slowest measurement and above the save + watchdog
+ * ceiling (pinned > RELEASE_SCENE_WATCHDOG_MS by tests/unit/ritual-e2e-fixtures.test.ts). Only the time allowed changes, not what is
+ * asserted.
+ */
+export const E2E_RELEASE_TO_WORLD_TIMEOUT_MS = 15_000;
 const E2E_EXPIRY_DAYS = 30;
 const MS_PER_DAY = 86_400_000;
 const HTTP_CREATED = 201;

@@ -5,6 +5,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -66,7 +67,7 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
   await expect(page.locator(VIEWPORT)).not.toHaveAttribute("data-selected-target");
 
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await page.touchscreen.tap(tap.x, tap.y);
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-selected-target", /^(krathong|water|lamp)$/);

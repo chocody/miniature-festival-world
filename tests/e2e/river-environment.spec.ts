@@ -5,6 +5,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_MAX_SHADER_PROGRAMS } from "./fixtures/perfAudit";
 import { E2E_PINNED_TIER_URL, installSceneProbe, readProgramCount, readWaterNormals } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -53,7 +54,7 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
     await expect(page.locator("canvas")).toHaveCount(1);
 
     await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+    await expectWorldAfterRelease(page);
     await expect(page.locator("canvas")).toHaveCount(1);
     await nextFrames(page);
 

@@ -19,6 +19,7 @@ import {
   waitForCameraRest,
   type ScreenPoint,
 } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-59: taps on water, a lamp and a river krathong, with mouse and touch, on every 3D tier (production build, SwiftShader).
@@ -89,7 +90,7 @@ async function walkToWorld(page: Page) {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 }
 
 function collectErrors(page: Page) {

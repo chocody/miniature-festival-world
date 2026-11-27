@@ -10,6 +10,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { readHeroDesigns } from "./helpers/designProbe";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL, installSceneProbe, sceneObjectVisible, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-78 (backlog 14.4): the customizer offers the five owner-supplied designs as thumbnails without text; the chosen design is
@@ -93,7 +94,7 @@ test.describe("390 px", () => {
     await page.getByRole("button", { name: "ถัดไป" }).tap();
     await completeWishStep(page);
     await page.getByRole("button", { name: "ปล่อยกระทง" }).tap();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+    await expectWorldAfterRelease(page);
     expect(requests).toHaveLength(1);
     expect((requests[0].body.appearance as Record<string, unknown>).design).toBe("lotus_bud_01");
 

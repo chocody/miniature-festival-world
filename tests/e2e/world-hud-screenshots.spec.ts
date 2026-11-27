@@ -5,6 +5,7 @@ import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import { E2E_PINNED_TIER_URL, installSceneProbe, waitForCameraRest } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /** MFW-74 X1: before / after screenshots of the world HUD. Uses only selectors that exist before and after the card. */
 const LIGHT_PRESET_STORAGE_KEY = "mfw:lightPreset:v1"; // duplicated literal (look.config.ts)
@@ -44,7 +45,7 @@ async function walkToWorld(page: Page, preset: "DAY" | "NIGHT") {
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(page.locator("[data-flow-state]")).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await waitForCameraRest(page); // the release flight has landed
 }
