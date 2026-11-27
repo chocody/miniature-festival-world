@@ -4,12 +4,11 @@ import type { KrathongFlameAnchor } from "./krathongDesignGlb";
 import type { KrathongAppearance, KrathongPartInstance } from "./types";
 
 /**
- * Design of a krathong (MFW-65). Every appearance maps to KRATHONG_DEFAULT_DESIGN until the customizer picks a design
- * (card 14.4); the stored appearance format is unchanged.
+ * Design of a krathong: the chosen `design` (MFW-78), or KRATHONG_DEFAULT_DESIGN for an appearance stored before MFW-78
+ * (no `design` key). Stored data is never rewritten.
  */
 export function krathongDesignForAppearance(appearance: KrathongAppearance): KrathongDesignId {
-  void appearance;
-  return KRATHONG_DEFAULT_DESIGN;
+  return appearance.design ?? KRATHONG_DEFAULT_DESIGN;
 }
 
 /** The distinct designs of a list of appearances, in KRATHONG_DESIGN_IDS order. */

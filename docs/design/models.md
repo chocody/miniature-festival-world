@@ -246,8 +246,8 @@ files on this branch, which renders exactly as BASE):
 
 `docs/design/screenshots/mfw-76/` (24 PNGs, 390 × 844, HIGH pinned, `?pinTier=1`): `before-{customize,river}-{day,night}.png`
 (the procedural krathong, model files blocked; shared by all five designs) and `after-<id>-{customize,river}-{day,night}.png`
-for `banana_leaf_01`, `lotus_bud_01`, `marigold_01`, `rose_candles_01`, `naga_01`. No app code selects a design yet (picker =
-MFW-78), so the shots for the four new designs fulfil the `banana_leaf_01.<lod>.glb` requests with that design's public
+for `banana_leaf_01`, `lotus_bud_01`, `marigold_01`, `rose_candles_01`, `naga_01`. No app code selected a design then (the
+picker came with MFW-78, §11), so the shots for the four new designs fulfil the `banana_leaf_01.<lod>.glb` requests with that design's public
 file (route substitution, decision D6).
 
 ## 9. Runtime cost (MFW-76)
@@ -350,3 +350,27 @@ Draw calls go **down** by one (the door is part of the model): 20 / 20 / 19 → 
 
 `docs/design/screenshots/mfw-66/` (390 × 844, HIGH pinned with `?pinTier=1`, opening view): `before-world-day.png`,
 `before-world-night.png` (procedural houses, BASE) and `after-world-day.png`, `after-world-night.png` (owner model).
+
+## 11. Design picker (MFW-78)
+
+- **Stored key.** The customizer stores the chosen design as the optional appearance key `design` (one of
+  `KRATHONG_DESIGN_IDS`; `KRATHONG_APPEARANCE_OPTIONAL_KEYS`). The strict parser accepts it on the write path
+  (`POST /api/creations`) and the zone read path; any other value fails the whole appearance (an unknown id is never stored).
+  `DEFAULT_KRATHONG_APPEARANCE` carries `design: "banana_leaf_01"`, so every new creation stores its design explicitly.
+- **Legacy rows.** Appearances stored before MFW-78 have no `design` key. They are never rewritten (no migration; the column
+  is `jsonb` with an object check) and render as `KRATHONG_DEFAULT_DESIGN` (`krathongDesignForAppearance`).
+- **Picker.** One row of five thumbnail buttons, no visible text (accessible names `KRATHONG_DESIGN_LABELS`, PLACEHOLDER);
+  it replaces the part tabs ฐาน / ใบตอง / ดอกไม้ / เทียน (owner, 2026-11-27). The part keys stay in stored data at their
+  defaults. A design file is fetched on the first tap (no prefetch); while it loads the hero keeps the last design it showed.
+- **Thumbnails.** `public/ui/krathong-designs/<id>.png`, 112 × 112 px (shown at 48 CSS px), cropped from
+  `docs/design/screenshots/mfw-76/after-<id>-customize-day.png` (square x 95, y 285, 200 px) by
+  `node scripts/krathong-thumbnails.mjs` (Playwright Chromium, honours `PW_CHROMIUM_PATH`). Re-run when a palette changes;
+  re-probe the crop if the MFW-76 shots are retaken. Not under `public/models/krathong/` (KA2 holds exactly the GLBs there).
+- **Screenshots.** `docs/design/screenshots/mfw-78/` (HIGH pinned, `?pinTier=1`, a 12-item zone of legacy / lotus / naga
+  items, `tests/e2e/design-picker-screenshots.spec.ts`): `{before,after}-{customize,river}-{phone,desktop}-{day,night}.png`
+  at 390 × 844 (phone) and 1440 × 900 (desktop). The "after" customize shot has lotus chosen. On BASE the old parser dropped
+  every zone item carrying `design`, so the "before" river shows only the legacy items.
+- **Cost.** A mixed zone draws up to 5 design buckets instead of 1: up to +4 instanced draw calls (plus their shadow pass on
+  HIGH), no new program (the one design-body material). The first use of a design fetches its river LOD file. Per-LOD body
+  triangles stay within the unchanged guards (§9: worst full banana 5 588, medium banana 1 056, low marigold 880).
+

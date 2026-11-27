@@ -8,6 +8,7 @@ import {
   LEAF_FOLD_STYLE_IDS,
   RIM_SOCKET_COUNT,
 } from "@/config/events/loyKrathong.config";
+import { KRATHONG_DEFAULT_DESIGN } from "@/config/krathongDesigns.config";
 import { assembleKrathong } from "./krathongAssembler";
 import {
   DEFAULT_KRATHONG_APPEARANCE,
@@ -16,6 +17,7 @@ import {
   serializeKrathongAppearance,
 } from "./krathongAppearance";
 import { materialSpecFor, meshSpecFor } from "./krathongAssetKeys";
+import { krathongDesignForAppearance } from "./krathongDesign";
 import { krathongInstanceBucketIndex } from "./krathongInstanceBuckets";
 
 /** Stored appearance data (creations_public.appearance) must survive the v2 model (MFW-48 AC1). */
@@ -49,5 +51,17 @@ describe("stored appearance compatibility (MFW-48)", () => {
       expect(() => materialSpecFor(part.materialKey), part.id).not.toThrow();
       expect(krathongInstanceBucketIndex(part.geometryKey, part.materialKey), part.id).not.toBeNull();
     }
+  });
+
+  it.each(FIXTURES.slice(0, 2))("SC1 (MFW-78): a pre-design stored appearance keeps no design key and renders the default design: %s", (json) => {
+    const stored = JSON.parse(json) as Record<string, unknown>;
+    expect("design" in stored).toBe(false);
+    const parsed = parseKrathongAppearance(stored);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect("design" in parsed.appearance).toBe(false);
+    expect(parsed.appearance).toEqual(stored);
+    expect(krathongDesignForAppearance(parsed.appearance)).toBe(KRATHONG_DEFAULT_DESIGN);
+    expect(krathongInstanceBucketIndex(`design:${KRATHONG_DEFAULT_DESIGN}`, "designBody")).not.toBeNull();
   });
 });

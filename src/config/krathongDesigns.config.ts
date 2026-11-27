@@ -8,7 +8,10 @@ import { KRATHONG_MATTE_SURFACE, type KrathongLod } from "./krathongModel.config
 export const KRATHONG_DESIGN_IDS = Object.freeze(["banana_leaf_01", "lotus_bud_01", "marigold_01", "rose_candles_01", "naga_01"] as const);
 export type KrathongDesignId = (typeof KRATHONG_DESIGN_IDS)[number];
 
-/** Design of every krathong until the customizer picks one (card 14.4). Loop decision (MFW-65), DRAFT. */
+/**
+ * Design of every appearance without a `design` key (stored before MFW-78). Loop decision (MFW-65), DRAFT. New creations store
+ * their design explicitly (DEFAULT_KRATHONG_APPEARANCE carries this value).
+ */
 export const KRATHONG_DEFAULT_DESIGN: KrathongDesignId = "banana_leaf_01";
 
 /** Served from public/models/krathong (the committed outputs of scripts/krathong-models.mjs). */
@@ -40,3 +43,19 @@ export const KRATHONG_DESIGN_ASSET_BUDGET = Object.freeze({
  * and the river (docs/perf/MFW-65.md); no texture and no custom shader.
  */
 export const KRATHONG_DESIGN_BODY_MATERIAL = Object.freeze({ ...KRATHONG_MATTE_SURFACE, color: "#FFFFFF", vertexColors: true });
+
+/**
+ * MFW-78 design picker thumbnails: static PNGs cropped from the MFW-76 DAY customize shots by scripts/krathong-thumbnails.mjs.
+ * Not under public/models/krathong (KA2: that directory holds exactly the GLBs).
+ */
+export const KRATHONG_DESIGN_THUMBNAIL_PUBLIC_PATH = "/ui/krathong-designs";
+
+export function krathongDesignThumbnailUrl(design: KrathongDesignId): string {
+  return `${KRATHONG_DESIGN_THUMBNAIL_PUBLIC_PATH}/${design}.png`;
+}
+
+/** PNG edge of a thumbnail (lead decision), shown at 48 CSS px (`size-12`, ≥ 2× on retina screens). */
+export const KRATHONG_DESIGN_THUMBNAIL_PX = 112;
+
+/** Lead guard: most bytes one thumbnail file may have (KT2). */
+export const KRATHONG_DESIGN_THUMBNAIL_MAX_BYTES = 32_768;

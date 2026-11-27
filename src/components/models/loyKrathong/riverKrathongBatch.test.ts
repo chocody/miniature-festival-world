@@ -13,7 +13,7 @@ import {
 } from "@/core/customization";
 import { computeUprightLocalQuaternion } from "@/core/customization/uprightConstraint";
 import { RIVER_ITEM_EULER_ORDER } from "@/core/world/riverFlow";
-import { KRATHONG_DESIGN_MAX_FLAMES } from "@/config/krathongDesigns.config";
+import { KRATHONG_DESIGN_MAX_FLAMES, type KrathongDesignId } from "@/config/krathongDesigns.config";
 import { krathongInstanceBucketIndex, type KrathongFlameAnchor } from "@/core/customization";
 import { parseKrathongDesignGlb } from "@/core/customization/krathongDesignGlb";
 import { writeGlb } from "../../../../scripts/krathong-models-lib.mjs";
@@ -313,6 +313,19 @@ describe("batch meshes", () => {
       expect(dispose).not.toHaveBeenCalled();
       dispose.mockRestore();
       assets.dispose();
+    });
+
+    it("MFW-78 RB1: each item goes to its design bucket", () => {
+      const { design, ...legacy } = DEFAULT_KRATHONG_APPEARANCE;
+      void design;
+      const appearances: KrathongAppearance[] = [legacy, { ...legacy, design: "lotus_bud_01" }, { ...legacy, design: "naga_01" }, legacy];
+      const plan = planKrathongInstances(appearances, ZONE_ITEM_CAP, source([]));
+      const at = (id: KrathongDesignId) => plan.bucketCounts[krathongInstanceBucketIndex(`design:${id}`, "designBody")!];
+      expect(at("banana_leaf_01")).toBe(2);
+      expect(at("lotus_bud_01")).toBe(1);
+      expect(at("naga_01")).toBe(1);
+      expect(at("marigold_01")).toBe(0);
+      expect(at("rose_candles_01")).toBe(0);
     });
 
     it("RB6: the design body casts with the shadows flag and never receives", () => {

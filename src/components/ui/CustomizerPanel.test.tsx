@@ -1,12 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  CUSTOMIZER_COPY,
-  CUSTOMIZER_TABS,
-  FLOWER_KIND_LABELS,
-  KRATHONG_BASE_LABELS,
-} from "@/config/customizer.config";
-import { FLOWER_KINDS, KRATHONG_BASE_IDS, RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
+import { CUSTOMIZER_COPY, KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
+import { KRATHONG_DESIGN_IDS, krathongDesignThumbnailUrl } from "@/config/krathongDesigns.config";
 import { DEFAULT_KRATHONG_APPEARANCE, parseKrathongAppearance } from "@/core/customization";
 import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
@@ -34,20 +29,15 @@ function setup(props: { eventId?: "loy_krathong" | "christmas"; withView?: boole
 
 const btn = (name: string) => screen.getByRole("button", { name });
 const pressed = (name: string) => btn(name).getAttribute("aria-pressed");
-const tab = (name: string) => fireEvent.click(screen.getByRole("tab", { name }));
 const stored = () => useBuilderStore.getState().appearance;
 const valid = () => parseKrathongAppearance(stored() ?? DEFAULT_KRATHONG_APPEARANCE).ok;
 
 describe("CustomizerPanel", () => {
-  it("is a fixed bottom region with four tabs", () => {
+  it("is a fixed bottom region", () => {
     setup();
     const panel = screen.getByRole("region", { name: "แต่งกระทง" });
     expect(panel.classList).toContain("fixed");
     expect(panel.classList).toContain("bottom-0");
-    const tabs = within(screen.getByRole("tablist", { name: "ส่วนประกอบกระทง" })).getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(CUSTOMIZER_TABS.map((t) => t.label));
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", tabs[0].id);
   });
 
   it("is a stage overlay panel with no in-flow spacer (MFW-54)", () => {
@@ -56,66 +46,39 @@ describe("CustomizerPanel", () => {
     expect(screen.getByRole("region", { name: "แต่งกระทง" }).className).toContain(STAGE_LAYOUT_CLASSES.panel);
   });
 
-  it("base tab picks a base", () => {
+  it("CP1 (MFW-78): one row of five design thumbnails, no text, no tabs", () => {
     setup();
-    const group = screen.getByRole("group", { name: "ฐานกระทง" });
-    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(
-      KRATHONG_BASE_IDS.map((id) => KRATHONG_BASE_LABELS[id]),
-    );
-    expect(pressed("หยวกกล้วย")).toBe("true");
-    fireEvent.click(btn("ขนมปัง"));
-    expect(stored()?.base).toBe("toy_bread_01");
-    expect(pressed("ขนมปัง")).toBe("true");
-    expect(pressed("หยวกกล้วย")).toBe("false");
+    const buttons = within(screen.getByRole("group", { name: CUSTOMIZER_COPY.designGroupLabel })).getAllByRole("button");
+    expect(buttons.map((b) => b.getAttribute("data-design-id"))).toEqual([...KRATHONG_DESIGN_IDS]);
+    buttons.forEach((b, i) => {
+      const id = KRATHONG_DESIGN_IDS[i];
+      expect(b.textContent).toBe("");
+      expect(b).toHaveAttribute("aria-label", KRATHONG_DESIGN_LABELS[id]);
+      const span = b.querySelector("span") as HTMLElement;
+      expect(span).toHaveAttribute("aria-hidden", "true");
+      expect(span.style.backgroundImage).toContain(krathongDesignThumbnailUrl(id));
+    });
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByRole("tablist")).toBeNull();
+  });
+
+  it("CP2 (MFW-78): the default design is pressed; tapping a design stores it", () => {
+    setup();
+    expect(pressed("กระทงใบตอง")).toBe("true");
+    fireEvent.click(btn("กระทงพญานาค"));
+    expect(stored()?.design).toBe("naga_01");
+    expect(pressed("กระทงพญานาค")).toBe("true");
+    expect(pressed("กระทงใบตอง")).toBe("false");
     expect(valid()).toBe(true);
   });
 
-  it("leaves tab picks fold style and colour", () => {
+  it("CP3 (MFW-78): a no-op design choice keeps the store untouched", () => {
     setup();
-    tab("ใบตอง");
-    expect(within(screen.getByRole("group", { name: "แบบพับใบตอง" })).getAllByRole("button")).toHaveLength(2);
-    expect(within(screen.getByRole("group", { name: "สีใบตอง" })).getAllByRole("button")).toHaveLength(3);
-    fireEvent.click(btn("พับมน"));
-    expect(stored()?.lotusFold).toBe("style_02");
-    fireEvent.click(btn("เขียวเข้ม"));
-    expect(stored()?.leafColor).toBe("#3F6B4A");
-    expect(valid()).toBe(true);
-  });
-
-  it("flowers tab fills all sockets, empties them and shows a mix as unpressed", () => {
-    setup();
-    tab("ดอกไม้");
-    const names = [...FLOWER_KINDS.map((k) => FLOWER_KIND_LABELS[k]), "ไม่ใส่"];
-    expect(within(screen.getByRole("group", { name: "ดอกไม้รอบขอบ" })).getAllByRole("button").map((b) => b.textContent)).toEqual(names);
-    expect(pressed("ดาวเรือง")).toBe("true");
-    fireEvent.click(btn("กล้วยไม้"));
-    expect(stored()?.flowers).toHaveLength(RIM_SOCKET_COUNT);
-    expect(stored()?.flowers.every((f) => f === "orchid")).toBe(true);
-    expect(pressed("กล้วยไม้")).toBe("true");
-    fireEvent.click(btn("ไม่ใส่"));
-    expect(stored()?.flowers).toEqual([]);
-    expect(pressed("ไม่ใส่")).toBe("true");
-    expect(valid()).toBe(true);
-    act(() => useBuilderStore.setState({ appearance: { ...DEFAULT_KRATHONG_APPEARANCE, flowers: ["orchid"] } }));
-    for (const n of names) expect(pressed(n)).toBe("false");
-  });
-
-  it("candle tab picks a colour", () => {
-    setup();
-    tab("เทียน");
-    expect(within(screen.getByRole("group", { name: "สีเทียน" })).getAllByRole("button")).toHaveLength(3);
-    fireEvent.click(btn("ขาวนวล"));
-    expect(stored()?.candleColor).toBe("#FFF1D6");
-    expect(valid()).toBe(true);
-  });
-
-  it("a no-op choice keeps the store untouched", () => {
-    setup();
-    fireEvent.click(btn("หยวกกล้วย"));
+    fireEvent.click(btn("กระทงใบตอง"));
     expect(stored()).toBeNull();
-    fireEvent.click(btn("ขนมปัง"));
+    fireEvent.click(btn("กระทงพญานาค"));
     const first = stored();
-    fireEvent.click(btn("ขนมปัง"));
+    fireEvent.click(btn("กระทงพญานาค"));
     expect(stored()).toBe(first);
   });
 
@@ -137,7 +100,7 @@ describe("CustomizerPanel", () => {
     expect(screen.queryByRole("group", { name: "มุมมอง" })).toBeNull();
     for (const n of ["หมุนซ้าย", "หมุนขวา", "ซูมเข้า", "ซูมออก"]) expect(screen.queryByRole("button", { name: n })).toBeNull();
     expect(screen.queryByText(CUSTOMIZER_COPY.gestureHint)).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(within(screen.getByRole("group", { name: CUSTOMIZER_COPY.designGroupLabel })).getAllByRole("button")).toHaveLength(5);
     expect(btn("ถัดไป")).toBeInTheDocument();
   });
 
@@ -159,8 +122,9 @@ describe("CustomizerPanel", () => {
     }
   });
 
-  it("other events get the bar without part tabs", () => {
+  it("CP4: other events get the bar without the design row", () => {
     setup({ eventId: "christmas" });
+    expect(screen.queryByRole("group", { name: CUSTOMIZER_COPY.designGroupLabel })).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(btn("ถัดไป")).toBeInTheDocument();
   });

@@ -10,6 +10,9 @@ import {
   KRATHONG_DESIGN_IDS,
   KRATHONG_DESIGN_MAX_FLAMES,
   KRATHONG_DESIGN_PUBLIC_PATH,
+  KRATHONG_DESIGN_THUMBNAIL_MAX_BYTES,
+  KRATHONG_DESIGN_THUMBNAIL_PX,
+  krathongDesignThumbnailUrl,
   krathongDesignUrl,
 } from "./krathongDesigns.config";
 import { KRATHONG_MATTE_SURFACE } from "./krathongModel.config";
@@ -62,5 +65,13 @@ describe("krathong designs config (MFW-65)", () => {
     const radius = proceduralDefaultRadius();
     expect(Math.abs(KRATHONG_DESIGN_FOOTPRINT.radius - radius) / radius).toBeLessThanOrEqual(0.05);
     expect(KRATHONG_DESIGN_FOOTPRINT.bottomY).toBe(-0.18);
+  });
+
+  it("CFG1 (MFW-78): thumbnail URL and size", () => {
+    expect(krathongDesignThumbnailUrl("naga_01")).toBe("/ui/krathong-designs/naga_01.png");
+    expect(Number.isInteger(KRATHONG_DESIGN_THUMBNAIL_PX)).toBe(true);
+    expect(KRATHONG_DESIGN_THUMBNAIL_PX).toBeGreaterThan(0);
+    expect(KRATHONG_DESIGN_THUMBNAIL_PX).toBeLessThanOrEqual(256);
+    expect(Number.isInteger(KRATHONG_DESIGN_THUMBNAIL_MAX_BYTES) && KRATHONG_DESIGN_THUMBNAIL_MAX_BYTES > 0).toBe(true);
   });
 });

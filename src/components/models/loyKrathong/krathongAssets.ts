@@ -17,6 +17,8 @@ import { loadKrathongDesign, type KrathongDesignLoad } from "./krathongDesignLoa
 
 /** A loaded owner-supplied design at one LOD (MFW-65): GPU geometry owned by the assets, flame anchors from the GLB. */
 export interface KrathongDesignAsset {
+  /** MFW-78: which design this is (the hero body records it in userData). */
+  readonly design: KrathongDesignId;
   readonly geometry: BufferGeometry;
   readonly flames: readonly KrathongFlameAnchor[];
 }
@@ -150,7 +152,7 @@ export function createKrathongAssets(options: CreateKrathongAssetsOptions = {}):
       loadDesign(design, lod).then(
         (data) => {
           if (disposed) return;
-          designs.set(key, Object.freeze({ geometry: buildDesignGeometry(data), flames: data.flames }));
+          designs.set(key, Object.freeze({ design, geometry: buildDesignGeometry(data), flames: data.flames }));
           designVersion += 1;
           for (const listener of [...designListeners]) listener();
         },

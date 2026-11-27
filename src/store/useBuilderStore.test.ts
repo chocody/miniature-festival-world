@@ -28,6 +28,16 @@ describe("useBuilderStore.chooseKrathong", () => {
     expect(useBuilderStore.getState().appearance).toBeNull();
   });
 
+  it("BS1 (MFW-78): choosing the default design is a no-op; a new design is stored once", () => {
+    expect(choose({ part: "design", value: "banana_leaf_01" }).ok).toBe(true);
+    expect(useBuilderStore.getState().appearance).toBeNull();
+    expect(choose({ part: "design", value: "naga_01" }).ok).toBe(true);
+    const first = useBuilderStore.getState().appearance;
+    expect(first?.design).toBe("naga_01");
+    choose({ part: "design", value: "naga_01" });
+    expect(useBuilderStore.getState().appearance).toBe(first);
+  });
+
   it("keeps the same reference for a repeated choice", () => {
     choose({ part: "base", value: "toy_bread_01" });
     const first = useBuilderStore.getState().appearance;

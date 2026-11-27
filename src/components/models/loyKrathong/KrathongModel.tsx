@@ -1,12 +1,13 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { memo, useMemo, useRef } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import type { Mesh } from "three";
 import { KRATHONG_HERO_LOD } from "@/config/krathongModel.config";
 import { assembleKrathong, krathongDesignForAppearance, type KrathongAppearance, type KrathongPartInstance } from "@/core/customization";
 import { DesignKrathongModel } from "./DesignKrathongModel";
 import { useKrathongAssets, useKrathongDesign } from "./KrathongAssetsProvider";
+import type { KrathongDesignAsset } from "./krathongAssets";
 import { UprightAnchor } from "./UprightAnchor";
 
 export interface KrathongModelProps {
@@ -44,10 +45,22 @@ function FlameMesh({ part, shadows }: PartMeshProps) {
   );
 }
 
+/**
+ * MFW-78: `asset` when it is loaded, else the last design asset this component instance showed (null if none yet), so a design
+ * switch keeps the previous design on screen while the new file loads instead of flashing the procedural krathong.
+ * "Storing information from previous renders" pattern: a guarded setState during render, no ref read and no effect.
+ */
+function useLastShownDesign(asset: KrathongDesignAsset | null): KrathongDesignAsset | null {
+  const [last, setLast] = useState<KrathongDesignAsset | null>(null);
+  if (asset !== null && asset !== last) setLast(asset);
+  return asset ?? last;
+}
+
 function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
   const assets = useKrathongAssets();
   // MFW-65: the owner-supplied design once loaded (after the tier is decided); the procedural model until then or on failure.
-  const design = useKrathongDesign(krathongDesignForAppearance(appearance), KRATHONG_HERO_LOD);
+  // MFW-78: while a newly chosen design loads, the last shown design stays.
+  const design = useLastShownDesign(useKrathongDesign(krathongDesignForAppearance(appearance), KRATHONG_HERO_LOD));
   const assembly = useMemo(() => assembleKrathong(appearance), [appearance]);
   if (design !== null) {
     return (

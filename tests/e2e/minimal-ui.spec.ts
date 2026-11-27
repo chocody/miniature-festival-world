@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { E2E_DESIGN_GROUP_LABEL } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_UI } from "./fixtures/uiFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
@@ -147,13 +148,9 @@ test.describe("390×844 touch", () => {
   test("every visible control is at least MIN_TOUCH_TARGET_PX", async ({ page }) => {
     await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
     const errors = await openLow(page);
-    const tabs = await page.getByRole("tab").all();
-    expect(tabs.length).toBeGreaterThan(0);
-    for (const tab of tabs) {
-      await tab.tap();
-      await expect(tab).toHaveAttribute("aria-selected", "true");
-      await expectTouchTargets(page);
-    }
+    // MFW-78: one row of five design tiles replaces the part tabs.
+    await expect(page.getByRole("group", { name: E2E_DESIGN_GROUP_LABEL }).getByRole("button")).toHaveCount(5);
+    await expectTouchTargets(page);
 
     await page.getByRole("button", { name: NEXT }).tap();
     await expect(root(page)).toHaveAttribute("data-flow-state", "WRITE_WISH");

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { E2E_DESIGN_LABELS } from "./fixtures/krathongModels";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
@@ -7,7 +8,6 @@ const SMALL_PHONE = { width: 360, height: 640 } as const;
 /** Duplicated literal of MIN_TOUCH_TARGET_PX in src/config/customizer.config.ts (do not import src/ into Playwright). */
 const MIN_TOUCH_TARGET_PX = 44;
 const PANEL = "แต่งกระทง";
-const TABS = ["ฐาน", "ใบตอง", "ดอกไม้", "เทียน"];
 const VIEW_BUTTONS = ["หมุนซ้าย", "หมุนขวา", "ซูมเข้า", "ซูมออก"];
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
 
@@ -24,7 +24,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function expectTargetsFit(panel: Locator) {
-  const targets = [...(await panel.getByRole("tab").all()), ...(await panel.getByRole("button").all())];
+  const targets = await panel.getByRole("button").all();
   expect(targets.length).toBeGreaterThan(0);
   for (const el of targets) {
     const box = (await el.boundingBox())!;
@@ -45,19 +45,7 @@ async function expectPanelAtBottom(page: Page) {
   return { panel, box };
 }
 
-const tapTab = async (page: Page, name: string) => {
-  const tab = page.getByRole("tab", { name, exact: true });
-  await tab.tap();
-  await expect(tab).toHaveAttribute("aria-selected", "true");
-};
-
-const tapOption = async (page: Page, name: string) => {
-  const option = page.getByRole("button", { name, exact: true });
-  await option.tap();
-  await expect(option).toHaveAttribute("aria-pressed", "true");
-};
-
-test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom work", async ({ page }) => {
+test("3D tier at 360 px: bottom bar picks a design; rotate and zoom work", async ({ page }) => {
   const errors: Error[] = [];
   page.on("pageerror", (e) => errors.push(e));
   await page.addInitScript(() => {
@@ -80,19 +68,14 @@ test("3D tier at 360 px: bottom bar picks parts and colours; rotate and zoom wor
   expect(box.y).toBeGreaterThan(0);
   await expectNoHorizontalOverflow(page);
 
-  for (const name of TABS) {
-    await tapTab(page, name);
+  // MFW-78: the five design tiles replace the part tabs.
+  for (const name of Object.values(E2E_DESIGN_LABELS)) {
+    const tile = page.getByRole("button", { name, exact: true });
+    await tile.tap();
+    await expect(tile).toHaveAttribute("aria-pressed", "true");
     await expectTargetsFit(panel);
     await expectNoHorizontalOverflow(page);
   }
-
-  await tapTab(page, "ฐาน");
-  await tapOption(page, "ขนมปัง");
-  await tapTab(page, "ใบตอง");
-  await tapOption(page, "เขียวเข้ม");
-  await tapTab(page, "ดอกไม้");
-  await tapOption(page, "กล้วยไม้");
-  await expect(page.getByRole("button", { name: "ดาวเรือง", exact: true })).toHaveAttribute("aria-pressed", "false");
 
   for (const name of VIEW_BUTTONS) await page.getByRole("button", { name, exact: true }).tap();
   await expect(page.locator("canvas")).toHaveCount(1);

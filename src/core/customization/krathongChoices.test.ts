@@ -89,6 +89,20 @@ describe("applyKrathongChoice", () => {
       reason: "socket rule: CANDLE_REQUIRED at center_socket",
     });
     expect(apply(D, { part: "nope" } as never)).toEqual({ ok: false, reason: "unknown choice part" });
+    expect(apply(D, { part: "design", value: "naga_02" as never })).toEqual({
+      ok: false,
+      reason: "design is not a known krathong design",
+    });
+  });
+
+  it("CH1 (MFW-78): a design choice sets design and keeps the other keys", () => {
+    const r = apply(D, { part: "design", value: "rose_candles_01" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.appearance.design).toBe("rose_candles_01");
+    expect({ ...r.appearance, design: D.design }).toEqual(D);
+    expect(D.design).toBe("banana_leaf_01");
+    expect(krathongAppearanceEquals(r.appearance, D)).toBe(false);
   });
 });
 

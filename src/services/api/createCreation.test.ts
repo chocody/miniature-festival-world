@@ -104,6 +104,26 @@ describe("AC1: request shape", () => {
     expect(inserts).toHaveLength(0);
   });
 
+  it("CC1 (MFW-78): stores the chosen design", async () => {
+    const { post, inserts } = await setup();
+    const res = await post(makeCreateBody({ appearance: { ...defaultAppearanceJson(), design: "lotus_bud_01" } }));
+    expect(res.status).toBe(201);
+    const text = await res.text();
+    const c = (JSON.parse(text) as { creation: PublicCreation }).creation;
+    expect(inserts).toHaveLength(1);
+    expect((inserts[0]!.appearance as Record<string, unknown>).design).toBe("lotus_bud_01");
+    expect((c.appearance as Record<string, unknown>).design).toBe("lotus_bud_01");
+    for (const name of ["owner_token", "owner_token_hash", "private_wish_text"]) expect(text).not.toContain(name);
+  });
+
+  it("CC2 (MFW-78): rejects an unknown design", async () => {
+    const { post, inserts } = await setup();
+    const res = await post(makeCreateBody({ appearance: { ...defaultAppearanceJson(), design: "naga_02" } }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body", field: "appearance" });
+    expect(inserts).toHaveLength(0);
+  });
+
   it("enforces transport rules", async () => {
     const { post } = await setup();
     expect((await post(makeCreateBody(), { contentType: "text/plain" })).status).toBe(415);
