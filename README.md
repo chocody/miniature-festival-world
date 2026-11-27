@@ -1,3 +1,17 @@
+# Miniature Festival World
+
+A shared, anonymous, toy-like 3D world: make a small festival object, write a wish and release it into a world everyone
+sees. Phase 1 is Loy Krathong. Project rules for contributors and agents are in [CLAUDE.md](CLAUDE.md); the specification
+is in [docs/spec/](docs/spec/README.md).
+
+## License and third-party assets
+
+**All rights reserved — no license is granted.** This repository is public only so that its CI can run. See
+[LICENSE.md](LICENSE.md). Some files have additional restrictions or belong to third parties, including the 3D models,
+which are non-commercial and must not be reused: see [NOTICE.md](NOTICE.md).
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

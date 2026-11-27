@@ -31,7 +31,8 @@ Only the decimated files are committed (`assets/krathong/decimated/`, not served
 ## 2. Licence
 
 Owner, 2026-11-26: "ใช้ได้แต่ไม่ใช้เชิงพาณิชย์" (usable, non-commercial). The models may be used in this project but not
-commercially.
+commercially. The repository is public from 2026-11-27 for CI only; that grants no rights to these files. The binding
+terms for every model, thumbnail and render are in [NOTICE.md](../../NOTICE.md) §1–§4 (and [LICENSE.md](../../LICENSE.md)).
 
 ## 3. Decimation (offline, once)
 
@@ -279,7 +280,8 @@ commit only the outputs).
 **Licence flag (open, owner):** the file carries no licence metadata. "Poly by Google" models were usually published
 CC-BY, but that is **unverified** for this file, and the attribution line is pending the owner. Loop decision: the model
 is used for the **Loy Krathong 2026 private test only**; before the public launch (Christmas) the owner must confirm the
-original licence and credit, or replace the model. No in-app credit is added in MFW-66 (docs/follow-ups.md).
+original licence and credit, or replace the model. No in-app credit is added in MFW-66 (docs/follow-ups.md). See also
+[NOTICE.md](../../NOTICE.md) §2.
 
 ### 10b. Build (offline, once)
 
