@@ -1,81 +1,45 @@
 "use client";
 
-import { useRef, type JSX, type KeyboardEvent } from "react";
-import { LIGHT_PRESET_CHOICES, LIGHT_PRESET_SWITCH_COPY as COPY, type LightPresetChoice } from "@/config/look.config";
+import type { JSX } from "react";
+import { DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY } from "@/config/look.config";
+import { nextLightPresetChoice, presetForLocalTime } from "@/core/world/timeOfDay"; // not the barrel: it pulls in three
 import { getLightPresetPreference } from "@/services/preferences/lightPresetPreference";
 import { useDeviceStore } from "@/store/useDeviceStore";
+import { MoonIcon, SunIcon } from "./hudIcons";
+import { UI_CLASSES } from "./uiClasses";
+import { useResolvedLightPreset } from "./useResolvedLightPreset";
 
-function choose(choice: LightPresetChoice): void {
-  getLightPresetPreference().write(choice); // false (no storage) still keeps the choice for this session
-  useDeviceStore.getState().setLightPresetChoice(choice);
-}
-
-/** Target index for a roving radio-group key, or null when the key is not handled (WAI-ARIA radio group). */
-function targetIndex(key: string, current: number, count: number): number | null {
-  switch (key) {
-    case "ArrowRight":
-    case "ArrowDown":
-      return (current + 1) % count;
-    case "ArrowLeft":
-    case "ArrowUp":
-      return (current - 1 + count) % count;
-    case "Home":
-      return 0;
-    case "End":
-      return count - 1;
-    default:
-      return null;
-  }
-}
+/** HUD button recipe (MFW-74): round, 44 px, on the translucent veil (+ `transition-colors`, so reduced motion stays testable); Find My and rotate use the same recipe. */
+const HUD_BUTTON_CLASSES = `${UI_CLASSES.iconButton.replace("bg-paper", "bg-veil")} shadow-float transition-colors`;
 
 /**
- * Day / night switch of the scene (open question 32, MFW-47): AUTO follows the device's local time, DAY / NIGHT
- * override it; the choice stays on this device. Hidden before profiling.
- * Keyboard: one tab stop (the checked radio); arrow keys, Home and End move the choice. Visual design DRAFT (MFW-55).
+ * Day / night toggle (MFW-74, open question 32): one round button showing the sun (DAY) or the moon (NIGHT), no text.
+ * A tap switches to the other preset; when that preset is what the local time shows anyway, "AUTO" is stored, so the scene follows
+ * the clock again (loop decision for the owner). The choice stays on this device. Hidden before profiling.
  */
-export function DayNightSwitch(): JSX.Element | null {
+export function DayNightSwitch({ now = () => new Date() }: { now?: () => Date }): JSX.Element | null {
   const profiled = useDeviceStore((s) => s.profiled);
   const choice = useDeviceStore((s) => s.lightPresetChoice);
-  const radios = useRef<Array<HTMLButtonElement | null>>([]);
+  const shown = useResolvedLightPreset();
   if (!profiled) return null;
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const next = targetIndex(event.key, index, LIGHT_PRESET_CHOICES.length);
-    if (next === null) return;
-    event.preventDefault();
-    choose(LIGHT_PRESET_CHOICES[next]);
-    radios.current[next]?.focus();
+  const onClick = () => {
+    const next = nextLightPresetChoice(shown, presetForLocalTime(now(), DAY_NIGHT_HOURS));
+    getLightPresetPreference().write(next); // false (no storage) still keeps the choice for this session
+    useDeviceStore.getState().setLightPresetChoice(next);
   };
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={COPY.groupLabel}
+    <button
+      type="button"
+      data-testid="day-night-toggle"
+      data-light-preset={shown}
       data-light-preset-choice={choice}
-      className="flex w-fit items-center gap-1 rounded-full bg-veil text-caption text-ink shadow-raised"
+      aria-label={LIGHT_PRESET_TOGGLE_COPY[shown]}
+      className={HUD_BUTTON_CLASSES}
+      onClick={onClick}
     >
-      {LIGHT_PRESET_CHOICES.map((option, index) => {
-        const checked = option === choice;
-        return (
-          <button
-            key={option}
-            ref={(el) => {
-              radios.current[index] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
-            onClick={() => choose(option)}
-            onKeyDown={(event) => onKeyDown(event, index)}
-            className={`min-h-11 min-w-11 rounded-full px-3 transition-colors ${
-              checked ? "bg-clay-soft font-semibold text-ink" : "text-ink-muted hover:bg-clay-soft"
-            }`}
-          >
-            {COPY[option]}
-          </button>
-        );
-      })}
-    </div>
+      {shown === "DAY" ? <SunIcon /> : <MoonIcon />}
+    </button>
   );
 }

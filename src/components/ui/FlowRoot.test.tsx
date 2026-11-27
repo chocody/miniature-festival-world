@@ -1,4 +1,3 @@
-import { LIGHT_PRESET_SWITCH_COPY } from "@/config/look.config";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,13 +5,14 @@ import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
-import { WISH_COPY, WISH_SWITCH_COPY } from "@/config/wish.config";
+import { DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY } from "@/config/look.config";
+import { WISH_COPY } from "@/config/wish.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
 import { buildReleaseCoord } from "@/core/ritual";
 import { DEVICE_OWNER_TOKEN_STORAGE_KEY, MY_CREATIONS_STORAGE_KEY } from "@/config/ownership.config";
 import { MY_CREATION_ENTRY_KEYS, MY_CREATIONS_COPY } from "@/config/myCreations.config";
-import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
+import { WORLD_VIEW_ROTATE_BUTTON_COPY } from "@/config/interaction.config";
 import { FLOW_STEP_COPY } from "@/config/ui.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
@@ -119,6 +119,9 @@ beforeEach(() => {
   for (const fn of Object.values(zones)) fn.mockClear();
 });
 
+/** The preset the toggle shows with the AUTO choice (device-local clock). */
+const expectedShown = () => (new Date().getHours() >= DAY_NIGHT_HOURS.dayStartHour && new Date().getHours() < DAY_NIGHT_HOURS.nightStartHour ? "DAY" : "NIGHT");
+
 const completeWish = (text = "ขอให้ทุกคนมีความสุข") => {
   fireEvent.change(screen.getByRole("textbox", { name: WISH_COPY.textLabel }), { target: { value: text } });
   fireEvent.click(screen.getByRole("button", { name: WISH_COPY.submit }));
@@ -140,7 +143,11 @@ describe("FlowRoot", () => {
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
-    expect(screen.queryByRole("button")).toBeNull();
+    // MFW-74: only the HUD column buttons (day/night toggle, rotate); no Find My without a world or a stored krathong.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      LIGHT_PRESET_TOGGLE_COPY[expectedShown()],
+      WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel,
+    ]);
   });
 
   it("shows the ownership notice only in WRITE_WISH", async () => {
@@ -297,7 +304,7 @@ describe("FlowRoot", () => {
       useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
     });
     expect(screen.getByTestId("zone-navigator")).toBeInTheDocument();
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([MY_CREATIONS_COPY.openButton]);
+    expect(within(screen.getByTestId("zone-navigator")).queryAllByRole("button")).toHaveLength(0);
   });
 
   it("WRITE_WISH renders the wish modal; SUBMIT_WISH needs a valid wish", () => {
@@ -384,7 +391,7 @@ describe("FlowRoot", () => {
     expect(raw).not.toContain("coord");
   });
 
-  it("the drawer appears only in SHARED_WORLD_EXPLORE", async () => {
+  it("the Find My button appears only in SHARED_WORLD_EXPLORE, once this device holds a krathong", async () => {
     render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     expect(screen.queryByTestId("my-creations")).toBeNull();
@@ -394,12 +401,11 @@ describe("FlowRoot", () => {
     expect(screen.queryByTestId("my-creations")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     const open = await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton });
-    fireEvent.click(open);
-    const list = await screen.findByTestId("my-creations-list");
-    expect(list).toHaveTextContent("คุ้งน้ำที่ 1");
+    expect(open.closest('[data-overlay-slot="corner"]')).not.toBeNull();
+    expect(screen.queryByTestId("my-creations-list")).toBeNull(); // one krathong: the button goes straight to it
   });
 
-  it("the drawer entry offers the switch and the private wish reveal", async () => {
+  it("F1 the world HUD column: Find My, day/night toggle, rotate in the corner; the top card holds only the zone navigator", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
     walkToRitual();
     act(() => {
@@ -407,11 +413,17 @@ describe("FlowRoot", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
-    fireEvent.click(await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton }));
-    const list = await screen.findByTestId("my-creations-list");
-    const sw = await within(list).findByRole("switch", { name: WISH_SWITCH_COPY.label });
-    expect(sw).toHaveAttribute("aria-checked", "false");
-    expect(within(list).getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
+    await screen.findByRole("button", { name: MY_CREATIONS_COPY.openButton });
+    const corner = container.querySelector('[data-overlay-slot="corner"]')!;
+    const labels = within(corner as HTMLElement)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(labels).toEqual([MY_CREATIONS_COPY.openButton, LIGHT_PRESET_TOGGLE_COPY[expectedShown()], WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel]);
+    const top = container.querySelector('[data-overlay-slot="top"]') as HTMLElement;
+    expect(within(top).getByTestId("zone-navigator")).toBeInTheDocument();
+    expect(within(top).queryByTestId("day-night-toggle")).toBeNull();
+    expect(within(top).queryByTestId("my-creations")).toBeNull();
+    expect(within(top).queryByRole("button", { name: WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel })).toBeNull();
   });
 
   it("a name typed in the wish step is sent as displayName and not kept after the save (MFW-63)", async () => {
@@ -458,26 +470,30 @@ describe("FlowRoot", () => {
       fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
       await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
       expect(inSlot(await screen.findByTestId("zone-navigator"), "top")).toBe(true);
-      expect(inSlot(screen.getByTestId("my-creations"), "top")).toBe(true);
+      expect(inSlot(await screen.findByTestId("my-creations"), "corner")).toBe(true);
       expect(inSlot(screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title }), "panel")).toBe(true);
       expect(stageLayer()).toContainElement(screen.getByTestId("scene-viewport"));
     });
 
-    it("the day/night switch floats over the stage: top-left corner, then in the world's top card (MFW-47)", async () => {
-      act(() => useDeviceStore.getState().setQualityTier("HIGH"));
+    it("F2 CUSTOMIZE_OBJECT: the corner holds only the day/night toggle (MFW-74)", () => {
       const { container } = render(<FlowRoot eventId="loy_krathong" />);
-      const lightSwitch = () => screen.getByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel });
-      expect(inSlot(lightSwitch(), "corner")).toBe(true);
-      expect(within(stageLayer()).queryByRole("radiogroup")).toBeNull();
+      const corner = container.querySelector('[data-overlay-slot="corner"]') as HTMLElement;
+      expect(within(corner).getAllByRole("button")).toHaveLength(1);
+      expect(within(corner).getByTestId("day-night-toggle")).toBeInTheDocument();
+      expect(screen.getAllByTestId("day-night-toggle")).toHaveLength(1);
+    });
+
+    it("F3 the rotate button asks the scene to turn the view (viewRotateRequestId + 1)", async () => {
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
       walkToRitual();
-      expect(inSlot(lightSwitch(), "corner")).toBe(true);
       act(() => {
         useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
       });
       fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
       await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
-      expect(screen.getAllByRole("radiogroup", { name: LIGHT_PRESET_SWITCH_COPY.groupLabel })).toHaveLength(1);
-      expect(inSlot(lightSwitch(), "top")).toBe(true);
+      const before = useUIStore.getState().viewRotateRequestId;
+      fireEvent.click(screen.getByRole("button", { name: WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel }));
+      expect(useUIStore.getState().viewRotateRequestId).toBe(before + 1);
     });
 
     it("the scene element survives RITUAL → WORLD", async () => {

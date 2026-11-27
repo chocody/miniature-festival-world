@@ -123,12 +123,17 @@ export const LIGHT_PRESET_SERVER_FALLBACK: LightPresetId = "NIGHT";
 /** LocalStorage key of the per-device light preset choice (only "DAY" / "NIGHT"; AUTO = no key). `mfw:<name>:v1` pattern. */
 export const LIGHT_PRESET_STORAGE_KEY = "mfw:lightPreset:v1";
 
-/** Day/night switch copy. DRAFT Thai copy (owner sign-off from the PR). */
-export const LIGHT_PRESET_SWITCH_COPY = Object.freeze({
-  groupLabel: "แสงในฉาก",
-  AUTO: "ตามเวลาจริง",
-  DAY: "กลางวัน",
-  NIGHT: "กลางคืน",
+/** Day/night toggle copy (MFW-74): keyed by the preset shown now; the value is the button's aria-label. DRAFT Thai copy (owner sign-off from the PR). */
+export const LIGHT_PRESET_TOGGLE_COPY: Readonly<Record<LightPresetId, string>> = Object.freeze({
+  DAY: "เปลี่ยนเป็นกลางคืน",
+  NIGHT: "เปลี่ยนเป็นกลางวัน",
+});
+
+/** HUD glyph colours (MFW-74): palette entries only, no new hex. DRAFT. */
+export const HUD_GLYPH_COLORS = Object.freeze({
+  sun: Object.freeze({ fill: LOOK_PALETTE.lanternGlow, stroke: LOOK_PALETTE.doorWood }),
+  moon: Object.freeze({ fill: LOOK_PALETTE.flowerYellow, stroke: LOOK_PALETTE.nightSky }),
+  krathong: Object.freeze({ leaf: LOOK_PALETTE.leafLight, flower: LOOK_PALETTE.flowerCoral, flame: LOOK_PALETTE.lanternGlow }),
 });
 
 export type LookToneMappingId = "NEUTRAL" | "ACES_FILMIC" | "AGX";

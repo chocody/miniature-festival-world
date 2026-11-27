@@ -32,7 +32,6 @@ import { InspectPopup } from "@/components/ui/InspectPopup";
 import { OverlaySlot } from "@/components/ui/StageLayout";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
-import { WorldRotateButton } from "@/components/ui/WorldRotateButton";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { SCENE_TAP_HINT_COPY, type SceneTargetKind } from "@/config/gimmicks.config";
 import { findInspectedCreation } from "@/components/ui/inspectedCreation";
@@ -672,7 +671,14 @@ export function SceneViewport({
     invalidateRef.current?.();
   }, [getRig]);
 
-  const onRotateView = useCallback(() => rigHandleRef.current?.rotateBy(WORLD_VIEW_ROTATE_STEP_RADIANS), []);
+  // MFW-74: the rotate button lives in the HUD column (FlowRoot); it bumps viewRotateRequestId and the rig turns here.
+  const viewRotateRequestId = useUIStore((s) => s.viewRotateRequestId);
+  const seenViewRotateIdRef = useRef(viewRotateRequestId); // initialised at mount: a remount never rotates
+  useEffect(() => {
+    if (seenViewRotateIdRef.current === viewRotateRequestId) return;
+    seenViewRotateIdRef.current = viewRotateRequestId;
+    if (mode === "WORLD_EXPLORE") rigHandleRef.current?.rotateBy(WORLD_VIEW_ROTATE_STEP_RADIANS);
+  }, [viewRotateRequestId, mode]);
 
   const tapHint = useSceneTapHint(mode === "WORLD_EXPLORE");
   const dismissTapHint = tapHint.dismiss;
@@ -1003,7 +1009,6 @@ export function SceneViewport({
       </span>
     </section>
     {/* Outside the section: its pointerdowns must not reach the gesture separator. */}
-    {mode === "WORLD_EXPLORE" && <WorldRotateButton onRotate={onRotateView} />}
     {perfProbeEnabled && (
       <OverlaySlot slot="debug">
         <PerfProbePanel

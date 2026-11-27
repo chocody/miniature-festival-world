@@ -199,8 +199,7 @@ test.describe("reduced motion", () => {
     }
     await expect(scene(page)).toHaveAttribute("data-zone-id", "1");
     const before = requested.length;
-    await page.getByRole("button", { name: "ค้นหาของฉัน" }).click();
-    await page.locator('[data-testid="my-creations-list"] li > button').first().click();
+    await page.getByRole("button", { name: "ค้นหาของฉัน" }).click(); // one entry: Find My goes straight to it (MFW-74)
     await expect(scene(page)).toHaveAttribute("data-zone-id", "2");
     await expect(scene(page)).toHaveAttribute("data-find-my", "following");
     await expect(scene(page)).toHaveAttribute("data-stretch-index", "2");

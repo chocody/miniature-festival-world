@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertDayNightHours, msUntilNextPresetChange, presetForLocalTime, resolveLightPreset } from "./timeOfDay";
+import { assertDayNightHours, msUntilNextPresetChange, nextLightPresetChoice, presetForLocalTime, resolveLightPreset } from "./timeOfDay";
 
 const H = { dayStartHour: 6, nightStartHour: 18 };
 /** Local-time date (holds in any TZ). */
@@ -57,4 +57,11 @@ describe("assertDayNightHours", () => {
   ])("rejects %o", (h) => {
     expect(() => assertDayNightHours(h)).toThrow(RangeError);
   });
+});
+
+describe("nextLightPresetChoice (MFW-74)", () => {
+  it("T1 shown NIGHT while the clock says NIGHT → DAY (an override)", () => expect(nextLightPresetChoice("NIGHT", "NIGHT")).toBe("DAY"));
+  it("T2 shown DAY while the clock says NIGHT → AUTO (the target is what the clock shows)", () => expect(nextLightPresetChoice("DAY", "NIGHT")).toBe("AUTO"));
+  it("T3 shown DAY while the clock says DAY → NIGHT", () => expect(nextLightPresetChoice("DAY", "DAY")).toBe("NIGHT"));
+  it("T4 shown NIGHT while the clock says DAY → AUTO", () => expect(nextLightPresetChoice("NIGHT", "DAY")).toBe("AUTO"));
 });

@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_UI } from "./fixtures/uiFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { seedSecondOwnEntry } from "./helpers/hud";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { SCENE_SELECTOR, forceTier } from "./helpers/stage";
 import { CLEAN_WISH, WISH_TEXT_LABEL, completeWishStep } from "./helpers/wishStep";
@@ -18,8 +19,7 @@ const NEXT = "ถัดไป";
 const RELEASE = "ปล่อยกระทง";
 const FIND_MY_BUTTON = "ค้นหาของฉัน";
 const PANEL = "แต่งกระทง";
-const LIGHT_GROUP = "แสงในฉาก";
-const DAY = "กลางวัน";
+const TOGGLE = '[data-testid="day-night-toggle"]';
 const PANEL_SLOT = '[data-overlay-slot="panel"]';
 const TOP_SLOT = '[data-overlay-slot="top"]';
 const CONTROLS =
@@ -145,6 +145,7 @@ test.describe("390×844 touch", () => {
   test.use({ viewport: PHONE, hasTouch: true });
 
   test("every visible control is at least MIN_TOUCH_TARGET_PX", async ({ page }) => {
+    await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
     const errors = await openLow(page);
     const tabs = await page.getByRole("tab").all();
     expect(tabs.length).toBeGreaterThan(0);
@@ -168,7 +169,7 @@ test.describe("390×844 touch", () => {
 
     await page.getByRole("button", { name: FIND_MY_BUTTON }).tap();
     await expect(page.getByTestId("my-creations")).toHaveAttribute("data-open", "true");
-    await expect(page.getByTestId("owner-wish-controls").first()).toBeVisible();
+    await expect(page.getByTestId("my-creations-list")).toBeVisible();
     await expectTouchTargets(page);
     expect(errors).toEqual([]);
   });
@@ -178,15 +179,15 @@ test.describe("390×844 keyboard", () => {
   test.use({ viewport: PHONE });
 
   test("keyboard alone walks the flow with a visible focus ring", async ({ page }) => {
+    await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
     const errors = await openLow(page);
-    const group = page.getByRole("radiogroup", { name: LIGHT_GROUP });
-    const checked = group.locator('[role="radio"][aria-checked="true"]');
-    await tabTo(page, checked);
-    await expectFocusRing(checked);
-    await page.keyboard.press("ArrowRight");
-    const day = page.getByRole("radio", { name: DAY });
-    await expect(day).toBeFocused();
-    await expect(day).toHaveAttribute("aria-checked", "true");
+    const toggle = page.locator(TOGGLE);
+    await tabTo(page, toggle);
+    await expectFocusRing(toggle);
+    await expect(toggle).toHaveAttribute("data-light-preset-choice", "AUTO");
+    await page.keyboard.press("Enter");
+    await expect(toggle).not.toHaveAttribute("data-light-preset-choice", "AUTO");
+    await expect(toggle).toBeFocused();
 
     const next = page.getByRole("button", { name: NEXT });
     await tabTo(page, next);
@@ -227,7 +228,7 @@ test.describe("reduced motion", () => {
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     const duration = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).transitionDuration);
     expect(await duration(page.getByRole("button", { name: NEXT }))).toBe("0s");
-    expect(await duration(page.locator('[role="radio"][aria-checked="true"]'))).toBe("0s");
+    expect(await duration(page.locator(TOGGLE))).toBe("0s");
   });
 });
 
@@ -237,8 +238,8 @@ test.describe("motion allowed", () => {
   test("without reduced motion the token duration applies", async ({ page }) => {
     await openLow(page);
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "false");
-    const radio = page.locator('[role="radio"][aria-checked="true"]');
-    expect(await radio.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe(E2E_UI.transitionDuration);
+    const toggle = page.locator(TOGGLE);
+    expect(await toggle.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe(E2E_UI.transitionDuration);
   });
 });
 
