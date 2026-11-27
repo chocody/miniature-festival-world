@@ -1108,6 +1108,66 @@
       ]
     },
     {
+      "id": "L15",
+      "summary": "Loop 15 — Owner Review 4: UI & Effect Details",
+      "description": "Owner request 2026-11-27 (fourth review, with a screenshot of the wish visibility switch): remove the zone name label, let the user choose whether an empty-ground tap launches a firework or a sky lantern, house smoke rises faintly upward, tree-tap leaves are smaller and the tree's colour, the toggle switch is symmetric, and the krathong design bar floats centred above the bottom edge.",
+      "labels": [
+        "loop-15",
+        "loy-krathong",
+        "owner-review",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "15.1",
+          "summary": "UI details: no zone label, symmetric switch, floating centred design bar",
+          "goal": "Owner (2026-11-27): \"เอาตรงที่แสดงคำว่าคุ้งน้ำออกไปเลย\", \"ปุ่มไม่สมมาตร\" (screenshot of the wish visibility switch), \"เอาแถบเลือกระทงอยู่ตรงกลางข้างล่างโดยลอยเหนือขอบล่างมาหน่อย\".",
+          "ac": [
+            "The zone name label (\"คุ้งน้ำที่ N จาก M\") is removed from the world view and no visible UI shows the word คุ้งน้ำ; zone switching and Find My keep working; the wish visibility switch is symmetric (equal inset of the knob on both sides in both states, knob fully inside the track, every size and tier); the krathong design bar in the customizer sits centred at the bottom, floating a little above the bottom edge (not a full-width bottom sheet), touch targets kept",
+            "Unit tests and e2e cover the removed label, the switch geometry in both states and the bar position at 390×844, 360×640 and 1440×900; before / after screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui"
+          ]
+        },
+        {
+          "id": "15.2",
+          "summary": "House smoke rises faintly; tree-tap leaves smaller and in the tree's colour",
+          "goal": "Owner (2026-11-27): \"กดบ้าน ควันมันควรลอยขึ้นข้างบนจางๆไม่เยอะมาก ไม่ใช่ลงล่าง\", \"กดต้นไม้ใบควรเล็กกว่านี้และเป็นสีเดียวกับต้นไม้\".",
+          "ac": [
+            "A house tap releases a faint, small amount of smoke that rises upward from the chimney and fades (never moves down); a tree tap drops smaller leaves in the same colour as that tree's foliage (per tier and DAY / NIGHT lighting); pooled with the existing fixed caps, no new shader program on LOW, reduced motion behaviour kept",
+            "Unit tests cover the smoke direction / amount and the leaf size / colour; e2e taps a house and a tree; before / after screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ]
+        },
+        {
+          "id": "15.3",
+          "summary": "Choose firework or sky lantern for the empty-ground tap",
+          "goal": "Owner (2026-11-27): \"มีปุ่มให้เลือกว่าจะกดที่ว่างเพื่อปล่อยพลุหรือโคมลอย\" — replaces the random pick of 14.2.",
+          "ac": [
+            "A round icon button in the HUD lets the user choose whether a tap on empty ground launches a firework or a sky lantern (icon only, accessible Thai label, MIN_TOUCH_TARGET_PX); the tap launches the chosen kind (pools and caps unchanged); the default choice and whether it is remembered on the device are DRAFT loop decisions recorded for the owner",
+            "Unit tests and e2e cover switching the choice and the launched kind for each; reduced motion kept; before / after screenshots at phone and desktop size"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui",
+            "interaction",
+            "3d"
+          ],
+          "blockedBy": [
+            "15.2"
+          ]
+        }
+      ]
+    },
+    {
       "id": "LS",
       "summary": "Festival Config Stubs (Roadmap 2026–2027)",
       "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",
