@@ -4,7 +4,6 @@ import { useId, useState, type FormEvent } from "react";
 import { MODERATION_COPY } from "@/config/moderation.config";
 import {
   DISPLAY_NAME_MAX_LENGTH,
-  WISH_COPY,
   WISH_TEXT_MAX_LENGTH,
   WISH_TEXTAREA_ROWS,
   type WishComposerIssue,
@@ -16,6 +15,7 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { OwnershipNotice } from "./OwnershipNotice";
 import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 import { WishVisibilitySwitch } from "./WishVisibilitySwitch";
+import { useEventCopy } from "./EventCopyContext";
 
 type StatusIssue = Exclude<WishComposerIssue, "name_blocked" | "wish_blocked">;
 /** The moderation issues have their own warning block; every other issue gets the status line. */
@@ -34,6 +34,7 @@ export interface WishModalProps {
  * No request and no storage: the composed wish and name stay in useBuilderStore memory until the release.
  */
 export function WishModal({ onSubmitted }: WishModalProps) {
+  const COPY = useEventCopy().wish;
   const ids = useId();
   const storedWish = useBuilderStore((s) => s.wish);
   const storedDisplayName = useBuilderStore((s) => s.wishDisplayName);
@@ -51,7 +52,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
     serverReasons ?? (evaluation.ok ? [] : [...evaluation.wishModerationReasons, ...evaluation.nameModerationReasons]);
   const warning = reasons.length > 0 ? describeModerationReasons(reasons) : null;
   const firstIssue = evaluation.ok ? undefined : evaluation.issues.find(isStatusIssue);
-  const status = firstIssue === undefined ? null : WISH_COPY.issues[firstIssue];
+  const status = firstIssue === undefined ? null : COPY.issues[firstIssue];
   const nameInvalid = !evaluation.ok && evaluation.issues.some((i) => i.startsWith("name_"));
   const textInvalid = (!evaluation.ok && evaluation.issues.includes("wish_blocked")) || serverReasons !== null;
   const canSubmit = evaluation.ok && serverReasons === null;
@@ -80,12 +81,12 @@ export function WishModal({ onSubmitted }: WishModalProps) {
       className={`flex w-full flex-col gap-4 ${UI_CLASSES.card} p-card`}
     >
       <h2 id={titleId} className={UI_CLASSES.title}>
-        {WISH_COPY.title}
+        {COPY.title}
       </h2>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <label htmlFor={nameId} className={UI_CLASSES.label}>
-            {WISH_COPY.nameLabel}
+            {COPY.nameLabel}
           </label>
           <input
             id={nameId}
@@ -93,7 +94,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
             value={name}
             maxLength={DISPLAY_NAME_MAX_LENGTH}
             autoComplete="off"
-            placeholder={WISH_COPY.namePlaceholder}
+            placeholder={COPY.namePlaceholder}
             aria-describedby={warning && nameInvalid ? `${nameHintId} ${warningId}` : nameHintId}
             aria-invalid={nameInvalid || undefined}
             onChange={(e) => {
@@ -103,19 +104,19 @@ export function WishModal({ onSubmitted }: WishModalProps) {
             className={UI_CLASSES.field}
           />
           <p id={nameHintId} className={UI_CLASSES.caption}>
-            {WISH_COPY.nameHint}
+            {COPY.nameHint}
           </p>
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor={textId} className={UI_CLASSES.label}>
-            {WISH_COPY.textLabel}
+            {COPY.textLabel}
           </label>
           <textarea
             id={textId}
             value={text}
             rows={WISH_TEXTAREA_ROWS}
             maxLength={WISH_TEXT_MAX_LENGTH}
-            placeholder={WISH_COPY.textPlaceholder}
+            placeholder={COPY.textPlaceholder}
             aria-describedby={warning && textInvalid ? `${countId} ${warningId}` : countId}
             aria-invalid={textInvalid || undefined}
             onChange={(e) => {
@@ -169,7 +170,7 @@ export function WishModal({ onSubmitted }: WishModalProps) {
           disabled={!canSubmit}
           className={`${UI_CLASSES.primaryButton} self-end${transition}`}
         >
-          {WISH_COPY.submit}
+          {COPY.submit}
         </button>
       </form>
     </section>

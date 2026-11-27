@@ -5,6 +5,8 @@ import { RITUAL_ERROR_KINDS, type RitualEvent } from "@/core/ritual";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { RitualReleasePanel } from "./RitualReleasePanel";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -94,5 +96,17 @@ describe("RitualReleasePanel", () => {
       </div>,
     );
     expect(container.querySelector("button")!.scrollWidth).toBeLessThanOrEqual(360);
+  });
+
+  it("CC2 (MFW-91): christmas copy: panel, release button and hint", () => {
+    render(
+      <EventCopyProvider eventId="christmas">
+        <RitualReleasePanel animateInScene releaser={{ release: vi.fn() }} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.ritual;
+    expect(screen.getByRole("region", { name: c.panelLabel })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: c.releaseButton })).toBeInTheDocument();
+    expect(screen.getByText(c.hint)).toBeInTheDocument();
   });
 });

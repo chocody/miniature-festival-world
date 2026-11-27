@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { getOwnerWishRevealer, type OwnerWishRevealer } from "@/services/api/ownerWishClient";
+import { useEventCopy } from "./EventCopyContext";
 import { UI_CLASSES } from "./uiClasses";
 
 export interface PrivateWishRevealProps {
@@ -20,6 +20,7 @@ type RevealUiState =
 
 /** The owner's own private wish, fetched only on tap and kept only in this component's state (never a store, never storage). */
 export function PrivateWishReveal({ creationId, revealer }: PrivateWishRevealProps) {
+  const copy = useEventCopy().ownerWish;
   const [state, setState] = useState<RevealUiState>({ kind: "idle" });
   const requestSeq = useRef(0);
   const mounted = useRef(false);
@@ -30,7 +31,6 @@ export function PrivateWishReveal({ creationId, revealer }: PrivateWishRevealPro
       requestSeq.current += 1; // drop a late answer after unmount
     };
   }, []);
-  const copy = OWNER_WISH_COPY;
 
   const reveal = () => {
     if (state.kind === "loading") return;

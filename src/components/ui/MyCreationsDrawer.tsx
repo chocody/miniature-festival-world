@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
-import { MY_CREATIONS_COPY as COPY, MY_CREATIONS_MONTHS } from "@/config/myCreations.config";
+import type { EventMyCreationsCopy } from "@/config/events/eventCopy.config";
+import { MY_CREATIONS_MONTHS } from "@/config/myCreations.config";
 import { getFindMyCreation, type FindMyCreation } from "@/services/api/findMyCreation";
 import { getMyCreationsVault, type MyCreationEntry, type MyCreationsVault } from "@/services/auth/myCreationsVault";
 import { useWorldStore } from "@/store/useWorldStore";
-import { KrathongIcon, SearchIcon } from "./hudIcons";
+import { useEventCopy } from "./EventCopyContext";
+import { FindMyIcon, SearchIcon } from "./hudIcons";
 import { UI_CLASSES } from "./uiClasses";
 
 /** HUD button recipe (MFW-74): round, 44 px, on the translucent veil; the day/night toggle and rotate use the same recipe. */
@@ -38,16 +40,16 @@ export function formatPickerTime(createdAt: string): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-function statusText(status: FindMyStatus): string {
+function statusText(status: FindMyStatus, copy: EventMyCreationsCopy): string {
   switch (status.kind) {
     case "searching":
-      return COPY.searching;
+      return copy.searching;
     case "found":
-      return COPY.found;
+      return copy.found;
     case "not_found":
-      return COPY.notFound;
+      return copy.notFound;
     case "failed":
-      return COPY.failed;
+      return copy.failed;
     default:
       return "";
   }
@@ -65,6 +67,8 @@ export function MyCreationsDrawer({
   finder,
   now = Date.now,
 }: MyCreationsDrawerProps): ReactElement | null {
+  const eventCopy = useEventCopy();
+  const COPY = eventCopy.myCreations;
   const eventId = useWorldStore((s) => s.eventId);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<readonly MyCreationEntry[]>(NO_ENTRIES);
@@ -153,7 +157,7 @@ export function MyCreationsDrawer({
           {entries.map((entry) => (
             <li key={entry.id}>
               <button type="button" className={`${UI_CLASSES.listRow} flex items-center gap-2`} onClick={() => void select(entry)}>
-                <KrathongIcon className="h-8 w-8" />
+                <FindMyIcon icon={eventCopy.findMyIcon} className="h-8 w-8" />
                 <span>{formatPickerDate(entry.createdAt)}</span>{" "}
                 <span>{formatPickerTime(entry.createdAt)}</span>
               </button>
@@ -162,7 +166,7 @@ export function MyCreationsDrawer({
         </ul>
       )}
       <p role="status" aria-live="polite" data-testid="find-my-status" data-find-my-status={status.kind} className="sr-only">
-        {statusText(status)}
+        {statusText(status, COPY)}
       </p>
     </div>
   );

@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import type { EventFindMyIconId } from "@/config/events/eventCopy.config";
 import { HUD_GLYPH_COLORS } from "@/config/look.config";
 
 /**
@@ -112,4 +113,29 @@ export function SkyLanternIcon({ className }: HudIconProps): JSX.Element {
       <path d="M12 17c-2-1.5-2.1-3.6 0-6.2 2.1 2.6 2 4.7 0 6.2z" fill={flame} />
     </Svg>
   );
+}
+
+export function OrnamentIcon({ className }: HudIconProps): JSX.Element {
+  const { body, cap, hook } = HUD_GLYPH_COLORS.ornament;
+  return (
+    <Svg glyph="ornament" className={className}>
+      <circle cx="12" cy="3.5" r="1.6" stroke={hook} strokeWidth="1.5" />
+      <rect x="9.5" y="5" width="5" height="2.6" rx="0.6" fill={cap} />
+      <circle cx="12" cy="14.5" r="7" fill={body} />
+    </Svg>
+  );
+}
+
+/** Per-event Find My row icon (MFW-91). The exhaustive switch makes a new icon id a type error until it is drawn. */
+export function FindMyIcon({ icon, className }: HudIconProps & { readonly icon: EventFindMyIconId }): JSX.Element {
+  switch (icon) {
+    case "krathong":
+      return <KrathongIcon className={className} />;
+    case "ornament":
+      return <OrnamentIcon className={className} />;
+    default: {
+      const unreachable: never = icon;
+      return unreachable;
+    }
+  }
 }

@@ -11,6 +11,7 @@ import { getZonePagination } from "@/services/api/zonePagination";
 import { installMyCreationsRecorder } from "@/services/auth/myCreationsVault";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { CustomizerPanel } from "./CustomizerPanel";
+import { EventCopyProvider } from "./EventCopyContext";
 import { DayNightSwitch } from "./DayNightSwitch";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
@@ -114,38 +115,40 @@ export function FlowRoot({ eventId }: FlowRootProps) {
   );
 
   return (
-    <div
-      data-flow-state={flowState}
-      data-active-event={enteredEventId ?? undefined}
-      data-quality-tier={qualityTier}
-      data-reduced-motion={reducedMotion ? "true" : "false"}
-      data-interaction-mode={interactionMode ?? undefined}
-      data-ritual-phase={ritualPhase}
-      data-ritual-bumped={ritual.saved ? String(isRitualBumped(ritual)) : undefined}
-      data-own-krathong={ritualPhase === "RELEASED" ? "released" : undefined}
-      data-ritual-error={ritual.error?.kind ?? undefined}
-      data-stage-layout="fullscreen"
-      className={STAGE_LAYOUT_CLASSES.root}
-    >
-      <div data-testid="stage-layer" className={STAGE_LAYOUT_CLASSES.stage}>
-        {show3D && interactionMode !== null && (
-          <Suspense fallback={null}>
-            <SceneViewport
-              mode={interactionMode}
-              viewControlRef={viewControlRef}
-              onReleaseDrop={
-                interactionMode === "RITUAL_RELEASE"
-                  ? (candidate) => void getReleaseCreation().release({ kind: "drop", candidate })
-                  : undefined
-              }
-            />
-          </Suspense>
-        )}
-        {noScene && <NoWebglNotice />}
+    <EventCopyProvider eventId={eventId}>
+      <div
+        data-flow-state={flowState}
+        data-active-event={enteredEventId ?? undefined}
+        data-quality-tier={qualityTier}
+        data-reduced-motion={reducedMotion ? "true" : "false"}
+        data-interaction-mode={interactionMode ?? undefined}
+        data-ritual-phase={ritualPhase}
+        data-ritual-bumped={ritual.saved ? String(isRitualBumped(ritual)) : undefined}
+        data-own-krathong={ritualPhase === "RELEASED" ? "released" : undefined}
+        data-ritual-error={ritual.error?.kind ?? undefined}
+        data-stage-layout="fullscreen"
+        className={STAGE_LAYOUT_CLASSES.root}
+      >
+        <div data-testid="stage-layer" className={STAGE_LAYOUT_CLASSES.stage}>
+          {show3D && interactionMode !== null && (
+            <Suspense fallback={null}>
+              <SceneViewport
+                mode={interactionMode}
+                viewControlRef={viewControlRef}
+                onReleaseDrop={
+                  interactionMode === "RITUAL_RELEASE"
+                    ? (candidate) => void getReleaseCreation().release({ kind: "drop", candidate })
+                    : undefined
+                }
+              />
+            </Suspense>
+          )}
+          {noScene && <NoWebglNotice />}
+        </div>
+        <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
+          {profiled && !noScene && overlays}
+        </div>
       </div>
-      <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
-        {profiled && !noScene && overlays}
-      </div>
-    </div>
+    </EventCopyProvider>
   );
 }
