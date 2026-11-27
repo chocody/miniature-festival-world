@@ -456,6 +456,41 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
     } else {
       logsError = "no Actions job id in the check-run URL";
     }
+    // The `ci` job is only the aggregator: list every job of the same run and tail the first failing one.
+    /** @type {{ name: string, id: number | null, status: string | null, conclusion: string | null, failedStep: string | null }[]} */
+    let jobs = [];
+    /** @type {string | null} */
+    let jobsError = null;
+    /** @type {{ name: string, id: number, logsTail: string | null, logsError: string | null } | null} */
+    let failingJob = null;
+    if (ids?.runId) {
+      try {
+        const raw = api("GET", `repos/${repo}/actions/runs/${ids.runId}/jobs?per_page=100`);
+        jobs = (Array.isArray(raw?.jobs) ? raw.jobs : []).map((/** @type {any} */ j) => ({
+          name: String(j?.name ?? ""),
+          id: typeof j?.id === "number" ? j.id : null,
+          status: j?.status ?? null,
+          conclusion: j?.conclusion ?? null,
+          failedStep:
+            (Array.isArray(j?.steps) ? j.steps : []).find(
+              (/** @type {any} */ st) => st?.conclusion && !["success", "skipped"].includes(st.conclusion),
+            )?.name ?? null,
+        }));
+      } catch (err) {
+        jobsError = err instanceof Error ? err.message : String(err);
+      }
+      const bad = jobs.find((j) => j.name !== "ci" && j.id !== null && j.conclusion !== "success");
+      if (bad && bad.id !== null) {
+        failingJob = { name: bad.name, id: bad.id, logsTail: null, logsError: null };
+        try {
+          failingJob.logsTail = tailLines(String(api("GET", `repos/${repo}/actions/jobs/${bad.id}/logs`, [], { raw: true })));
+        } catch (err) {
+          failingJob.logsError = err instanceof Error ? err.message : String(err);
+        }
+      }
+    } else {
+      jobsError = "no Actions run id in the check-run URL";
+    }
     return {
       checkRun: run,
       runId: ids?.runId ?? null,
@@ -464,6 +499,9 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
       annotationsError,
       logsTail,
       logsError,
+      jobs,
+      jobsError,
+      failingJob,
     };
   }
 

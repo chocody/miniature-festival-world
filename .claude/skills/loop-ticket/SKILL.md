@@ -420,7 +420,7 @@ In a lane, Steps 6–7 run only while the lane holds loop-epic's merge queue.
    It polls only the `ci` check-run of exactly `SHA` via REST (never `--required`, and an unrelated stuck
    check such as a preview deploy cannot hang it), fails if the PR head moves or more than one `ci` check-run
    exists, re-reads the same check-run by id as the cross-check, and gives up after `WAIT_CI_TIMEOUT_S`
-   (default 1800 s) with `GATE: FAIL timeout …`.
+   (default 2700 s) with `GATE: FAIL timeout …`.
 2. **Read the verdict strictly.** PASS means exit code 0 **and** a final line exactly
    `GATE: PASS sha=<SHA> check-run=<id>` with your `SHA` (for `pr-land`: `merged: true` with that `gate`; its
    `ci gate not passed: …` reason carries the `GATE: FAIL` line and is a failed CI attempt). A `pr-land` refusal

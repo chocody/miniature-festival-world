@@ -11,7 +11,8 @@
 # unrelated check (e.g. a preview deployment) can never hang it. Pass the id of a previous, failed `ci`
 # check-run as the third argument after a CI re-run (gh-rest.mjs ci-rerun), so the old result is not mistaken for the new one.
 #
-# Env: WAIT_CI_TIMEOUT_S (default 1800 = 30 min, covers appear + queue + 20 min job),
+# Env: WAIT_CI_TIMEOUT_S (default 2700 = 45 min; the `ci` check-run appears only after the slowest job:
+#      checks 15 min / e2e shards 25 min, then ci 5 min, plus queue time),
 #      WAIT_CI_INTERVAL_S (default 20).
 #
 # Last line of output is the verdict:
@@ -22,7 +23,7 @@
 set -uo pipefail
 
 REPO_SLUG="chocody/miniature-festival-world"
-TIMEOUT_S="${WAIT_CI_TIMEOUT_S:-1800}"
+TIMEOUT_S="${WAIT_CI_TIMEOUT_S:-2700}"
 INTERVAL_S="${WAIT_CI_INTERVAL_S:-20}"
 
 pr="${1:-}"

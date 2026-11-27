@@ -12,7 +12,8 @@ are cancelled). Three jobs (the e2e suite outgrew one 20-minute job; owner decis
 | `ci` | needs both; succeeds only when `checks` and every `e2e` shard succeeded (any failure, cancellation or skip fails it) |
 
 The merge gate reads only the check-run named `ci` (below), so it covers every job. `ci-info` shows the `ci` job's
-annotations (which job failed); open the failing job's log from the run page for details.
+annotations, lists every job of the same run (name, conclusion, failed step) and tails the log of the first failing
+job other than `ci` (`failingJob`), since the `ci` job's own log is only the aggregator.
 
 On failure each e2e shard uploads its Playwright report and traces as the `playwright-report-<n>` artifact.
 
@@ -54,7 +55,7 @@ loop-ticket automation:
 Steps 2–3 are scripted in `scripts/wait-ci.sh`, run as
 `node scripts/gh-rest.mjs exec -- bash scripts/wait-ci.sh <pr> <sha> [ignore-check-run-id]`; it never merges.
 It is REST only. It polls only the `ci` check-run of exactly `<sha>` until it completes or `WAIT_CI_TIMEOUT_S`
-(default 1800 s) expires (so a stuck preview check can never hang it), fails if the PR head moves or more than
+(default 2700 s) expires (so a stuck preview check can never hang it), fails if the PR head moves or more than
 one `ci` check-run exists, then cross-checks step 3 by re-reading the same check-run by id. The last line is
 `GATE: PASS sha=<sha> check-run=<id>` or `GATE: FAIL <reason>`; anything else counts as a failure. After a re-run
 (`node scripts/gh-rest.mjs ci-rerun <sha>`) pass the failed check-run id as the third argument so the old result
