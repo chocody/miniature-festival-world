@@ -434,3 +434,120 @@ Labels on every card: `loop-16`, `christmas` unless noted. Sizes: S ≈ ½ loop-
   - /home/user/miniature-festival-world/supabase/migrations/20261124010000_mfw13_report_creation.sql (reference; 16.10 adds a new migration beside it)
   - /home/user/miniature-festival-world/src/config/performance.config.ts
   - /home/user/miniature-festival-world/playwright.config.ts
+
+---
+
+# v3 — owner decisions of 2026-11-27 (second round) and the owner's Christmas models
+
+Second round: same Supabase project with a `data_scope` column (test / live), wipe everything now, Vercel Hobby (DB-backed rate limit), the owner alone tests, art and Thai copy reviewed by the owner after merge. Models: the owner's eight Hunyuan3D models (six hangable designs ball, star, bow, bell, stocking, gift; a snowman and a gift pile as props).
+
+## Code facts behind the changes
+
+**What the code tells us**
+- **No migration is needed for the New Year event id.** The MFW-12 check already allows `event_id = 'new_year'`, the `PLANAR_ZONE` coord mode, and `parsePersistableCoord` validates u and v.
+- **The data-scope column touches every SQL function.** Each one filters only by `event_id` (+ `zone_id`), or by creation id:
+  - `mfw_zone_item_counts`, `mfw_zone_occupants`, `mfw_insert_creation_guarded_v2` (lock + occupant set + 80 cap)
+  - `mfw_creation_ownership`, `mfw_creation_wish_state`, `mfw_open_creation_wish`, `mfw_close_creation_wish`, `mfw_report_creation`
+  - So a scope needs a new migration with scoped versions, plus wiring in the repository.
+- **The repository is built once from env** (`createCreationRepositoryFromEnv`). The deployment's scope can be bound there, so callers do not change.
+- **The guarded insert is a compare-and-insert on the whole occupant set.** Any concurrent write to the same zone forces a retry. A burst into one band or zone (Christmas opening, New Year midnight) will produce retries and then 503s.
+- **The server clock offset is estimated only from the POST 201** (`estimateServerClockOffsetMs`). The countdown needs its own sample before anyone creates anything.
+- **The firework pool is small and slow:** caps HIGH 3 / MEDIUM 2 / LOW 1, rise 750 ms + burst 2000 ms, and `FIREWORK_MIN_LAUNCH_INTERVAL_MS` = 333 ms (WCAG). The midnight show has to be paced from these numbers.
+- **Feature flags block staging.** A disabled event fails closed even under the MFW-88 env override. So New Year needs a "non-production only" flag value, or staging cannot open it without opening production on 28 Dec.
+
+## L16 changes
+
+**Unchanged, in progress (not re-planned):**
+- 16.2 / MFW-88: `MFW_ACTIVE_EVENT_OVERRIDE`. Staging sets it on the staging branch only.
+- 16.6 / MFW-92, 16.7 / MFW-93, 16.8 / MFW-94, 16.13 / MFW-99.
+
+**Rule for the whole epic** (add to the epic description; it also changes the wording of 16.5, 16.14, 16.15, 16.16, 16.19, 16.20 and 16.21): "The owner reviews art and Thai copy afterwards, from PR screenshots and staging. No card waits for that review, and feedback becomes new owner-review cards." The AC still require the screenshots.
+
+**Card changes at a glance**
+
+| Card | Change |
+|---|---|
+| 16.1 | Amended |
+| 16.4 | Replaced: same Supabase + scope + staging + runbook |
+| 16.9 | Replaced: DB-backed rate limit; the client part moves to 16.35 |
+| 16.10 | Amended: scope and shared HMAC key |
+| 16.28 | No longer optional (L17 needs it); the snow moves to 16.37 |
+| 16.29 | Replaced: owner-only pass |
+| 16.30 | Replaced |
+| 16.31–16.37 | New |
+
+### Replacement and new story JSON
+
+Story JSON: `docs/backlog.json` (L16; new keys MFW-117 … MFW-124).
+
+
+**Why 16.30 wipes what it wipes.** Test rows are already invisible to production, because production reads only the live scope. So the launch wipe is privacy hygiene for the test private wishes, not a correctness need. The Loy private test ran on production and so wrote live rows, which is why every loy_krathong row must go. "Christmas live = 0" is a cheap assertion that production never accepted a Christmas write before launch.
+
+**Why the column defaults to `test`.** A writer that names no scope can never put anything on the live site. Old production code that is still deployed between applying 16.32 and deploying 16.33 writes test rows, and that is correct, because it is the Loy private test.
+
+---
+
+## The owner's models
+
+### What the models mean for the plan
+
+**The asset byte budget needs its own entry.** The krathong pack already uses 1 494 068 of its 1 572 864 public bytes (`KRATHONG_DESIGN_ASSET_BUDGET`). Christmas models get a separate `CHRISTMAS_MODEL_ASSET_BUDGET`: each public file ≤ 256 KiB, the Christmas public total ≤ 1.5 MiB, and the decimated sources ≤ 640 KiB.
+
+**Tree triangles set the LOD targets.** Up to `TREE_RENDERED_BAND_MAX` = 5 bands × 80 means 400 ornaments may be mounted.
+- The river precedent for a full HIGH zone is 168 960 triangles (80 × 1 056 × 2 for the shadow pass).
+- DRAFT `ORNAMENT_MAX_TRIANGLES_BY_LOD` = full (customizer hero) 4 000, medium (tree on HIGH/MEDIUM) 400, low (tree on LOW) 100.
+- Ornaments cast no shadows on any tier (DRAFT).
+- With those numbers the mounted window is 400 × 400 = 160 000 triangles on HIGH, under the river precedent.
+- On LOW, cap the mounted bands at 3: 240 × 100 = 24 000 triangles, close to today's LOW river load of 24 × 868.
+
+**Ornament size must fit the 16.7 lattice.** The tightest slot pair is about 0.60 world units. Each design's scaled bounding radius must stay ≤ half the minimum slot spacing, so neighbours never overlap. This becomes a test in 16.15. 16.7 is in progress, so this is only a note for it.
+
+**The loading fallback can be tiny.** The 16.15 procedural placeholder ornaments are no longer needed. Following the MFW-65 rule ("the procedural model renders until the design loads"), the fallback is one shared low-poly sphere tinted with the design's main colour. The design-source registry (`procedural | glb`) stays, so L17 can still add procedural stars.
+
+**The pipeline must be generalised, not copied.**
+- `scripts/krathong-models-lib.mjs` has krathong-only steps: the flame cut and the `krathongFlames` extras.
+- A pack option, or a thin `scripts/christmas-models.mjs` on the same library, should drive: weld → simplify per LOD → region colours → NORMAL + COLOR_0.
+- Ornaments add an optional hook anchor, e.g. `meshes[0].extras.ornamentHook`. This keeps the 16.15 promise that "the parser makes anchors optional".
+- Orientation: hook at +Y and the outward face at +Z. The star and bow are flat in z, so their face must point outward.
+
+**Card size.** Six designs plus two props is too much for one card. I split it the way MFW-65 and MFW-76 were split:
+- 16.15: the pipeline plus the first three designs.
+- New 16.38: the other three designs plus both props. This card is mostly data.
+
+**Prop placement needs a call from you.** You mapped the props to "16.14/16.19 place them". If 16.14 places the gift pile, 16.14 waits on 16.15/16.38. Both are wave 1, so that pushes the critical path back by about a day.
+- Recommended: 16.14 only reserves the trunk-base anchor and its budget line, and 16.19 (wave 2, already after 16.15) places both props.
+- Literal alternative: add "16.38" to 16.14's blockedBy and accept the slip.
+
+**Licence (NOTICE.md).**
+- Add a new §8 "Christmas 3D models", plus an owner checklist item: "confirm the Hunyuan3D service terms allow public use before 20 Dec".
+- Spell out exactly which terms the owner used (web service or open weights). The open-weights Hunyuan3D community licences are known to carry territory and user-count limits. I have not checked the current text, so the owner should verify it.
+- The krathong source files are named `hy3d-model*.glb`. That suggests the krathong pack (NOTICE §1, "tool … not recorded") also came from Hunyuan3D. The owner should confirm that too, and §1 can then be updated.
+
+### Replacement and amended stories
+
+Story JSON: `docs/backlog.json` (L16; new keys MFW-117 … MFW-124).
+
+
+**Unchanged.**
+- 16.6 (MFW-92) is in progress with six ids in its fix round. Its catalogue AC now reads "ball_01, star_01, bow_01, bell_01, stocking_01, gift_01; default ball_01 (DRAFT)".
+- 16.26 needs no edit: `designThumbnailUrl(eventId, appearance)` picks up all six from 16.15 and 16.38.
+
+### Effect on dates and risks
+
+**Schedule.**
+- 16.15 stays wave 1, parallel with 16.14.
+- 16.38 is S/M in waves 1–2 and must land before 16.19 and 16.20, by about 5 Dec.
+- 16.14 does not move under the recommended prop mapping.
+- About +0.75 loop-day in total (16.38).
+
+**New risks.**
+1. Colour by region rules needs tuning rounds; the owner reviews after merge.
+2. 100-triangle low LODs of the stocking and bow may read poorly at tree distance. The 16.18 screenshots decide; the fallback is a 150–200 triangle low LOD with LOW mounted bands kept at 3.
+3. The Hunyuan3D terms are an owner launch gate before 20 Dec. If they do not allow public use, the fallback is procedural ornaments behind the same registry, which needs a new card.
+
+Prop placement decision (loop, following the planner's recommendation): 16.14 only reserves the trunk-base anchor and its budget line; 16.19 places both props.
+
+## Risks of running L16 and L17 together
+
+See [L17-new-year.md](L17-new-year.md) §Risks and order of work.
+

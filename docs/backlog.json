@@ -1170,7 +1170,7 @@
     {
       "id": "L16",
       "summary": "Loop 16 — Christmas: Decorate a Growing Tree",
-      "description": "Owner request 2026-11-27: build the Christmas festival for the public launch 20–26 Dec 2026 (Asia/Bangkok). Core = the original spec: choose an ornament (ball / star / bow; procedural placeholders until the owner supplies models), write a wish, orbit one shared Christmas tree for everyone, see a ghost preview and tap to hang (NormalizedCylindricalCoord); the one tree keeps growing taller (zone n = band n, ≤ 80 per band, streamed); Find My, HUD, wish bubble and own popup reused; a snowy village built from the existing parts; abuse protection before launch; gimmicks after launch. Plan: docs/plans/L16-christmas.md.",
+      "description": "Owner request 2026-11-27: build the Christmas festival for the public launch 20–26 Dec 2026 (Asia/Bangkok). Core = the original spec: choose one of six ornaments from the owner's models (ball, star, bow, bell, stocking, gift; a snowman and a gift pile as scene props), write a wish, orbit one shared Christmas tree for everyone, see a ghost preview and tap to hang (NormalizedCylindricalCoord); the one tree keeps growing taller (zone n = band n, ≤ 80 per band, streamed); Find My, HUD, wish bubble and own popup reused; a snowy village built from the existing parts; abuse protection before launch; gimmicks after launch. Second round (owner, 2026-11-27): same Supabase project with a data_scope column (test / live); everything wiped now; Vercel Hobby so the rate limit is DB-backed; the owner alone tests on their own devices. The owner reviews art and Thai copy afterwards, from PR screenshots and staging; no card waits for that review, and feedback becomes new owner-review cards (the AC still require the screenshots). Plan: docs/plans/L16-christmas.md (v3 section).",
       "labels": [
         "loop-16",
         "christmas",
@@ -1180,10 +1180,10 @@
         {
           "id": "16.1",
           "summary": "Record the owner's Christmas decisions (2026-11-27) in the spec",
-          "goal": "The spec, open questions, CLAUDE.md and roadmap say Christmas is being built as one growing tree.",
+          "goal": "The spec, open questions, CLAUDE.md and roadmap say Christmas is being built as one growing tree on the shared Supabase project, with the owner's six ornament models.",
           "ac": [
-            "docs/spec/open-questions.md gets rows for the owner's 2026-11-27 decisions (core = hang ornaments on one shared tree that keeps growing; zone n = band n; tierId = global tier index from the top; server-only event override outside production; abuse protection before launch; designs only ball/star/bow as placeholders; snowy village reusing existing parts) plus the plan's DRAFT defaults D3–D14 and R1–R9 as open rows with their defaults; row 15's 2D fallback is marked superseded; row 37 (wrap) noted as not applying to the tree",
-            "CLAUDE.md 'Christmas stays a stub' text and docs/spec/01-roadmap.md launch note are updated; spec/doc lint tests pass"
+            "docs/spec/open-questions.md gets rows for the owner's 2026-11-27 decisions (one growing tree; zone n = band n; tierId = global tier index from the top; server-only event override outside production; abuse protection before launch; SIX hangable designs from the owner's models — ball_01, star_01, bow_01, bell_01, stocking_01, gift_01, default ball_01 DRAFT — each with fixed colours from the owner's references, no colour picker; a snowman and a gift pile as scene props; models made by the owner with Hunyuan3D, terms to be confirmed before 20 Dec; snowy village from existing parts) and the second round (row 17 superseded: same Supabase project with a data_scope column; row 18 updated: wipe now by 16.31 and at launch by 16.30; row 20 decided: owner alone, art and copy reviewed after merge; R5 decided: DB-backed rate limit); D3–D14 and R1–R9 as open rows with defaults (D7 now reads 'six owner designs'); row 15's 2D fallback superseded; row 37 not applying to the tree",
+            "CLAUDE.md 'Christmas stays a stub' text and the docs/spec/01-roadmap.md launch note updated; spec/doc lint tests pass"
           ],
           "labels": [
             "christmas",
@@ -1222,16 +1222,21 @@
         },
         {
           "id": "16.4",
-          "summary": "Staging environment and private-test runbook (owner-assisted)",
-          "goal": "Open question 17: a second Supabase project behind a protected staging deployment so Christmas can be tested on a real DB.",
+          "summary": "Staging on the shared Supabase project and runbook (owner-assisted)",
+          "goal": "Owner (2026-11-27): one Supabase project; a protected staging deployment writes only test-scope rows so Christmas and New Year can be tested on the real DB.",
           "ac": [
-            "docs/runbooks/staging.md covers the second Supabase project with migrations in order, branch-scoped server-only env (PR previews still have no DB), the private-wish and report keys, the event override, Vercel deployment protection and an anon-key denial checklist",
-            "The owner confirms staging opens Christmas and POST /api/creations writes to the DB; the result is recorded in docs/follow-ups.md"
+            "docs/runbooks/staging.md covers: a long-lived staging branch fast-forwarded from main only; Vercel Preview env vars scoped to that branch only (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY of the production project; a staging-only PRIVATE_WISH_KEY / PRIVATE_WISH_KEY_ID and MFW_ABUSE_HMAC_KEY different from production; MFW_ACTIVE_EVENT_OVERRIDE); PR previews and CI still get no DB env; Vercel Authentication on previews (Hobby); migration apply order MFW-12 → 13 → 45 → 31 → 62 → 16.32 → 16.9 → 16.10 → 16.34; anon-key denial checklist incl. the new table and functions; SQL checks of row counts per data_scope; CLAUDE.md environment facts updated (production + the staging branch, scope test)",
+            "The owner confirms on staging: Christmas opens; a hang writes a row with data_scope = 'test'; production GET /api/creations?event=christmas&zone=1 and GET /api/zones?event=christmas do not show it; result recorded in docs/follow-ups.md"
           ],
           "labels": [
             "christmas",
             "infra",
-            "db"
+            "db",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.2",
+            "16.33"
           ]
         },
         {
@@ -1252,7 +1257,7 @@
           "summary": "Ornament appearance and server allowlist",
           "goal": "The server accepts only catalogue ornament designs for Christmas.",
           "ac": [
-            "An ornament design catalogue (ball, star, bow; default) and parseOrnamentAppearance with the exact key set {design}, registered for christmas in the appearance registry; EventAppearance becomes a union",
+            "An ornament design catalogue (ball_01, star_01, bow_01, bell_01, stocking_01, gift_01 — owner decision 2026-11-27; default ball_01 DRAFT) and parseOrnamentAppearance with the exact key set {design}, registered for christmas in the appearance registry; EventAppearance becomes a union",
             "The builder store chooses a design per event with a per-event default (Loy unchanged); tests cover parser cases and the server rejecting a krathong appearance for christmas and the reverse"
           ],
           "labels": [
@@ -1291,16 +1296,22 @@
         },
         {
           "id": "16.9",
-          "summary": "Rate limit on creating and reporting before launch",
-          "goal": "Owner (2026-11-27): anyone may hang any number of ornaments, but with a rate limit (owner suggested about 3 per minute).",
+          "summary": "DB-backed rate limit on creating and reporting",
+          "goal": "Owner (2026-11-27): anyone may hang any number, but about 3 a minute per device; the Vercel plan is Hobby (no firewall rate-limit rules), so the limit lives in the database.",
           "ac": [
-            "POST /api/creations and /api/reports are rate-limited per device and per IP with DRAFT limits (owner suggestion: 3 hangs per minute per device; proposed extra layers: 10 per minute per IP and 30 per day per device, to confirm); mechanism: Vercel Firewall rules if the plan supports them (runbook + staging check returns 429), else a new migration with RLS enabled and deny policies for anon/authenticated and a migration test (invariant D)",
-            "The clients map 429 to a calm DRAFT Thai message and the ritual stays retryable; unit and mocked e2e tests"
+            "A new migration: table rate_limit_hits (data_scope, bucket = 64-hex HMAC, window_start, hits; primary key on the first three) with RLS enabled, restrictive deny policies for anon/authenticated and revoke all; mfw_rate_limit_take(p_data_scope, p_buckets, p_window_seconds, p_limits) atomically upserts every layer of one request, returns whether all are within limit and prunes windows older than 2 days; security invoker, service_role only; static migration test (invariant D)",
+            "src/services/api/rateLimit.ts + src/config/rateLimit.config.ts guard POST /api/creations and /api/reports before any other work: buckets = HMAC-SHA-256 with the server-only MFW_ABUSE_HMAC_KEY of the device (owner-token hash) and the client IP (x-real-ip, else first x-forwarded-for; IPv6 grouped by /64); DRAFT limits: creations 3/min + 30/day per device and 20/min + 200/day per IP; reports 10/min + 50/day per IP; over → 429 {error: rate_limited} + Retry-After; limiter backend error → 503; in-memory limiter for the in-memory backend; raw IP and token never stored, logged or returned",
+            "Handler tests for each layer, window roll-over, IPv6 grouping, missing key (→ 503) and the 429 shape; privacy-auditor; owner-merge; merged by 11 Dec"
           ],
           "labels": [
             "christmas",
             "privacy",
+            "db",
+            "migration",
             "infra"
+          ],
+          "blockedBy": [
+            "16.32"
           ]
         },
         {
@@ -1308,14 +1319,18 @@
           "summary": "Report dedupe per reporter",
           "goal": "One reporter cannot hide a wish alone; three distinct reporters still hide it (MFW-13 rule).",
           "ac": [
-            "A new migration (old migrations untouched): a reports table keyed by (creation_id, reporter_hash) with RLS enabled, restrictive deny policies for anon/authenticated and revoke all; a v2 report function that counts and hides only when a new row was inserted; reporter_hash = HMAC of the client IP with a server-only key, the raw IP is never stored, logged or returned",
-            "Migration test and handler tests: the same reporter three times counts once; three distinct reporters hide the wish; privacy-auditor; owner-merge"
+            "A new migration (old untouched): creation_reports (creation_id fk → creations_public on delete cascade, reporter_hash, created_at, primary key (creation_id, reporter_hash)) with RLS enabled, restrictive deny policies for anon/authenticated and revoke all; mfw_report_creation_v3(p_creation_id, p_data_scope, p_reporter_hash) acts only on a row of that scope and counts / hides only when a new row was inserted; reporter_hash = HMAC of the client IP with MFW_ABUSE_HMAC_KEY (helper shared with 16.9); raw IP never stored, logged or returned",
+            "Migration test and handler tests: same reporter three times counts once; three distinct reporters hide the wish; a report against the other scope is ignored; privacy-auditor; owner-merge"
           ],
           "labels": [
             "christmas",
             "privacy",
             "db",
             "migration"
+          ],
+          "blockedBy": [
+            "16.9",
+            "16.33"
           ]
         },
         {
@@ -1370,8 +1385,8 @@
           "summary": "Christmas scene shell and tree renderer",
           "goal": "Christmas opens its own lazy-loaded 3D scene with the placeholder clay tree.",
           "ac": [
-            "FlowRoot lazy-loads a Christmas scene viewport (the river chunk is not fetched, e2e network check), reusing the shared render settings, lighting and input separator; the tree (trunk, crown tiers, one instanced mesh for all skirt tiers, star) is built from the growing-tree model; only bands in view plus a margin are mounted; a plain snow ground",
-            "Disposal test on unmount; a Christmas environment budget in performance.config.ts with a test that draw calls do not depend on the band count; screenshots at 390×844 and 1440×900 for 1, 3 and 12 bands (owner art checkpoint for the tree shape and numbers)"
+            "FlowRoot lazy-loads a Christmas scene viewport (the river chunk is not fetched, e2e network check), reusing the shared render settings, lighting and input separator; the tree (trunk, crown tiers, one instanced mesh for all skirt tiers, star) is built from the growing-tree model; only bands in view plus a margin are mounted; a plain snow ground; a gift-pile anchor at the trunk base on the ground (it does not move when the tree grows) is reserved, and a projection test proves a prop of the reserved size there covers no slot of the newest band at the default framing",
+            "Disposal test on unmount; a Christmas environment budget in performance.config.ts that includes the gift-pile and snowman prop lines, with a test that draw calls do not depend on the band count; screenshots at 390×844 and 1440×900 for 1, 3 and 12 bands"
           ],
           "labels": [
             "christmas",
@@ -1386,11 +1401,12 @@
         },
         {
           "id": "16.15",
-          "summary": "Placeholder ornament models and the GLB swap contract",
-          "goal": "Ball, star and bow in the clay-toy look now; swappable for the owner's models later by config.",
+          "summary": "Owner ornament models through the MFW-65 pipeline: ball, star, bow",
+          "goal": "The owner's Hunyuan3D ornaments (one mesh, POSITION only, ~20k tris, bounds ±1) become coloured three-LOD GLBs behind the design-source registry; the first three designs end to end.",
           "ac": [
-            "Procedural vertex-coloured ball, star and bow in the existing design-body contract with three LODs, hook at +Y and outward axis +Z, triangle guards per LOD; thumbnails generated as in MFW-78",
-            "A design source registry (procedural | glb); the GLB parser makes anchors optional and a fixture GLB loads through the same path; docs/design/models.md documents the ornament contract for the owner"
+            "The MFW-65 pipeline is generalised (a pack option or scripts/christmas-models.mjs on scripts/krathong-models-lib.mjs; the krathong outputs stay byte-identical, KA7/KA9 pass): weld, simplify to full / medium / low, colour by region rules from the owner's reference colours (ball_01 cream body + tan cap/ring, star_01 mustard, bow_01 terracotta), NORMAL + COLOR_0, hook at +Y with an optional ornamentHook anchor in extras, outward axis +Z; sources in assets/christmas/decimated/, outputs in public/models/christmas/; --check mode; triangle guards ORNAMENT_MAX_TRIANGLES_BY_LOD (DRAFT 4 000 / 400 / 100) and CHRISTMAS_MODEL_ASSET_BUDGET (each public file ≤ 256 KiB, total ≤ 1.5 MiB, sources ≤ 640 KiB) tested",
+            "The design-source registry maps the three designs to glb; the GLB parser accepts the contract with optional anchors (a krathong GLB still needs its flames); a lazy loader after profiling, one geometry per (design, LOD) and one shared vertex-colour material per canvas, disposed with it; a shared tinted low-poly sphere renders while loading or after a failure; a test proves each design's scaled bounding radius ≤ half the minimum 16.7 slot spacing; thumbnails generated as in MFW-78",
+            "docs/design/models.md §12 documents sources, decimation commands, region rules, contract and budgets; NOTICE.md gets §8 Christmas 3D models (owner-made with Hunyuan3D on 2026-11-27, files, terms) and the checklist item 'confirm the Hunyuan3D service terms allow public use before 20 Dec'; customize-view screenshots of the three designs DAY and NIGHT"
           ],
           "labels": [
             "christmas",
@@ -1444,8 +1460,8 @@
           "summary": "Ornaments on the tree, instanced per streamed band",
           "goal": "Every public ornament of the loaded bands hangs at its stored coord.",
           "ac": [
-            "Streamed zone items become instanced batches per design; position and orientation are derived every render from coord + band count with locked world scale; per-quality-tier LOD with no shadows on LOW; batches of a band leaving the window are disposed; budget test ≤ 80 per band and a fixed maximum in total",
-            "Perf e2e on LOW in SwiftShader on the 12-band fixture (newest band and after travelling up) stays above the low-FPS threshold; screenshots of a full band DAY and NIGHT"
+            "Streamed zone items become one instanced batch per design (six) across the mounted bands; position and orientation are derived every render from coord + band count with locked world scale, hook at the slot, +Z along the surface normal; LOD from the 16.15 models (medium on HIGH / MEDIUM, low on LOW), no ornament shadows (DRAFT); a band leaving the window disposes its instances; budget tests: ≤ 80 per band, mounted bands ≤ TREE_RENDERED_BAND_MAX (DRAFT 3 on LOW), mounted ornament triangles ≤ HIGH_RIVER_KRATHONG_ZONE_MAX_TRIANGLES on HIGH and ≤ a LOW guard on LOW, draw calls ≤ six for ornaments",
+            "Perf e2e on LOW in SwiftShader on the 12-band fixture with all six designs (newest band and after travelling up) stays above DROP_TO_LOW_FPS_THRESHOLD; screenshots of a full band DAY and NIGHT"
           ],
           "labels": [
             "christmas",
@@ -1461,11 +1477,11 @@
         },
         {
           "id": "16.19",
-          "summary": "Winter village around the plaza",
-          "goal": "The existing houses, trees, lamps and villagers, snowed in around the tree.",
+          "summary": "Winter village around the plaza, with the snowman and the gift pile",
+          "goal": "The existing houses, trees, lamps and villagers snowed in around the tree, plus the owner's snowman and gift pile.",
           "ac": [
-            "A ring layout around the plaza reusing the house shell with a snowy roof, foliage parts as snowy pine clumps, lamps and silhouette villagers, all instanced (villagers may be 0 on LOW)",
-            "Budget test per quality tier and screenshots DAY and NIGHT, phone and desktop (owner art checkpoint)"
+            "A ring layout around the plaza reusing the house shell with a snowy roof, foliage parts as snowy pine clumps, lamps and silhouette villagers, all instanced (villagers may be 0 on LOW); the owner's snowman at DRAFT 2 village anchors (instanced) off the ring path, and the gift pile at the 16.14 trunk-base anchor; prop LOD per tier (medium on HIGH / MEDIUM, low on LOW), no shadows on LOW, disposed with the scene",
+            "Budget test per quality tier including both props; screenshots DAY and NIGHT, phone and desktop"
           ],
           "labels": [
             "christmas",
@@ -1475,16 +1491,17 @@
             "dev-opus"
           ],
           "blockedBy": [
-            "16.16"
+            "16.16",
+            "16.38"
           ]
         },
         {
           "id": "16.20",
-          "summary": "Customizer: choose an ornament design",
-          "goal": "The same floating thumbnail row as the krathong picker, for ornaments.",
+          "summary": "Customizer: choose one of six ornament designs",
+          "goal": "The same floating thumbnail row as the krathong picker, for the six owner ornaments.",
           "ac": [
-            "The customizer lists the active event's designs from the registry; the chosen ornament shows as the hero in the customize view and rotate/zoom work",
-            "Unit and e2e tests: choosing the star stores {design: star}; touch targets ≥ 44 px at 360×640, 390×844 and 1440×900; screenshots DAY and NIGHT"
+            "The customizer lists the active event's six designs from the registry (ball, star, bow, bell, stocking, gift) with their thumbnails; the chosen ornament shows as the hero (full LOD) and rotate and zoom work",
+            "Unit and e2e tests: choosing the stocking stores {design: stocking_01}; all six are reachable with touch targets ≥ 44 px at 360×640, 390×844 and 1440×900; screenshots DAY and NIGHT"
           ],
           "labels": [
             "christmas",
@@ -1495,7 +1512,7 @@
             "16.5",
             "16.6",
             "16.14",
-            "16.15"
+            "16.38"
           ]
         },
         {
@@ -1626,11 +1643,11 @@
         },
         {
           "id": "16.28",
-          "summary": "Village taps and falling snow (optional, may ship after launch)",
-          "goal": "Reuse the existing tap reactions in the plaza and add gentle falling snow.",
+          "summary": "Village taps on the plaza; effects without the river frame",
+          "goal": "Reuse the existing tap reactions in the Christmas plaza; the effect layer no longer assumes the endless river, so New Year can use it (17.24).",
           "ac": [
-            "House, pine, lamp and empty-ground taps reuse the existing reactions on the plaza anchors (SceneEffects frame optional)",
-            "Falling snow reuses the ambient motes: static under reduced motion, none on LOW; e2e taps"
+            "House, pine, lamp and empty-ground taps reuse the existing reactions on the plaza anchors; SceneEffects takes an optional frame (no ENDLESS assumption) and the Loy scene still passes ENDLESS; pools and caps unchanged",
+            "Unit tests for the frame-less path; e2e taps in the christmas project; screenshots DAY and NIGHT"
           ],
           "labels": [
             "christmas",
@@ -1644,10 +1661,11 @@
         },
         {
           "id": "16.29",
-          "summary": "Private test on staging and device pass",
-          "goal": "Real testers and devices before launch (open question 20).",
+          "summary": "Owner-only private test on staging and device pass",
+          "goal": "Owner (2026-11-27): the owner alone tests on their own devices before launch (open question 20).",
           "ac": [
-            "A checklist on iOS Safari and Android across all quality tiers: FPS at the newest band and after travelling up, tap accuracy on a full band, a two-device race for the last slot, a 429 from the rate limit, one device reporting three times hides nothing; results in docs/follow-ups.md and fixes as new cards"
+            "The loop runs the automated pre-pass and records it in docs/follow-ups.md: the LOW perf e2e on the 12-band fixture; a scripted two-request race for the last slot of a staging band (one stays, the other lands in the next band); a scripted check that the 4th hang in a minute from one device and the 21st request in a minute from one IP get 429",
+            "The owner runs a short checklist on staging on their own phone and a desktop browser with ?perfProbe=1: hang by button and by tap on a full band; travel up 5 bands; Find My after a reload via ดูต้นไม้; bubble and own popup; three reports of one wish from one device hide nothing; findings in docs/follow-ups.md, fixes become new cards; art and copy notes become owner-review cards, not launch blockers unless the owner says so"
           ],
           "labels": [
             "christmas",
@@ -1663,16 +1681,18 @@
             "16.24",
             "16.25",
             "16.26",
-            "16.27"
+            "16.27",
+            "16.33",
+            "16.35"
           ]
         },
         {
           "id": "16.30",
-          "summary": "Launch switch, private-test data wipe and lattice freeze",
-          "goal": "Production opens Christmas by date at 20 Dec 00:00 +07 on clean data.",
+          "summary": "Christmas launch switch, launch wipe and lattice freeze",
+          "goal": "Production opens Christmas by date at 20 Dec 00:00 +07 on clean live data; staging keeps its test rows apart.",
           "ac": [
-            "The active-event code constant becomes null; fake-clock tests: 19 Dec 23:59 +07 → the calm screen with Christmas dates, 20 Dec 00:00 → christmas, 27 Dec 00:00 → none",
-            "A one-off owner-run wipe script (not a migration) deletes all private-test data and verifies count 0; production migrations confirmed applied; the slot-lattice fingerprint is frozen; privacy-auditor; owner-merge"
+            "ACTIVE_EVENT_OVERRIDE becomes null; fake-clock tests: 19 Dec 23:59 +07 → calm screen with the Christmas dates, 20 Dec 00:00 → christmas, 27 Dec 00:00 → calm screen with the New Year dates; the lattice fingerprint test is marked frozen 19 Dec 2026",
+            "supabase/scripts/wipe_before_christmas_launch.sql (one-off, owner-run on 19 Dec): in one transaction deletes every loy_krathong row (the production private test, any scope) and every christmas row with data_scope = 'test', and raises unless afterwards christmas live = 0, christmas test = 0 and loy_krathong = 0; new_year test rows are left for staging; a static test pins it; production migrations 16.32, 16.9, 16.10, 16.34 confirmed applied in docs/follow-ups.md; privacy-auditor; owner-merge"
           ],
           "labels": [
             "christmas",
@@ -1681,7 +1701,655 @@
             "privacy"
           ],
           "blockedBy": [
-            "16.29"
+            "16.29",
+            "16.36"
+          ]
+        },
+        {
+          "id": "16.31",
+          "summary": "Owner-run wipe of all current data (now)",
+          "goal": "Owner (2026-11-27): old data does not matter; delete every current row before the data-scope column is added.",
+          "ac": [
+            "supabase/scripts/wipe_all_2026-11-27.sql (one-off, outside supabase/migrations, never applied by CI): one transaction deletes every creations_public row (ownership rows go by the on-delete cascade) and raises unless creations_public and creations_private_ownership are both empty afterwards; docs/runbooks/data-wipe.md gives the steps (check the project ref, run in the SQL editor, expected counts 0 and 0, clear site data on the owner's devices because their My Creations entries now point at nothing)",
+            "tests/unit/wipe-scripts.test.ts pins that the script is outside the migrations folder, is one transaction, touches only those two tables, has no drop / alter / grant and checks the counts; the owner runs it and records date and counts in docs/follow-ups.md; privacy-auditor"
+          ],
+          "labels": [
+            "christmas",
+            "db",
+            "privacy"
+          ]
+        },
+        {
+          "id": "16.32",
+          "summary": "Data-scope column: test and live rows in one Supabase project",
+          "goal": "Owner (2026-11-27): staging and production share the production Supabase project; every row says whether it is test or live data.",
+          "ac": [
+            "A new migration (old migrations never edited) adds creations_public.data_scope text not null default 'test' check in ('live','test') (a writer that names no scope never reaches the live site), an index (data_scope, event_id, zone_id, created_at, id), and re-creates creations_public_visible with data_scope appended (existing columns and order kept, security_invoker restated, grants re-asserted)",
+            "The same migration adds scoped functions taking p_data_scope (no default) that act only on rows of that scope: mfw_zone_item_counts_v2, mfw_zone_occupants_v2, mfw_insert_creation_guarded_v3 (occupant set and 80 cap per scope, same advisory-lock key as v2 so old and new writers serialise during the switch-over), mfw_creation_ownership_v2, mfw_creation_wish_state_v2, mfw_open_creation_wish_v2, mfw_close_creation_wish_v2, mfw_report_creation_v2; each security invoker, search_path '', revoked from public/anon/authenticated, granted to service_role; RLS and the MFW-12 restrictive deny policies stay; old functions unchanged",
+            "tests/unit/data-scope-migration.test.ts checks all of this statically (MFW-45 / MFW-62 pattern); runbook apply order and anon-denial checklist updated; privacy-auditor; owner-merge (the owner applies the SQL before merging)"
+          ],
+          "labels": [
+            "christmas",
+            "db",
+            "migration",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.31"
+          ]
+        },
+        {
+          "id": "16.33",
+          "summary": "Every server read and write uses the deployment's data scope",
+          "goal": "Production reads and writes only live rows, every other deployment only test rows, and nothing can choose otherwise.",
+          "ac": [
+            "resolveDataScope(env) in src/services/api/creationRepositoryFactory.ts returns live only when VERCEL_ENV is production, test otherwise (no env var, query, cookie or header can pick it); the Supabase repository is bound to that scope: listPublicZone and highestVisibleZoneId filter data_scope (the column is not selected; PUBLIC_CREATION_COLUMNS unchanged); counts, occupants, guarded insert, ownership, wish state, open, close and report call the 16.32 RPCs (new paths in src/config/database.config.ts); the unguarded insertCreation is refused on Supabase (fixtures use in-memory); a boundary test proves the old RPC paths are no longer referenced; the in-memory repository honours the scope too",
+            "Table-driven tests: every Supabase request of a repository bound to scope X carries X; preview and development never resolve to live; a test-scope creation is invisible to a live repository for zone lists, zone directory, counts, occupants, ownership reads and reports; existing route, Find My and pagination tests pass unchanged; privacy-auditor; owner-merge after 16.32 is applied"
+          ],
+          "labels": [
+            "christmas",
+            "db",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.32"
+          ]
+        },
+        {
+          "id": "16.34",
+          "summary": "Slot-keyed guarded insert for lattice events (tree and sky)",
+          "goal": "People hanging at the same moment collide only when they pick the same slot, not whenever anyone else writes to the band (Christmas opening, New Year midnight).",
+          "ac": [
+            "A new migration adds mfw_insert_creation_slot_guarded(p_data_scope, …) that, under the same per-(event, zone) advisory lock, inserts only if no non-expired row of that scope, event and zone has an equal coord and the zone holds fewer than 80; security invoker, search_path '', service_role only; static migration test",
+            "The tree strategy (16.11) uses it (the river keeps the occupant-set guard); the in-memory repository models the same rule; tests: a concurrent hang into another slot of the same band succeeds without a retry, the same slot loses and moves to the nearest free slot; privacy-auditor; owner-merge"
+          ],
+          "labels": [
+            "christmas",
+            "db",
+            "migration",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.11",
+            "16.32"
+          ]
+        },
+        {
+          "id": "16.35",
+          "summary": "Calm message when a hang or report is rate-limited",
+          "goal": "A 429 never feels like an error: wait a moment and try again.",
+          "ac": [
+            "createCreationClient and reportClient map 429 to rate_limited with the Retry-After seconds; the ritual stays retryable (the send button waits out Retry-After) and the report control says so; DRAFT Thai copy from the per-event copy table",
+            "Unit tests and mocked e2e in the Loy and christmas Playwright projects"
+          ],
+          "labels": [
+            "christmas",
+            "ui",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.5"
+          ]
+        },
+        {
+          "id": "16.36",
+          "summary": "Production deploys from a release branch during the live events",
+          "goal": "New Year work merged after 19 Dec cannot reach production while Christmas is live, unless on purpose.",
+          "ac": [
+            "docs/runbooks/release.md and docs/ci.md: from 19 Dec the Vercel production branch is release; release moves only by fast-forward from main for the 19 Dec launch, the 27 Dec New Year launch and hotfixes (merged to main first, ci green); staging keeps tracking main; how to roll back to the previous production deployment",
+            "The owner switches the setting and records it in docs/follow-ups.md with a dry run (a docs-only commit fast-forwarded to release reaches production and nothing else does)"
+          ],
+          "labels": [
+            "christmas",
+            "infra"
+          ]
+        },
+        {
+          "id": "16.37",
+          "summary": "Falling snow (optional, may ship after launch)",
+          "goal": "Gentle snow over the plaza.",
+          "ac": [
+            "Falling snow reuses the AmbientLife motes: static under reduced motion, none on LOW, within the Christmas environment budget",
+            "Unit test for both branches; screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.19"
+          ]
+        },
+        {
+          "id": "16.38",
+          "summary": "Owner models: bell, stocking, gift ornaments and the snowman and gift-pile props",
+          "goal": "The remaining three hangable designs and the two scene props through the 16.15 pipeline.",
+          "ac": [
+            "bell_01 (mustard bell, terracotta bow), stocking_01 (terracotta, cream cuff) and gift_01 (sage green, cream ribbon) as three-LOD ornament GLBs within ORNAMENT_MAX_TRIANGLES_BY_LOD, registered and with thumbnails; the snowman (cream body, terracotta hat and scarf, brown eyes and buttons, orange nose) and the gift pile (sage / cream / terracotta / mustard) as prop GLBs with medium and low LODs only (DRAFT ≤ 1 500 / ≤ 600 triangles), no hook anchor; everything within CHRISTMAS_MODEL_ASSET_BUDGET",
+            "Asset tests (guards, budget, --check, footprint for the three ornaments); customize-view screenshots of the three designs and a prop sheet DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "art",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.15"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L17",
+      "summary": "Loop 17 — New Year 2027: Wish Stars & Countdown",
+      "description": "Owner request 2026-11-27: New Year 2027, 28 Dec 2026 – 5 Jan 2027 (Asia/Bangkok), opening the day after Christmas ends. Core = the spec §1.1.3: decorate a wish star, write a wish, flick it up into the night sky where it joins the newest constellation zone (PlanarZoneCoord: zone_id + u, v; zone n = sky row n, ≤ 80 per zone, streamed), so the sky slowly fills; plus a countdown to 1 Jan 2027 00:00 +07 with a firework show at midnight; tap the 2027 sculpture to glow and rain confetti; firework launchpads reuse the sky launches. A night plaza reusing the Christmas shell and village without snow. Reuses every L16 generic (event override, per-event copy, appearance and release-adapter registries, linear streamed zones, camera rig, HUD, Find My, bubble, popup, visit-without-sending, rate limit, data scope, slot-keyed insert). The owner reviews art and copy from screenshots and staging after merge.",
+      "labels": [
+        "loop-17",
+        "new-year",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "17.1",
+          "summary": "Record the owner's New Year decisions (2026-11-27) in the spec",
+          "goal": "The spec says New Year 2027 is being built: wish stars flicked into constellation zones plus a midnight countdown, on the L16 engine.",
+          "ac": [
+            "docs/spec/open-questions.md gets rows for: window 28 Dec 2026 – 5 Jan 2027 Asia/Bangkok (supersedes the §1 table's 31 Dec – 1 Jan; the newYear.config.ts comment updated); core = decorate a wish star → wish → flick it into the newest constellation zone (PlanarZoneCoord, zone n = sky row n, newest just above the 2027 sculpture, ≤ 80 per zone); countdown to 2027-01-01 00:00 +07 with a firework show; 2027 tap = glow + confetti; launchpads reuse the sky launches; night plaza reusing the Christmas shell; every L16 generic reused; DRAFT defaults N1–N16 as open rows",
+            "CLAUDE.md (every other festival is a stub) and docs/spec/01-roadmap.md §1.1.3 note updated; spec/doc lint tests pass"
+          ],
+          "labels": [
+            "new-year",
+            "docs"
+          ],
+          "blockedBy": [
+            "16.1"
+          ]
+        },
+        {
+          "id": "17.2",
+          "summary": "New Year enabled on non-production only; retention date",
+          "goal": "Staging and e2e can open New Year before 28 Dec; production cannot until the launch switch.",
+          "ac": [
+            "An event feature flag may be \"non_production\" (enabled only when VERCEL_ENV is not production, resolved on the server per request); EVENT_FEATURE_FLAGS.new_year = \"non_production\"; tests: production on 28 Dec → none, a preview with MFW_ACTIVE_EVENT_OVERRIDE=new_year → new_year, POST /api/creations for new_year → 409 in production and accepted on a preview; Loy and Christmas resolution unchanged",
+            "FESTIVAL_ENDS_AT.new_year = 2027-01-06T00:00:00+07:00; fake-clock tests over the hand-over: 26 Dec 23:59 +07 → christmas, 27 Dec 12:00 → calm screen with the New Year dates, 28 Dec 00:00 → new_year with the flag true"
+          ],
+          "labels": [
+            "new-year",
+            "infra",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.2"
+          ]
+        },
+        {
+          "id": "17.3",
+          "summary": "Playwright new-year project",
+          "goal": "New Year e2e runs beside the Loy and Christmas suites.",
+          "ac": [
+            "playwright.config.ts runs a third next start on its own port with MFW_ACTIVE_EVENT_OVERRIDE=new_year and testMatch new-year-*.spec.ts; tests/e2e/helpers/newYear.ts and tests/e2e/fixtures/newYearFixtures.ts (6-zone sky directory, a full zone, mocked /api/time) with literals pinned by a unit test; a smoke e2e sees data-active-event=\"new_year\"; other suites unchanged",
+            "docs/ci.md puts the New Year project in its own CI shard and records the measured CI time"
+          ],
+          "labels": [
+            "new-year",
+            "infra"
+          ],
+          "blockedBy": [
+            "16.3",
+            "17.2"
+          ]
+        },
+        {
+          "id": "17.4",
+          "summary": "Constellation sky model: zones as sky rows, frozen star slots",
+          "goal": "One deterministic, three-free model of the growing sky shared by server and client.",
+          "ac": [
+            "src/core/world/constellationSky.ts + src/config/events/newYear.sky.config.ts (DRAFT numbers) export the rectangle of zone n of N (newest lowest, older rise), the frozen star slot table (≤ 80 exact (u, v) per zone), capacity, snapping, nearest free slot, the max zone count and a slot-table fingerprint; tests: capacity ≤ ZONE_ITEM_CAP, slot coord → world(N) → coord round-trip for N ∈ {1, 2, 7} (B), world(c, N+1) − world(c, N) = (0, rowPitch, 0) exactly, fingerprint pinned",
+            "A DRAFT New Year framing and a pure projection test: every slot pair in a zone ≥ MIN_TOUCH_TARGET_PX apart on screen at 390×844 and 360×640, hit radius ≥ MIN_TOUCH_TARGET_PX/2; no three import"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "17.5"
+          ]
+        },
+        {
+          "id": "17.5",
+          "summary": "Planar zone converters and normal",
+          "goal": "PlanarZoneCoord converts to and from a world point on any zone rectangle (sky now, gardens later).",
+          "ac": [
+            "src/core/coordinates/PlanarGridCoord.ts gains PlanarZoneRect (origin, uAxis, vAxis), planarCoordToWorld, worldToPlanarCoord (null off the rectangle beyond a stated tolerance, clamped inside) and planarSurfaceNormal; no three import",
+            "Round-trip within 1e-9 over random rectangles; edges u, v = 0 and 1; a degenerate rectangle throws; the normal is unit length and perpendicular to both axes"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "dev-opus"
+          ]
+        },
+        {
+          "id": "17.6",
+          "summary": "Wish-star appearance and server allowlist",
+          "goal": "The server accepts only catalogue star designs for New Year.",
+          "ac": [
+            "src/config/starDesigns.config.ts (star_classic_01, star_sparkle_01, star_comet_01; default) and parseStarAppearance with the exact key set {design}, registered for new_year in the appearance registry and the builder store's per-event default",
+            "Tests: parser positive and negative cases; the server rejects a krathong or ornament appearance for new_year and a star for the other events"
+          ],
+          "labels": [
+            "new-year",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.6"
+          ]
+        },
+        {
+          "id": "17.7",
+          "summary": "Sky placement on the server write path",
+          "goal": "POST /api/creations stores a star in the right constellation zone and free slot, also in the midnight rush.",
+          "ac": [
+            "A sky placement strategy registered for new_year: only PLANAR_ZONE; zone = first below capacity (hidden rows counted) else N+1, capped by the max zone count (then a calm 409); nearest free slot to the candidate (u, v), projected onto the open zone when the candidate names a full one; written with the slot-keyed guarded insert (16.34); New Year retention (17.2)",
+            "Route and strategy tests: exact free slot → 201 same coord; slot taken by a visible or hidden row → nearest free slot; full zone → next zone; off-slot candidate snapped; non-planar coord or u, v out of range → 400; a race for one slot → one wins, the other gets the nearest free slot; PII wish → 422 (G); no private keys in responses (C); privacy-auditor"
+          ],
+          "labels": [
+            "new-year",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.11",
+            "16.34",
+            "17.4",
+            "17.6"
+          ]
+        },
+        {
+          "id": "17.8",
+          "summary": "Release adapter for sending a star",
+          "goal": "The generic release pipeline (16.12) sends a wish star; Loy and Christmas unchanged.",
+          "ac": [
+            "A new_year adapter in the release adapter registry: default candidate = the ghost slot; the body carries the star appearance and only mode/u/v (A); hint FLICK_TO_SKY; didServerMove when zone or slot changed; the 201 check accepts PLANAR_ZONE for new_year only",
+            "Adapter tests: body keys, server-move detection, moderation block → revise wish, private text cleared after save; every Loy and Christmas ritual test passes unchanged"
+          ],
+          "labels": [
+            "new-year",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.12",
+            "17.6"
+          ]
+        },
+        {
+          "id": "17.9",
+          "summary": "New Year UI copy and HUD icon",
+          "goal": "Every visible New Year string talks about stars, the sky and 2027.",
+          "ac": [
+            "new_year entries in the per-event copy table (DRAFT Thai: แต่งดาวแห่งการเริ่มต้น, ส่งดาว, ดาวของฉัน, ดูท้องฟ้า, navigator labels, countdown and สวัสดีปีใหม่ 2027 strings) and a star Find My icon; Loy and Christmas strings unchanged",
+            "A unit test: no New Year string contains กระทง, สายน้ำ, คุ้งน้ำ, คริสต์มาส or ของประดับ, and every copy key the other events have exists for new_year"
+          ],
+          "labels": [
+            "new-year",
+            "ui"
+          ],
+          "blockedBy": [
+            "16.5"
+          ]
+        },
+        {
+          "id": "17.10",
+          "summary": "New Year scene shell: night plaza, 2027 sculpture, sky backdrop",
+          "goal": "New Year opens its own lazy-loaded night scene built from the Christmas shell.",
+          "ac": [
+            "FlowRoot lazy-loads src/components/canvas3d/newYear/NewYearSceneViewport.tsx (river and Christmas chunks not fetched, e2e network check), reusing the Christmas shell helpers, a snow-free plaza ground and a NIGHT-only src/config/events/newYear.look.config.ts (day/night switch hidden); a procedural clay 2027 sculpture on a plinth; a sky backdrop (gradient + one instanced static background-star mesh) placed by the 17.4 model",
+            "Disposal test on unmount; a New Year environment budget in performance.config.ts with a test that draw calls do not depend on the zone count; no new shader program on LOW; screenshots 390×844 and 1440×900 on HIGH and LOW"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.14",
+            "16.16",
+            "17.3",
+            "17.4"
+          ]
+        },
+        {
+          "id": "17.11",
+          "summary": "Plaza village for New Year (no snow)",
+          "goal": "The Christmas village ring at night without snow.",
+          "ac": [
+            "src/config/events/newYear.village.config.ts reuses the 16.19 ring layout and parts with plain roofs, lit lamps and villagers (0 on LOW allowed), all instanced",
+            "Budget test per quality tier; screenshots phone and desktop"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "art",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.19",
+            "17.10"
+          ]
+        },
+        {
+          "id": "17.12",
+          "summary": "Sky camera: travel up through the constellations",
+          "goal": "Visitors travel from the plaza up through older constellations and back.",
+          "ac": [
+            "The 16.17 rig in a sky mode from config: no orbit (rotate button hidden), horizontal pan clamped to the zone width, vertical travel from the newest zone with the plaza in view up to zone 1, the zone under the focus (hysteresis) drives the linear pagination, focus kept relative to the top, reduced motion instant",
+            "Unit tests for bounds, clamp and hysteresis; e2e on the 6-zone fixture: a vertical drag changes the current zone and only zones b±2 are fetched"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "interaction"
+          ],
+          "blockedBy": [
+            "16.13",
+            "16.17",
+            "17.10"
+          ]
+        },
+        {
+          "id": "17.13",
+          "summary": "Wish stars in the sky, instanced per streamed zone",
+          "goal": "Every public star of the loaded zones shines at its stored coord.",
+          "ac": [
+            "Instanced batches per design across mounted zones; positions derived every render from coord + zone count via 17.4 / 17.5; slow twinkle (static under reduced motion, none on LOW); a zone leaving the window disposes its batches; budget test ≤ 80 per zone and ≤ 5 × 80 in total",
+            "Perf e2e on LOW in SwiftShader on the 6-zone fixture (newest zone and after travelling up) stays above DROP_TO_LOW_FPS_THRESHOLD; screenshots of a full zone, phone and desktop"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "17.12",
+            "17.14"
+          ]
+        },
+        {
+          "id": "17.14",
+          "summary": "Wish-star models: the owner's star recoloured gold, procedural sparkle and comet",
+          "goal": "Three clay-toy stars through the design-source registry: star_classic_01 from the owner's star_01 GLB (16.15 pipeline, gold), sparkle and comet procedural until the owner supplies models.",
+          "ac": [
+            "star_classic_01 is the owner's star_01 model through the 16.15 pipeline recoloured gold; star_sparkle_01 and star_comet_01 are procedural vertex-coloured stars in the design-body contract; each has three LODs, outward axis +Z and triangle guards per LOD and is registered in the design-source registry (pipeline or procedural per design); thumbnails generated as in MFW-78; licence follows NOTICE.md §8",
+            "Unit tests for guards and registry; a thumbnail sheet screenshot"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "art",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.15",
+            "17.6"
+          ]
+        },
+        {
+          "id": "17.15",
+          "summary": "Customizer: choose a wish star",
+          "goal": "The floating design row offers the three stars.",
+          "ac": [
+            "The customizer lists the New Year designs from the registry; the chosen star is the hero with rotate and zoom",
+            "Unit and e2e: choosing the sparkle stores {design: star_sparkle_01}; touch targets ≥ 44 px at 360×640, 390×844 and 1440×900; screenshots"
+          ],
+          "labels": [
+            "new-year",
+            "ui",
+            "3d"
+          ],
+          "blockedBy": [
+            "16.20",
+            "17.9",
+            "17.14"
+          ]
+        },
+        {
+          "id": "17.16",
+          "summary": "Send mode: ghost slot, flick up or ส่งดาว",
+          "goal": "The one small ritual: see where your star will shine, flick it up.",
+          "ac": [
+            "Open zone = newest zone with a visible free slot, else an empty zone N+1; the camera holds the open zone; ghost = free slot nearest the view centre; a tap on the sky in the open zone moves the ghost (worldToPlanarCoord → nearest free slot, 3D layer only, A); a pure classifyFlick (upward, DRAFT min distance and speed, within ±35° of vertical) sends at the ghost; the ส่งดาว button does the same (accessible path)",
+            "Unit tests for classifyFlick (up, sideways, too short, too slow); e2e sends once by button and once by a synthesized swipe; the POST coord has exactly mode/u/v in the open zone; flow reaches the shared world; screenshots of the ghost"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "interaction",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.21",
+            "17.5",
+            "17.8",
+            "17.13"
+          ]
+        },
+        {
+          "id": "17.17",
+          "summary": "Star flight, trail and server moves",
+          "goal": "Sending feels magical; server corrections are calm.",
+          "ac": [
+            "The star rises from the plaza to its slot with a pooled trail and sparkle (the 16.22 effect kind, per-tier caps) and twinkles on arrival; reduced motion is instant, no trail motion",
+            "A server move inside the zone bumps the star to its final slot; a move to a new zone grows the sky and the camera follows; e2e with mocked responses for both; a test proves no new effect object per send"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "interaction",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.22",
+            "17.16"
+          ]
+        },
+        {
+          "id": "17.18",
+          "summary": "Sky growth when the zone count rises",
+          "goal": "A new constellation opens above the sculpture and older ones rise without losing the viewer's place.",
+          "ac": [
+            "When the zone count rises, older zones rise by one rowPitch with a spring (instant under reduced motion) using the 16.23 rule; stored coords never change; a viewer at the newest zone stays at the newest, anyone else keeps their place relative to the top",
+            "Unit tests for the offset and camera rule; e2e where the fixture directory grows from 3 to 4 zones, screenshots before and after"
+          ],
+          "labels": [
+            "new-year",
+            "3d"
+          ],
+          "blockedBy": [
+            "16.23",
+            "17.13"
+          ]
+        },
+        {
+          "id": "17.19",
+          "summary": "Zone navigator, height gauge and Find My in the sky",
+          "goal": "Visitors move between constellations and find their own star.",
+          "ac": [
+            "The vertical navigator and gauge (16.24) run for new_year (▲ toward older constellations, ▼ toward the newest); Find My (16.25) loads the zone, travels vertically and pans to the star's u, which gets the existing bounce and mark; reduced motion is an instant cut",
+            "E2E on the 6-zone fixture: from the newest zone a star in zone 2 ends up in view and tappable; navigator targets ≥ 44 px; screenshots phone and desktop"
+          ],
+          "labels": [
+            "new-year",
+            "ui",
+            "interaction"
+          ],
+          "blockedBy": [
+            "16.24",
+            "16.25",
+            "17.12",
+            "17.13"
+          ]
+        },
+        {
+          "id": "17.20",
+          "summary": "Wish bubble, own popup and visiting the sky without sending",
+          "goal": "MFW-80, MFW-81 and ดูท้องฟ้า work for stars.",
+          "ac": [
+            "Another person's star shows the fading public bubble at its derived position; your own opens the popup with the star thumbnail, owner switch and private reveal; the 16.27 secondary action reads ดูท้องฟ้า",
+            "Tests prove no private text or token in the bubble or public store (C); e2e: reload → ดูท้องฟ้า → Find My → the star is in view; screenshots"
+          ],
+          "labels": [
+            "new-year",
+            "ui",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.26",
+            "16.27",
+            "17.13"
+          ]
+        },
+        {
+          "id": "17.21",
+          "summary": "Countdown clock: server time and phases",
+          "goal": "Everyone counts down to the same Thai midnight, whatever their device clock or time zone.",
+          "ac": [
+            "GET /api/time returns only {now} (ISO, ms), Cache-Control no-store, no DB; useServerClock samples it three times, keeps the lowest-latency offset from estimateServerClockOffsetMs, re-syncs on visibilitychange, falls back to offset 0",
+            "Pure src/core/events/countdown.ts with countdownTargetAt 2027-01-01T00:00:00+07:00 in newYear.config.ts and DRAFT phase lengths → before / final_minute / show / greeting / after and whole-second parts (ceil); fake-clock tests at 28 Dec 00:00, 31 Dec 23:58:59.5, 23:59:59.4, 00:00:00.000, +60 s, +10 min agree under TZ=Asia/Bangkok and TZ=America/New_York",
+            "A server-only MFW_COUNTDOWN_TARGET_OVERRIDE (ignored when VERCEL_ENV is production, never NEXT_PUBLIC) lets staging rehearse midnight; page.tsx passes the target as a prop; boundary tests in the active-event-boundary pattern"
+          ],
+          "labels": [
+            "new-year",
+            "ui",
+            "infra",
+            "privacy"
+          ],
+          "blockedBy": [
+            "17.2"
+          ]
+        },
+        {
+          "id": "17.22",
+          "summary": "Countdown HUD",
+          "goal": "The countdown is always in sight and gets big in the last minute.",
+          "ac": [
+            "A DOM chip ticking once a second on the second boundary (paused while hidden); big centred numerals in the final minute; the สวัสดีปีใหม่ 2027 banner in the greeting phase; gone afterwards; reduced motion: no scaling or pulsing; screen readers get a polite update once a minute",
+            "E2E with mocked /api/time and Playwright's clock: 23:59:50 shows 10 … 1 then the banner; no overlap with the HUD at 360×640; screenshots of each phase, phone and desktop"
+          ],
+          "labels": [
+            "new-year",
+            "ui"
+          ],
+          "blockedBy": [
+            "17.3",
+            "17.9",
+            "17.21"
+          ]
+        },
+        {
+          "id": "17.23",
+          "summary": "Midnight firework show",
+          "goal": "At 00:00 the plaza bursts into a show every device can afford.",
+          "ac": [
+            "A pure fireworkShowSchedule(tier, phaseMs) gives launches (pad, palette) from the synced clock so late joiners join in progress; interval per tier ≥ (shellRiseMs + burstMs) / the firework pool cap and ≥ FIREWORK_MIN_LAUNCH_INTERVAL_MS; tests prove for every tier over the whole DRAFT 60 s show that concurrent bursts never exceed EFFECT_POOL_CAPS[tier].firework and launches never exceed 3 per second (WCAG 2.3.1); a tier step-down mid-show switches cadence",
+            "Pooled fireworks only (a test proves no new object per launch); launchpad taps paused during the show; the sculpture lights at 00:00 and stays lit; reduced motion: no firework motion or flashes, a static lit sky; e2e with the mocked clock at 23:59:58 sees the show start; screenshots mid-show HIGH and LOW"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "perf",
+            "interaction",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "17.21",
+            "17.24"
+          ]
+        },
+        {
+          "id": "17.24",
+          "summary": "Firework launchpads and the glowing 2027 sculpture",
+          "goal": "Tap a launchpad to fire; tap 2027 to make it glow and rain confetti.",
+          "ac": [
+            "Four launchpads around the plaza (tap proxies ≥ 44 px) launch the existing pooled firework through the frame-less SceneEffects (16.28), colours cycling; a sculpture tap plays the pooled glow and a new pooled confetti effect kind with per-tier caps in performance.config.ts; reduced motion: static glow, no confetti motion",
+            "Unit tests (caps, no new object per tap, reduced motion); e2e taps on a pad and the sculpture; screenshots"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "interaction",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.28",
+            "17.10"
+          ]
+        },
+        {
+          "id": "17.25",
+          "summary": "Constellation lines (optional, may ship after launch)",
+          "goal": "Stars of a zone join into faint constellations as it fills.",
+          "ac": [
+            "Per zone one line-segments mesh links each star to its nearest earlier star (public coords and created_at only, derived at render time, deterministic); none on LOW; disposed with the zone",
+            "Unit tests for determinism and the LOW branch; screenshots of a half-full and a full zone"
+          ],
+          "labels": [
+            "new-year",
+            "3d",
+            "art",
+            "perf"
+          ],
+          "blockedBy": [
+            "17.13"
+          ]
+        },
+        {
+          "id": "17.26",
+          "summary": "Owner-only private test of New Year on staging, with a midnight rehearsal",
+          "goal": "The owner checks New Year on their own devices before 28 Dec.",
+          "ac": [
+            "The loop runs the automated pre-pass on staging and records it in docs/follow-ups.md: LOW perf e2e on the 6-zone fixture; a scripted burst of concurrent sends from two clients counting 201 / 429 / 503; a midnight rehearsal with MFW_COUNTDOWN_TARGET_OVERRIDE a few minutes ahead",
+            "The owner runs a short checklist on their phone and a desktop browser with ?perfProbe=1: send by flick and by button, travel up, Find My after a reload via ดูท้องฟ้า, bubble and popup, the countdown and the rehearsed show on HIGH and LOW; findings in docs/follow-ups.md, fixes become new cards"
+          ],
+          "labels": [
+            "new-year",
+            "infra",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.4",
+            "17.15",
+            "17.17",
+            "17.18",
+            "17.19",
+            "17.20",
+            "17.22",
+            "17.23"
+          ]
+        },
+        {
+          "id": "17.27",
+          "summary": "New Year launch switch, test-row wipe and slot-table freeze",
+          "goal": "Production opens New Year by date at 28 Dec 00:00 +07; live Christmas rows untouched.",
+          "ac": [
+            "EVENT_FEATURE_FLAGS.new_year = true; fake-clock tests: 27 Dec 23:59 +07 → calm screen with the New Year dates, 28 Dec 00:00 → new_year, 6 Jan 00:00 → none; the sky slot-table fingerprint marked frozen 27 Dec 2026; release fast-forwarded (16.36)",
+            "supabase/scripts/wipe_new_year_test_rows.sql (one-off, owner-run 27 Dec) deletes only new_year rows with data_scope = 'test' and raises unless the live christmas count is unchanged and new_year live = 0; static test pins it; privacy-auditor; owner-merge"
+          ],
+          "labels": [
+            "new-year",
+            "infra",
+            "db",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.30",
+            "16.36",
+            "17.26"
           ]
         }
       ]
