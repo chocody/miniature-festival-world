@@ -17,6 +17,7 @@ import { buildRingFanData, buildShoreHighlightData } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "@/components/models/loyKrathong/riverLayout";
 import { createBlobShadowGeometry, createBlobShadowMaterial, createFanMaterial, createVertexAlphaGeometry } from "./blobShadowMeshes";
 import { createInstancedPartMaterial, createMatteMaterial, createStaticMeshGeometry } from "./geometry";
+import { createFallingLeafMesh, disposeEffectMesh } from "./effects/effectMeshes";
 
 /**
  * MFW-49 "no new shader variant" guard: every environment material keeps the parameters of one of the two programs the
@@ -87,6 +88,19 @@ describe("environment programs (MFW-49 AC5)", () => {
       expect(RIVER_FOLIAGE_PARTS.LIGHT[key].material, key).toBe(RIVER_FOLIAGE_PARTS.FULL[key].material);
       expect(RIVER_FOLIAGE_PARTS.FULL[key], key).toBe(RIVER_ENVIRONMENT_PARTS[key]);
     }
+  });
+
+  it.each(["FULL", "LIGHT"] as const)("P6 (MFW-84): the falling leaves on %s share the crown's lit matte program (no instance colour)", (v) => {
+    const e = createFallingLeafMesh(1, 1, RIVER_FOLIAGE_PARTS[v].leafClump.material);
+    const m = e.mesh.material as MeshStandardMaterial;
+    expect(m).toBeInstanceOf(MeshStandardMaterial);
+    expect(m.flatShading).toBe(false);
+    expect(m.vertexColors).toBe(false);
+    expect(m.toneMapped).toBe(true);
+    expect(m.transparent).toBe(false);
+    expect(m.side).toBe(FrontSide);
+    expect(e.mesh.instanceColor).toBeNull(); // like the crown's InstancedPart
+    disposeEffectMesh(e);
   });
 
   it("the blob material is unchanged by the fan factory refactor", () => {

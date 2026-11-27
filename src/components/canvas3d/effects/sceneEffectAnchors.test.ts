@@ -1,12 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { Matrix4, Vector3 } from "three";
+import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
 import {
-  LOY_KRATHONG_RIVER_ENVIRONMENT,
   LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION,
   LOY_KRATHONG_TREES,
   RIVER_ENVIRONMENT_PARTS,
 } from "@/config/events/loyKrathong.river.config";
-import { CHIMNEY_SMOKE_LOOK, FALLING_LEAF_LOOK } from "@/config/gimmicks.config";
+import { CHIMNEY_SMOKE_LOOK, FALLING_LEAF_LOOK, HOUSE_CHIMNEY_TOP_LOCAL } from "@/config/gimmicks.config";
+import { LOOK_PALETTE } from "@/config/look.config";
+import type { StaticPartMesh } from "@/config/scene.config";
 import { FALLING_LEAF_SLOTS } from "@/config/performance.config";
 import { bankSurfaceY, riverFrameAt } from "@/core/world";
 import {
@@ -15,12 +18,12 @@ import {
   LOY_KRATHONG_RIVER_LAYOUT,
   LOY_KRATHONG_TREE_LEAF_ANCHORS,
 } from "@/components/models/loyKrathong";
+import { composeInstanceMatrix } from "../instancing";
 import { foliageBody } from "./propTapTargets";
 import { TREE_LEAF_PATH_STRIDE, buildHouseSmokeOrigins, buildTreeLeafAnchors } from "./sceneEffectAnchors";
 
 const layout = LOY_KRATHONG_RIVER_LAYOUT;
 const foliage = LOY_KRATHONG_RIVER_FOLIAGE;
-const roofKinds = LOY_KRATHONG_RIVER_ENVIRONMENT.houses.map((h) => h.roof);
 const lump = LOY_KRATHONG_RIVER_FOLIAGE_DEFINITION.clumpLumpAmplitude;
 const leafInput = {
   trees: LOY_KRATHONG_TREES,
@@ -33,24 +36,60 @@ const leafInput = {
   slots: FALLING_LEAF_SLOTS,
 };
 
-describe("house smoke origins (MFW-72)", () => {
-  it("A1: one origin per house at the roof top + originLiftY; x, z = the house base", () => {
-    const lift = CHIMNEY_SMOKE_LOOK.originLiftY;
-    const origins = buildHouseSmokeOrigins(layout.houses, roofKinds, RIVER_ENVIRONMENT_PARTS, lift);
-    expect(origins).toHaveLength(layout.houses.length);
-    expect(roofKinds).toContain("pyramid");
-    expect(roofKinds).toContain("gable");
-    layout.houses.forEach((h, i) => {
-      const s = h.scale;
-      const roofPart = roofKinds[i] === "gable" ? RIVER_ENVIRONMENT_PARTS.houseRoofGable : RIVER_ENVIRONMENT_PARTS.houseRoof;
-      const roof = roofPart.yOffset + roofPart.geometry.height / 2; // roof top (MFW-66: the owner model roof, both kinds)
-      expect(origins[i].y, `house ${i}`).toBeCloseTo(h.position.y + roof * s + 0.04, 9);
-      expect(origins[i].x).toBe(h.position.x);
-      expect(origins[i].z).toBe(h.position.z);
-    });
+describe("house smoke origins (MFW-72 / MFW-84: the chimney)", () => {
+  it("A1: the chimney top goes through the house transform (yaw about +Y, scale) plus liftY; frozen", () => {
+    const c = { x: -0.2, y: 0.7, z: 0.1 };
+    const [a] = buildHouseSmokeOrigins([{ position: { x: 0, y: 0, z: 0 }, yawRad: 0, scale: 1 }], c, 0.04);
+    expect(a.x).toBeCloseTo(-0.2, 9);
+    expect(a.y).toBeCloseTo(0.74, 9);
+    expect(a.z).toBeCloseTo(0.1, 9);
+    const origins = buildHouseSmokeOrigins([{ position: { x: 1, y: -0.14, z: 3 }, yawRad: Math.PI / 2, scale: 2 }], c, 0.04);
+    expect(origins[0].x).toBeCloseTo(1.2, 9);
+    expect(origins[0].y).toBeCloseTo(1.3, 9);
+    expect(origins[0].z).toBeCloseTo(3.4, 9);
+    expect(buildHouseSmokeOrigins([], c, 0.04)).toEqual([]);
     expect(Object.isFrozen(origins)).toBe(true);
     expect(Object.isFrozen(origins[0])).toBe(true);
-    expect(() => buildHouseSmokeOrigins(layout.houses, roofKinds.slice(1), RIVER_ENVIRONMENT_PARTS, lift)).toThrow(RangeError);
+  });
+
+  it("A1b: every origin sits on the rendered chimney (the house body instance matrix applied to the chimney top), whatever the yaw", () => {
+    const body = RIVER_ENVIRONMENT_PARTS.houseBody;
+    const c = HOUSE_CHIMNEY_TOP_LOCAL;
+    const m = new Matrix4();
+    const v = new Vector3();
+    expect(new Set(layout.houses.map((h) => h.yawRad)).size).toBeGreaterThan(1);
+    layout.houses.forEach((h, i) => {
+      v.set(c.x, c.y - body.yOffset, c.z).applyMatrix4(composeInstanceMatrix(h, body, m));
+      const o = LOY_KRATHONG_HOUSE_SMOKE_ORIGINS[i];
+      expect(Math.abs(v.x - o.x), `house ${i} x`).toBeLessThan(1e-9);
+      expect(Math.abs(v.y - (o.y - CHIMNEY_SMOKE_LOOK.originLiftY)), `house ${i} y`).toBeLessThan(1e-9);
+      expect(Math.abs(v.z - o.z), `house ${i} z`).toBeLessThan(1e-9);
+    });
+  });
+
+  it.each(["shell", "liteShell"] as const)("A1c: HOUSE_CHIMNEY_TOP_LOCAL is the top centre of the chimney cap of the %s", (key) => {
+    const sh: StaticPartMesh = LOY_KRATHONG_HOUSE_MODEL[key];
+    const wood = sh.palette.findIndex((hex) => hex.toLowerCase() === LOOK_PALETTE.woodDark.toLowerCase());
+    expect(wood).toBeGreaterThanOrEqual(0);
+    const box = { minX: Infinity, maxX: -Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    let faces = 0;
+    for (let f = 0; f < sh.indices.length / 3; f++) {
+      if (sh.faceColors?.[f] !== wood) continue;
+      const vs = [0, 1, 2].map((j) => sh.indices[3 * f + j]);
+      if (!vs.every((vi) => sh.positions[3 * vi + 1] + sh.centerY > LOY_KRATHONG_HOUSE_MODEL.roof.centerY)) continue;
+      faces++;
+      for (const vi of vs) {
+        box.minX = Math.min(box.minX, sh.positions[3 * vi]);
+        box.maxX = Math.max(box.maxX, sh.positions[3 * vi]);
+        box.maxY = Math.max(box.maxY, sh.positions[3 * vi + 1] + sh.centerY);
+        box.minZ = Math.min(box.minZ, sh.positions[3 * vi + 2]);
+        box.maxZ = Math.max(box.maxZ, sh.positions[3 * vi + 2]);
+      }
+    }
+    expect(faces).toBeGreaterThanOrEqual(1);
+    expect(Math.abs((box.minX + box.maxX) / 2 - HOUSE_CHIMNEY_TOP_LOCAL.x)).toBeLessThan(1e-3);
+    expect(Math.abs(box.maxY - HOUSE_CHIMNEY_TOP_LOCAL.y)).toBeLessThan(1e-3);
+    expect(Math.abs((box.minZ + box.maxZ) / 2 - HOUSE_CHIMNEY_TOP_LOCAL.z)).toBeLessThan(1e-3);
   });
 });
 
@@ -93,7 +132,7 @@ describe("tree leaf anchors (MFW-72)", () => {
     expect(Object.isFrozen(LOY_KRATHONG_HOUSE_SMOKE_ORIGINS)).toBe(true);
     expect(Object.isFrozen(LOY_KRATHONG_TREE_LEAF_ANCHORS)).toBe(true);
     expect(LOY_KRATHONG_HOUSE_SMOKE_ORIGINS).toEqual(
-      buildHouseSmokeOrigins(layout.houses, roofKinds, RIVER_ENVIRONMENT_PARTS, CHIMNEY_SMOKE_LOOK.originLiftY),
+      buildHouseSmokeOrigins(layout.houses, HOUSE_CHIMNEY_TOP_LOCAL, CHIMNEY_SMOKE_LOOK.originLiftY),
     );
     expect(LOY_KRATHONG_TREE_LEAF_ANCHORS.map((a) => [a.treeIndex, a.slots, Array.from(a.paths)])).toEqual(
       anchors.map((a) => [a.treeIndex, a.slots, Array.from(a.paths)]),

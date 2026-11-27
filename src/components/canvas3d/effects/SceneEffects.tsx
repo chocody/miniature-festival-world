@@ -2,7 +2,7 @@
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useImperativeHandle, useMemo, useRef, type Ref } from "react";
-import { Vector3, type Camera } from "three";
+import type { Camera } from "three";
 import {
   FIREWORK_LOOK,
   FIREWORK_MIN_LAUNCH_INTERVAL_MS,
@@ -17,9 +17,10 @@ import {
   type SceneGimmickKind,
   type SceneTargetKind,
 } from "@/config/gimmicks.config";
+import { RIVER_FOLIAGE_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { LightPresetId } from "@/config/look.config";
 import type { EffectKind } from "@/config/performance.config";
-import type { ScenePartSpec } from "@/config/scene.config";
+import type { MatteMaterialSpec, ScenePartSpec } from "@/config/scene.config";
 import type { WorldVec3, WorldXZ } from "@/core/coordinates";
 import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import {
@@ -79,31 +80,15 @@ function createDefaultSkyLaunchRandom(): () => number {
   return createSeededRandom(resolveSkyLaunchSeed(override, Math.random));
 }
 
-/** Tap-time scratch of the smoke drift (one per SceneEffects; never per tap or per frame). */
-interface DriftScratch {
-  readonly ndc: Vector3;
-  readonly drift: SmokeDrift;
-}
-
-/** View aspect of the scene camera (orthographic frustum width / height); 1 when unknown. */
-function cameraAspect(camera: Camera): number {
-  const c = camera as Camera & { left?: number; right?: number; top?: number; bottom?: number; aspect?: number };
-  if (c.left !== undefined && c.right !== undefined && c.top !== undefined && c.bottom !== undefined && c.top !== c.bottom) {
-    return (c.right - c.left) / (c.top - c.bottom);
-  }
-  return c.aspect !== undefined && c.aspect > 0 ? c.aspect : 1;
-}
-
 /**
- * The drift of a smoke from world origin (x, y, z): toward the middle of the screen as seen by `camera` (writeSmokeDriftInto); no camera
- * (tests) → TAP_SHAKE_WIND. Writes into scratch.drift; allocation-free.
+ * The drift of a smoke (MFW-84): the camera's horizontal right axis, signed downwind (writeSmokeDriftInto), so the smoke moves only
+ * sideways on screen while it rises; no camera (tests) → TAP_SHAKE_WIND. Writes into `out`; allocation-free.
  */
-function smokeDriftFromCamera(camera: Camera | undefined, x: number, y: number, z: number, scratch: DriftScratch): SmokeDrift {
-  if (camera === undefined || camera === null) return writeSmokeDriftInto(0, 0, 1, 0, 0, 0, 0, 0, scratch.drift);
+function smokeDriftFromCamera(camera: Camera | undefined, out: SmokeDrift): SmokeDrift {
+  if (camera === undefined || camera === null) return writeSmokeDriftInto(0, 0, out);
   camera.updateMatrixWorld();
-  const ndc = scratch.ndc.set(x, y, z).project(camera);
-  const e = camera.matrixWorld.elements; // column 0 = +X (right), column 2 = +Z (back, toward the viewer)
-  return writeSmokeDriftInto(ndc.x, ndc.y, cameraAspect(camera), e[0], e[2], e[8], e[9], e[10], scratch.drift);
+  const e = camera.matrixWorld.elements; // column 0 = +X (camera right) in world space
+  return writeSmokeDriftInto(e[0], e[2], out);
 }
 
 export interface SceneEffectsHandle {
@@ -134,12 +119,15 @@ export interface SceneEffectsHandle {
    */
   launchFromSky(at: WorldXZ | null): SceneGimmickKind | null;
   /**
-   * MFW-72: a smoke puff rises from house `houseIndex`'s roof in stretch `stretchIndex` (+ s·T). False under reduced motion (no
+   * MFW-72 / MFW-84: a faint smoke rises from house `houseIndex`'s chimney in stretch `stretchIndex` (+ s·T). False under reduced motion (no
    * particles), for an index out of range or a non-safe-integer stretch. A re-tap on the same (house, stretch) while it is still
    * emitting (age < chimneySmokeEmitMs) is absorbed (true, nothing new).
    */
   puffChimneySmoke(houseIndex: number, stretchIndex?: number): boolean;
-  /** MFW-72: a few leaves fall from tree `treeIndex` of stretch `stretchIndex`; same rules (absorbed until fallingLeavesEmitMs). */
+  /**
+   * MFW-72 / MFW-84: a few small crown-coloured leaves fall from tree `treeIndex` of stretch `stretchIndex`; same rules (absorbed until
+   * fallingLeavesEmitMs).
+   */
   dropLeaves(treeIndex: number, stretchIndex?: number): boolean;
   /**
    * Registry dispatch (SCENE_TAP_REACTIONS[kind].effects); returns the reaction's gimmick when at least one effect started, else null.
@@ -165,9 +153,9 @@ export interface SceneEffectsProps {
   readonly fireworkBaseY: number;
   /** FIREWORK_SPARKS_PER_BURST[tier]. */
   readonly fireworkSparks: number;
-  /** MFW-72: smoke / leaf colours per light preset (the effect program is unlit). */
+  /** MFW-72: smoke colours per light preset (the effect program is unlit). The leaves are lit (MFW-84). */
   readonly lightPreset: LightPresetId;
-  /** MFW-72: one smoke origin per house (its roof top, stretch-0 world-view space). */
+  /** MFW-72 / MFW-84: one smoke origin per house (above its chimney top, stretch-0 world-view space). */
   readonly houseSmokeOrigins: readonly WorldVec3[];
   /** MFW-72: CHIMNEY_SMOKE_PUFFS_PER_TAP[tier]. */
   readonly smokePuffs: number;
@@ -175,6 +163,11 @@ export interface SceneEffectsProps {
   readonly treeLeafAnchors: readonly TreeLeafAnchor[];
   /** MFW-72: FALLING_LEAVES_PER_TAP[tier]. */
   readonly leavesPerFall: number;
+  /**
+   * MFW-84: the tree crown's material spec, so a falling leaf has the crown's colour under the same lights. Default
+   * RIVER_FOLIAGE_PARTS.FULL.leafClump.material (FULL and LIGHT share the object).
+   */
+  readonly leafMaterial?: MatteMaterialSpec;
   /** MFW-75: BLOB_SHADOW_TIER_GEOMETRY[tier], the fan of the lamp ground light. */
   readonly lampGroundFan: Readonly<{ segments: number; rings: number }>;
   /** MFW-75: the sky launch generator ([0, 1) values). Default: one seeded generator per mount (createDefaultSkyLaunchRandom). Tests inject. */
@@ -209,6 +202,7 @@ export function SceneEffects({
   smokePuffs,
   treeLeafAnchors,
   leavesPerFall,
+  leafMaterial = RIVER_FOLIAGE_PARTS.FULL.leafClump.material,
   lampGroundFan,
   skyLaunchRandom,
   now = SCENE_EFFECT_CLOCK,
@@ -237,11 +231,11 @@ export function SceneEffects({
     [pools.chimneySmoke.capacity, smokePuffs],
   );
   const leaves = useMemo(
-    () => createFallingLeafMesh(pools.fallingLeaves.capacity, leavesPerFall),
-    [pools.fallingLeaves.capacity, leavesPerFall],
+    () => createFallingLeafMesh(pools.fallingLeaves.capacity, leavesPerFall, leafMaterial),
+    [pools.fallingLeaves.capacity, leavesPerFall, leafMaterial],
   );
   const scratch = useRef(createEffectFrameScratch());
-  const driftScratch = useRef<DriftScratch | null>(null);
+  const driftScratch = useRef<SmokeDrift | null>(null);
   const lastLaunchMs = useRef(-Infinity);
   const launchCounter = useRef(0);
   const defaultSkyRandom = useRef<(() => number) | null>(null);
@@ -338,11 +332,8 @@ export function SceneEffects({
           return true; // still emitting: the re-tap is absorbed (no stacked identical paths)
         }
       }
-      driftScratch.current ??= { ndc: new Vector3(), drift: { x: 0, z: 0 } };
-      const o = houseSmokeOrigins[houseIndex];
-      const ox = o.x + (frame === null ? 0 : stretchIndex * frame.periodX);
-      const oz = o.z + (frame === null ? 0 : stretchIndex * frame.periodZ);
-      const drift = smokeDriftFromCamera(camera, ox, o.y, oz, driftScratch.current);
+      driftScratch.current ??= { x: 0, z: 0 }; // once per mount
+      const drift = smokeDriftFromCamera(camera, driftScratch.current);
       const entry = pools.chimneySmoke.acquire(t);
       entry.state.houseIndex = houseIndex;
       entry.state.stretchIndex = stretchIndex;
@@ -428,7 +419,6 @@ export function SceneEffects({
     fireworkBaseY,
     now,
     invalidate,
-    frame,
     reducedMotion,
     houseSmokeOrigins,
     smokePuffs,
@@ -447,7 +437,7 @@ export function SceneEffects({
     const d = writeFireworkInstances(fireworks, pools.firework, t, reducedMotion, s);
     const e = writeSkyLanternInstances(lanterns, pools.skyLantern, t, reducedMotion, s);
     const g = writeChimneySmokeInstances(smoke, pools.chimneySmoke, houseSmokeOrigins, t, reducedMotion, lightPreset, s, frame);
-    const h = writeFallingLeafInstances(leaves, pools.fallingLeaves, treeLeafAnchors, t, reducedMotion, lightPreset, s, frame);
+    const h = writeFallingLeafInstances(leaves, pools.fallingLeaves, treeLeafAnchors, t, reducedMotion, s, frame);
     const released = releaseExpiredNudges(pools.nudge, t, reducedMotion);
     // Keep the demand loop alive only while an effect runs, plus one tail frame after a nudge ends (consumers write the rest pose).
     if (a + b + c + d + e + g + h + pools.nudge.activeCount > 0 || released > 0) invalidate();

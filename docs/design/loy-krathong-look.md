@@ -988,6 +988,49 @@ Screenshots (`screenshots/mfw-72/`, default framing after release, no pan):
 | Falling leaves, phone, night (0.9 s) | ![falling leaves night](screenshots/mfw-72/night-falling-leaves.png) |
 | Reduced motion house tap, phone, night (windows lit, no smoke) | ![reduced motion house night](screenshots/mfw-72/night-reduced-motion-house.png) |
 
+### 18.5 Smoke from the chimney, canopy-coloured leaves (MFW-84)
+
+Owner (2026-11-27): "กดบ้าน ควันมันควรลอยขึ้นข้างบนจางๆไม่เยอะมาก ไม่ใช่ลงล่าง" and "กดต้นไม้ใบควรเล็กกว่านี้และเป็นสีเดียวกับต้นไม้". This section
+replaces D1 and D11 of §18.3, the smoke and leaf rows of §18.1 and the puff counts of §18.2. Every number is DRAFT (loop decision sized
+from the owner's words; docs/follow-ups.md, MFW-84).
+
+**Why the smoke moved down.** D11 aimed the smoke's horizontal drift at the middle of the screen. Every house sits in the upper part of
+the default framing, so the drift pointed toward the viewer, which is down the screen. The drift was long (2.2 / max(sin elevation,
+0.3) ≈ 4 world units) against a rise of only 0.25, and the wobble ran across the drift (again toward / away from the viewer). The plume
+slid down the screen. No gravity, sign or pooled-transform bug. It also started at the roof-top centre, not at the chimney.
+
+New rules (`CHIMNEY_SMOKE_LOOK`, `HOUSE_CHIMNEY_TOP_LOCAL`, `FALLING_LEAF_LOOK`):
+
+- **Chimney origin.** The smoke leaves the chimney-cap top centre, house-local (−0.2101, 0.7711, 0.1131), measured from the owner
+  house shell (the lite shell keeps the same cap), through the house yaw and scale, + 0.04 (`buildHouseSmokeOrigins`).
+- **Screen-sideways, downwind drift.** The drift is the camera's horizontal right axis, signed to point downwind (`TAP_SHAKE_WIND`),
+  chosen once per tap (`writeSmokeDriftInto`). In the orthographic camera without roll, moving along it never changes the screen y,
+  so only the rise moves the smoke vertically. The drift is short (0.25) and the wobble (0.03) runs along the same axis.
+- **Linear rise.** Each puff rises 0.8 over its 2.2 s life and grows from radius 0.05 to 0.14, then shrinks to nothing over the last
+  40 %. Rise ≥ endRadius / (1 − fadeStartRatio) (0.8 ≥ 0.35), so the centre, the top and the bottom of every puff only go up (unit
+  tests RC14, GC6, SE17).
+- **Faint, not much.** Material opacity 0.45 on the smoke mesh (a uniform: the same effect program). Puffs per tap 4 / 3 / 2 (HIGH /
+  MEDIUM / LOW; was 6 / 5 / 3), one every 300 ms.
+- **Leaves.** 0.2 world units long (was 0.4). They are drawn with the tree crown's own lit material
+  (`RIVER_FOLIAGE_PARTS.*.leafClump.material`, `LOOK_PALETTE.canopy`; FULL and LIGHT share it), without instance colours, so they have
+  the crown's colour under the same lights on every tier and under DAY / NIGHT, and reuse the crown's already compiled program. The
+  separate orange / russet leaf palette is gone; the leaves are opaque and still fade by shrinking.
+- Pools, caps, `FALLING_LEAVES_PER_TAP`, reduced motion (no smoke, no leaves) and the single effect clock are unchanged.
+
+Screenshots (`screenshots/mfw-84/`, phone 390×844, HIGH, pinned tier, default framing after release, no pan; the house nearest the
+middle of the upper bank is tapped, then a tree on the near bank). The spec waits 1.2 s (smoke) / 0.9 s (leaves) after the gimmick
+attribute; on SwiftShader the smoke frame lands ≈ 1.9–2.4 s after the tap (measured in the before run), so the first puffs are fading.
+Before: the plume has slid down the screen onto the river below the house. After: a faint, small plume rises up and slightly
+downwind from the chimney, clear of the top card. The leaves are small and canopy-coloured under DAY and NIGHT (LOW checked too, not
+committed: 2 puffs, LIGHT crowns, the leaves match).
+
+| | Before (MFW-72 / MFW-77 code) | After |
+|---|---|---|
+| House smoke, day | ![before house smoke day](screenshots/mfw-84/before-house-smoke-day.png) | ![after house smoke day](screenshots/mfw-84/after-house-smoke-day.png) |
+| House smoke, night | ![before house smoke night](screenshots/mfw-84/before-house-smoke-night.png) | ![after house smoke night](screenshots/mfw-84/after-house-smoke-night.png) |
+| Tree leaves, day | ![before tree leaves day](screenshots/mfw-84/before-tree-leaves-day.png) | ![after tree leaves day](screenshots/mfw-84/after-tree-leaves-day.png) |
+| Tree leaves, night | ![before tree leaves night](screenshots/mfw-84/before-tree-leaves-night.png) | ![after tree leaves night](screenshots/mfw-84/after-tree-leaves-night.png) |
+
 ## 19. Lamp light and sky launch (MFW-75, backlog 14.2)
 
 Config: `LAMP_GLOW_LOOK`, `LAMP_GROUND_LIGHT_LOOK`, `SKY_LAUNCH_SPLIT`, `SKY_LAUNCH_SEED`, `SKY_LAUNCH_GIMMICKS` and

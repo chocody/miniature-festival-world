@@ -49,13 +49,13 @@ export interface SkyLanternState {
 }
 
 /**
- * Index into the scene layout's houses whose roof puffs smoke (MFW-72), in stretch `stretchIndex` (drawn at + s·T). Render-time only —
+ * Index into the scene layout's houses whose chimney puffs smoke (MFW-72 / MFW-84), in stretch `stretchIndex` (drawn at + s·T). Render-time only —
  * NEVER persisted or sent (invariant A).
  */
 export interface ChimneySmokeState {
   houseIndex: number;
   stretchIndex: number;
-  /** Horizontal drift chosen at tap time (writeSmokeDriftInto: toward the middle of the screen). */
+  /** Horizontal unit drift chosen at tap time (writeSmokeDriftInto: screen-sideways, downwind; MFW-84). */
   driftX: number;
   driftZ: number;
 }

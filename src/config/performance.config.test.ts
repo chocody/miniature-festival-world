@@ -103,6 +103,14 @@ describe("performance.config (owner numbers, open question #5)", () => {
       expect(EFFECT_POOL_CAPS.LOW[kind]).toBeGreaterThan(0);
     }
   });
+  it("PC84: smoke puffs per tap are HIGH ≥ MEDIUM ≥ LOW ≥ 1 and fewer than MFW-72's HIGH 6 (owner: \"ไม่เยอะมาก\", MFW-84 DRAFT)", () => {
+    const MFW72_SMOKE_PUFFS_HIGH = 6; // the MFW-72 value, named for this check
+    const t = CHIMNEY_SMOKE_PUFFS_PER_TAP;
+    expect(t.HIGH).toBeGreaterThanOrEqual(t.MEDIUM);
+    expect(t.MEDIUM).toBeGreaterThanOrEqual(t.LOW);
+    expect(t.LOW).toBeGreaterThanOrEqual(1);
+    expect(t.HIGH).toBeLessThan(MFW72_SMOKE_PUFFS_HIGH);
+  });
   it("PC2: FIREWORK_SPARKS_PER_BURST is a positive integer, HIGH ≥ MEDIUM ≥ LOW, frozen (MFW-60 DRAFT)", () => {
     expect(Object.isFrozen(FIREWORK_SPARKS_PER_BURST)).toBe(true);
     for (const tier of ["HIGH", "MEDIUM", "LOW"] as const) {

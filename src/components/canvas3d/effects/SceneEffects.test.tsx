@@ -1,6 +1,6 @@
 import { createRef } from "react";
 import { cleanup, render } from "@testing-library/react";
-import { BufferGeometry, Color, InstancedMesh, Material, Matrix4, OrthographicCamera, Vector3 } from "three";
+import { BufferGeometry, Color, InstancedMesh, Material, Matrix4, MeshStandardMaterial, OrthographicCamera, Vector3 } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import {
@@ -17,7 +17,7 @@ import {
   SKY_LAUNCH_SEED_GLOBAL_NAME,
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
-import { BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
+import { BLOB_SHADOW_TIER_GEOMETRY, LOOK_PALETTE } from "@/config/look.config";
 import { EFFECT_KINDS, type EffectPoolCaps } from "@/config/performance.config";
 import {
   chimneySmokeDurationMs,
@@ -526,17 +526,18 @@ describe("SceneEffects reactions part 2 (MFW-72)", () => {
     return new Vector3().setFromMatrixPosition(m);
   };
 
-  it("SE10: a house tap lights the windows AND puffs smoke from its roof", () => {
+  it("SE10: a house tap lights the windows AND puffs smoke from its chimney", () => {
     const ref = createRef<SceneEffectsHandle>();
     render(ui(ref));
     expect(ref.current!.react("house", 2, null)).toBe("house-lights");
     expect(ref.current!.activeCount("windowGlow")).toBe(1);
     expect(ref.current!.activeCount("chimneySmoke")).toBe(1);
-    NOW += 50;
-    r3f.frame!();
+    r3f.frame!(); // at the tap time
     const smoke = meshNamed(SCENE_OBJECT_NAMES.chimneySmoke);
     expect(smoke.visible).toBe(true);
     expect(smoke.count).toBe(1);
+    const o = origins[2];
+    expect(at(smoke, 0).distanceTo(new Vector3(o.x, o.y, o.z))).toBeLessThan(1e-6); // MFW-84: the first puff leaves the chimney top
   });
 
   it("SE11: a tree tap shakes it AND drops leavesPerFall leaves after the staggers", () => {
@@ -685,7 +686,7 @@ describe("SceneEffects reactions part 2 (MFW-72)", () => {
   });
 });
 
-describe("smoke drift from the camera (MFW-72 fix round)", () => {
+describe("smoke drift from the camera (MFW-84: screen-sideways, it only rises on screen)", () => {
   const origins = LOY_KRATHONG_HOUSE_SMOKE_ORIGINS;
   /** An orthographic camera like the scene's (elevation ≈ 33.5°), framed so `target` sits at the given screen point. */
   const cameraLookingAt = (target: Vector3, offset: Vector3) => {
@@ -699,29 +700,32 @@ describe("smoke drift from the camera (MFW-72 fix round)", () => {
     return cam;
   };
 
-  it("SE17: a house near the top of the screen puffs toward the viewer (down the screen) and toward the middle", () => {
+  it("SE17: a house high on the screen puffs smoke that drifts only sideways and rises on screen over the puff life", () => {
     const o = origins[0];
     const cam = cameraLookingAt(new Vector3(o.x, o.y, o.z), new Vector3(-1.2, -3, 0)); // the house ends up high and right
     r3f.camera = cam;
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager(CAPS);
     render(ui(ref, pools));
-    const ndc = new Vector3(o.x, o.y, o.z).project(cam);
-    expect(ndc.y).toBeGreaterThan(0.3);
-    expect(ndc.x).toBeGreaterThan(0.1);
+    const a = new Vector3(o.x, o.y, o.z).project(cam);
+    expect(a.y).toBeGreaterThan(0.3);
+    expect(a.x).toBeGreaterThan(0.1);
     expect(ref.current!.puffChimneySmoke(0)).toBe(true);
     const st = [0, 1].map((i) => pools.chimneySmoke.entryAt(i)).find((e) => e.active)!.state;
-    // The drift moves the puff toward the screen centre: project origin and origin + drift.
-    const a = new Vector3(o.x, o.y, o.z).project(cam);
     const b = new Vector3(o.x + st.driftX, o.y, o.z + st.driftZ).project(cam);
-    expect(b.y).toBeLessThan(a.y); // down the screen
-    expect(b.x).toBeLessThan(a.x); // toward the middle
-    NOW += 900;
-    r3f.frame!();
+    expect(Math.abs(b.y - a.y)).toBeLessThan(1e-9); // the drift is screen-horizontal
     const m = new Matrix4();
-    meshNamed(SCENE_OBJECT_NAMES.chimneySmoke).getMatrixAt(0, m);
-    const p = new Vector3().setFromMatrixPosition(m).project(cam);
-    expect(p.y).toBeLessThan(a.y); // the first puff is below its roof on screen
+    const smoke = meshNamed(SCENE_OBJECT_NAMES.chimneySmoke);
+    const t0 = NOW;
+    let prevY = a.y;
+    for (let age = 200; age < CHIMNEY_SMOKE_LOOK.puffLifeMs; age += 200) {
+      NOW = t0 + age;
+      r3f.frame!();
+      smoke.getMatrixAt(0, m); // instance 0 = puff 0 while it lives
+      const p = new Vector3().setFromMatrixPosition(m).project(cam);
+      expect(p.y, `age ${age}`).toBeGreaterThan(prevY); // above the chimney and still rising
+      prevY = p.y;
+    }
   });
 
   it("SE17: without a camera the drift is TAP_SHAKE_WIND", () => {
@@ -731,6 +735,22 @@ describe("smoke drift from the camera (MFW-72 fix round)", () => {
     ref.current!.puffChimneySmoke(1);
     const st = [0, 1].map((i) => pools.chimneySmoke.entryAt(i)).find((e) => e.active)!.state;
     expect([st.driftX, st.driftZ]).toEqual([1, 0]);
+  });
+
+  it("SE22: the leaves keep the crown material across DAY / NIGHT (the scene lighting changes their look, as for the crown)", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    const { rerender } = render(ui(ref, pools, false, null, "DAY"));
+    expect(ref.current!.react("tree", 0, null)).toBe("tree-shake");
+    r3f.frame!();
+    rerender(ui(ref, pools, false, null, "NIGHT"));
+    NOW += FALLING_LEAF_LOOK.staggerMs;
+    r3f.frame!();
+    expect(spies.leaves).toHaveBeenCalledTimes(1); // the preset does not re-create the leaf mesh
+    const leaves = meshNamed(SCENE_OBJECT_NAMES.fallingLeaves);
+    expect(leaves.visible).toBe(true);
+    expect((leaves.material as MeshStandardMaterial).color.getHexString()).toBe(new Color(LOOK_PALETTE.canopy).getHexString());
+    expect(leaves.instanceColor).toBeNull();
   });
 });
 
