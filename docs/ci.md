@@ -2,20 +2,19 @@
 
 ## What CI runs
 
-Workflow: `.github/workflows/ci.yml`, single job named `ci`, on every pull request and on push to `main`
-(superseded runs on the same ref are cancelled). Steps, in order:
+Workflow: `.github/workflows/ci.yml`, on every pull request and on push to `main` (superseded runs on the same ref
+are cancelled). Three jobs (the e2e suite outgrew one 20-minute job; owner decision 2026-11-27: two parallel shards):
 
-| Step | Command |
+| Job | Steps |
 | --- | --- |
-| Install | `pnpm install --frozen-lockfile` |
-| Typecheck | `pnpm typecheck` |
-| Lint | `pnpm lint` |
-| Unit tests | `pnpm test` |
-| Build | `pnpm build` |
-| Install browser | `pnpm exec playwright install --with-deps chromium` |
-| Smoke e2e | `pnpm e2e` |
+| `checks` | `pnpm install --frozen-lockfile` → `pnpm typecheck` → `pnpm lint` → `pnpm test` → `pnpm build` |
+| `e2e (1/2)`, `e2e (2/2)` | `pnpm install --frozen-lockfile` → `pnpm exec playwright install --with-deps chromium` → `pnpm e2e --shard=<n>/2` |
+| `ci` | needs both; succeeds only when `checks` and every `e2e` shard succeeded (any failure, cancellation or skip fails it) |
 
-On failure the Playwright report and traces are uploaded as the `playwright-report` artifact.
+The merge gate reads only the check-run named `ci` (below), so it covers every job. `ci-info` shows the `ci` job's
+annotations (which job failed); open the failing job's log from the run page for details.
+
+On failure each e2e shard uploads its Playwright report and traces as the `playwright-report-<n>` artifact.
 
 ## Run locally
 
