@@ -24,6 +24,8 @@ const ALLOWED: Record<string, readonly string[]> = {
   "src/components/ui/MyCreationsDrawer.tsx": [
     "react",
     "@/config/myCreations.config",
+    "@/config/events/eventCopy.config", // MFW-91: per-event copy (strings only)
+    "./EventCopyContext", // MFW-91: per-event copy (strings only)
     "@/services/api/findMyCreation",
     "@/services/auth/myCreationsVault",
     "@/store/useWorldStore",
