@@ -65,7 +65,7 @@ before MFW-89):
 | `checks` | 110–169 s |
 | `e2e (1/2)` | 331–387 s (setup steps, checkout to playwright install, take 25–53 s of each) |
 | `e2e (2/2)` | 222–330 s (same setup cost) |
-| `e2e (christmas)` | (a) local `E2E_PORT=3142 CI=1 pnpm e2e --project=christmas`: not measured in the dev lane (memory-constrained; the orchestrator's serialized verify runs it), 2 tests in 1 file planned; (b) CI job time: pending first PR run |
+| `e2e (christmas)` | (a) local: measured by the serialized verify (both projects in one `pnpm e2e`); (b) CI job time: 60 s (run 46063090596 on e6765ab, first PR run) |
 
 Workflow wall time is about 5.5–6.5 min, bounded by the slowest Loy shard. Expected impact of the Christmas shard: it
 runs in parallel, so wall time is unchanged; runner minutes go up by about one job; each Loy shard pays one extra idle
