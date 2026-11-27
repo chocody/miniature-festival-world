@@ -13,10 +13,11 @@ import {
   LOY_KRATHONG_TREES,
   RIVER_ENVIRONMENT_PARTS,
   RIVER_FOLIAGE_PARTS,
+  RIVER_HOUSE_BODY_PARTS,
   type RiverFoliageParts,
 } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_VILLAGERS, VILLAGER_HEIGHT } from "@/config/events/loyKrathong.life.config";
-import { FALLING_LEAF_SLOTS, FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
+import { FALLING_LEAF_SLOTS, FOLIAGE_TIERS, HOUSE_SHELL_TIERS, type RenderTier } from "@/config/performance.config";
 import type { ScenePartSpec } from "@/config/scene.config";
 import type { WorldVec3 } from "@/core/coordinates";
 import { alongOf } from "@/core/coordinates/endlessRiverFrame";
@@ -67,6 +68,14 @@ export function foliageForTier(foliage: RiversideFoliageLayout, tier: RenderTier
     plantOwners: foliage.plantOwners,
     sway,
   };
+}
+
+/**
+ * MFW-77: the house-body part drawn on a tier (HOUSE_SHELL_TIERS: LOW = the trim-less lite shell, same material object). Tap
+ * proxies, smoke origins and the stretch extent keep the FULL part: the lite shell fits inside its box.
+ */
+export function houseBodyForTier(tier: RenderTier): ScenePartSpec {
+  return RIVER_HOUSE_BODY_PARTS[HOUSE_SHELL_TIERS[tier]];
 }
 
 /** MFW-60: one tap proxy per house, tree, bush, reed and rock, derived once from the layout (positions are never stored in config). */

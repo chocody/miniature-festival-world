@@ -170,19 +170,27 @@ export const WATER_EFFECT_TIERS: Readonly<Record<RenderTier, Readonly<{ glintCou
  * MFW-66 (lead, stated openly; DRAFT for owner review): owner house model 812 triangles × 7 + 5 glass boxes per house =
  * +5 040 measured (7 464 / 7 104 / 4 368 → 12 504 / 12 144 / 9 408 HIGH / MEDIUM / LOW); maxTriangles +5 100 on every tier.
  * maxDrawCalls unchanged (the house now uses one draw call fewer: the door is part of the model; 20 / 20 / 19 → 19 / 19 / 18).
+ * MFW-77 (lead, stated openly; DRAFT for owner review): fuller village — 9 more houses and 17 matching props from existing
+ * parts. HIGH / MEDIUM keep the full owner model (872 triangles + one blob per house): measured 12 504 / 12 144 →
+ * 23 160 / 22 584 (+10 656 / +10 440), maxTriangles +10 700 / +10 500. LOW draws the lite shell (308 instead of 612, owner
+ * 2026-11-27 "LOW ใช้บ้านแบบเบา", HOUSE_SHELL_TIERS): measured 9 408 → 13 548 (+4 140; 18 412 with the full shell),
+ * maxTriangles +4 200. Draw calls unchanged (19 / 19 / 18; the lite shell replaces the geometry of the same InstancedMesh).
+ * HIGH shadow pass +7 448 caster triangles (9 × 812 + 5 trunks × 28). See docs/design/loy-krathong-look.md §20.
+ * These budgets are per stretch copy (MFW-58 endless river): a frame at a stretch seam draws two copies, so the worst seam frame is
+ * about twice the environment (estimate, LOW: ≈ 2 × 13.5k ≈ 27k environment triangles) plus the river krathongs.
  */
 export const ENVIRONMENT_RENDER_BUDGETS: Readonly<Record<RenderTier, Readonly<{ maxDrawCalls: number; maxTriangles: number }>>> =
   Object.freeze({
-    HIGH: Object.freeze({ maxDrawCalls: 21, maxTriangles: 12_900 }),
-    MEDIUM: Object.freeze({ maxDrawCalls: 21, maxTriangles: 12_450 }),
-    LOW: Object.freeze({ maxDrawCalls: 20, maxTriangles: 10_500 }),
+    HIGH: Object.freeze({ maxDrawCalls: 21, maxTriangles: 23_600 }),
+    MEDIUM: Object.freeze({ maxDrawCalls: 21, maxTriangles: 22_950 }),
+    LOW: Object.freeze({ maxDrawCalls: 20, maxTriangles: 14_700 }),
   });
 
 /**
  * Owner house model triangles per part (MFW-66, scripts/house-model.mjs output: shell 612, roof 200). Lead regression guard,
- * tests/unit/house-model-asset.test.ts HA2.
+ * tests/unit/house-model-asset.test.ts HA2. liteShell: MFW-77 measured (308; HA9).
  */
-export const HOUSE_MODEL_MAX_TRIANGLES = Object.freeze({ shell: 640, roof: 200 });
+export const HOUSE_MODEL_MAX_TRIANGLES = Object.freeze({ shell: 640, roof: 200, liteShell: 308 });
 
 /** Max triangles of one krathong ripple ring (the ring fan of RIVER_WATER_HIGHLIGHTS.ripple). Lead regression guard, MFW-49. */
 export const KRATHONG_RIPPLE_MAX_TRIANGLES = 48;
@@ -199,6 +207,18 @@ export const FOLIAGE_TIERS: Readonly<Record<RenderTier, Readonly<{ variant: Foli
   HIGH: Object.freeze({ variant: "FULL", sway: true }),
   MEDIUM: Object.freeze({ variant: "FULL", sway: true }),
   LOW: Object.freeze({ variant: "LIGHT", sway: false }),
+});
+
+export const HOUSE_SHELL_VARIANTS = ["FULL", "LITE"] as const;
+export type HouseShellVariant = (typeof HOUSE_SHELL_VARIANTS)[number];
+/**
+ * House shell per 3D tier. Owner decision 2026-11-27 (MFW-77): "LOW ใช้บ้านแบบเบา" — LOW draws the trim-less lite shell
+ * (LOY_KRATHONG_HOUSE_MODEL.liteShell); HIGH / MEDIUM keep the full owner house model. Same draw calls on every tier.
+ */
+export const HOUSE_SHELL_TIERS: Readonly<Record<RenderTier, HouseShellVariant>> = Object.freeze({
+  HIGH: "FULL",
+  MEDIUM: "FULL",
+  LOW: "LITE",
 });
 
 // Technical numbers (lead decision, MFW-50). DRAFT values.

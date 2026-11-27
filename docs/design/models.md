@@ -343,13 +343,34 @@ Draw calls go **down** by one (the door is part of the model): 20 / 20 / 19 → 
 - `HOUSE_FACADE.windows` = the model's five windows, each with its own yaw (back π, side π/2); every window lights (W = 5
   per house, existing glow cap).
 - Static: no per-frame work, no texture, no new program, the same model on every tier (no `reducedMotion` /
-  `qualityTier` branch). Disposal as before (`InstancedPart`).
+  `qualityTier` branch; MFW-77: LOW now draws the lite shell, §10f). Disposal as before (`InstancedPart`).
 - Smoke on a house tap still starts at the roof-top centre (chimney-top smoke is a follow-up).
 
 ### 10e. Screenshots
 
 `docs/design/screenshots/mfw-66/` (390 × 844, HIGH pinned with `?pinTier=1`, opening view): `before-world-day.png`,
 `before-world-night.png` (procedural houses, BASE) and `after-world-day.png`, `after-world-night.png` (owner model).
+
+### 10f. LOW lite shell (MFW-77, backlog 14.3)
+
+Owner decision (chat, 2026-11-27): "LOW ใช้บ้านแบบเบา". With the fuller village (16 houses, docs/design/loy-krathong-look.md
+§20) LOW draws every house with a **lite shell**: the full shell without its trim faces. HIGH and MEDIUM keep the full
+model (`HOUSE_SHELL_TIERS` in `src/config/performance.config.ts`: HIGH / MEDIUM `"FULL"`, LOW `"LITE"`).
+
+- Build: the same run as §10b (`node scripts/house-model.mjs --source "<path>/House by Poly by Google - 6PGyqELX8M-.glb"`,
+  then `--check`, exit 0). `HOUSE_MODEL_SPEC.liteDroppedRegions` = `["trim"]`; `buildHouseModel` returns `liteShell`, built
+  from the same culled faces as the shell minus the roof and minus every `liteDroppedRegions` face, with the same local
+  transform, rounding and shell palette. `renderHouseModelModule` writes `liteShell` right after `shell`; the other lines of
+  the module are byte-identical (the diff only adds the `liteShell` block). Tests HS6 (script) and HA9 (module).
+- Result: shell 612 → lite shell **308** triangles (−304 per house), 234 vertices; palette and `centerY` 0.3809 the same as the
+  shell; half extents (0.4, 0.3903, 0.3257) — inside the shell's (0.4137, 0.3903, 0.3257). The woodDark chimney cap is a
+  separate region and stays. Guard `HOUSE_MODEL_MAX_TRIANGLES.liteShell` 308 (measured).
+- Runtime: `RIVER_HOUSE_BODY_PARTS.LITE` = `houseBody` with the lite geometry and its `yOffset`, and the **same material
+  object**; `RiverEnvironment` passes `houseBodyForTier(tier)` to the one house-body `InstancedPart`, so a tier change swaps
+  only the geometry (the old one is disposed by `InstancedPart`) and draw calls stay the same. Roofs, windows, tap proxies,
+  smoke origins and the stretch extent keep the full shell's box (the lite shell fits inside it).
+- Look on LOW: without trim the window holes lose their frames and the corner trim; the glass boxes behind the openings
+  still fill them (lit at NIGHT). Screenshot `docs/design/screenshots/mfw-77/after-phone-night-low.png`.
 
 ## 11. Design picker (MFW-78)
 

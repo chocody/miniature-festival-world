@@ -48,11 +48,19 @@ function main() {
   const report = {
     sha256,
     stats: build.stats,
-    triangles: { shell: build.shell.indices.length / 3, roof: build.roof.indices.length / 3 },
-    vertices: { shell: build.shell.positions.length / 3, roof: build.roof.positions.length / 3 },
+    triangles: {
+      shell: build.shell.indices.length / 3,
+      liteShell: build.liteShell.indices.length / 3,
+      roof: build.roof.indices.length / 3,
+    },
+    vertices: {
+      shell: build.shell.positions.length / 3,
+      liteShell: build.liteShell.positions.length / 3,
+      roof: build.roof.positions.length / 3,
+    },
     scale: build.scale,
-    halfExtents: { shell: build.shell.halfExtents, roof: build.roof.halfExtents },
-    centerY: { shell: build.shell.centerY, roof: build.roof.centerY },
+    halfExtents: { shell: build.shell.halfExtents, liteShell: build.liteShell.halfExtents, roof: build.roof.halfExtents },
+    centerY: { shell: build.shell.centerY, liteShell: build.liteShell.centerY, roof: build.roof.centerY },
     windows: build.windows,
     glass: build.glass,
   };

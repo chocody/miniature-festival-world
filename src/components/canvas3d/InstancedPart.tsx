@@ -31,13 +31,10 @@ export function InstancedPart(props: InstancedPartProps) {
   const meshRef = props.meshRef ?? ownRef;
   const invalidate = useThree((state) => state.invalidate);
 
-  useEffect(
-    () => () => {
-      geometry.dispose();
-      material.dispose();
-    },
-    [geometry, material],
-  );
+  // Separate effects (MFW-77): a geometry-only swap (e.g. the LOW house shell) disposes only the old geometry; the material is
+  // disposed only when it changes or on unmount.
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => material.dispose(), [material]);
 
   useLayoutEffect(() => {
     const mesh = meshRef.current;

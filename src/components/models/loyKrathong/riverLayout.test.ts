@@ -19,6 +19,7 @@ import {
   PIER_PILE_MATERIAL,
   RIVER_BANK_MATERIAL,
   RIVER_ENVIRONMENT_PARTS,
+  RIVER_HOUSE_BODY_PARTS,
   LOY_KRATHONG_PIER,
 } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
@@ -42,7 +43,7 @@ import {
 import { acrossOf, createEndlessRiverFrame, createRiverLane, locateOnEndlessLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { getFramedCameraZoom } from "@/core/camera";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
-import { FOLIAGE_TIERS, HOUSE_MODEL_MAX_TRIANGLES, type RenderTier } from "@/config/performance.config";
+import { FOLIAGE_TIERS, HOUSE_MODEL_MAX_TRIANGLES, HOUSE_SHELL_TIERS, type RenderTier } from "@/config/performance.config";
 import {
   TREE_SHAPE_IDS,
   bankSurfaceY,
@@ -52,7 +53,12 @@ import {
   type InstanceTransform,
   type Vec3Tuple,
 } from "@/core/world";
-import { LOY_KRATHONG_RIVER_FOLIAGE as foliage, LOY_KRATHONG_RIVER_LAYOUT as layout, foliageForTier } from "./riverLayout";
+import {
+  LOY_KRATHONG_RIVER_FOLIAGE as foliage,
+  LOY_KRATHONG_RIVER_LAYOUT as layout,
+  foliageForTier,
+  houseBodyForTier,
+} from "./riverLayout";
 
 const parts = RIVER_ENVIRONMENT_PARTS;
 const lanes = LOY_KRATHONG_RIVER_LANES.map((def) => createRiverLane(def));
@@ -596,5 +602,81 @@ describe("MFW-58 stretch extent and scenery top", () => {
     const { VILLAGER_HEIGHT } = await import("@/config/events/loyKrathong.life.config");
     expect(getRiverSceneryTopY()).toBe(getRiverSceneryTopY());
     expect(getRiverSceneryTopY()).toBeGreaterThan(layout.bankTopY + VILLAGER_HEIGHT);
+  });
+});
+
+describe("MFW-77 fuller village", () => {
+  interface Footprint {
+    readonly kind: "house" | "tree" | "bush" | "lamp" | "rock";
+    readonly index: number;
+    readonly x: number;
+    readonly z: number;
+    readonly r: number;
+  }
+  const lampHead = parts.lampHead.geometry;
+  const lampR = lampHead.kind === "icosahedron" ? lampHead.radius : 0;
+  const fp = (kind: Footprint["kind"], index: number, t: InstanceTransform, r: number): Footprint => ({
+    kind,
+    index,
+    x: t.position.x,
+    z: t.position.z,
+    r,
+  });
+  const footprints = (): Footprint[] => [
+    ...layout.houses.map((t, i) => fp("house", i, t, footprintRadius(parts.houseBody.geometry) * t.scale)),
+    ...layout.trees.map((t, i) =>
+      fp("tree", i, t, foliageClumpsExtent(LOY_KRATHONG_TREE_SHAPES[LOY_KRATHONG_TREES[i].shape].clumps, A).footprintRadius * t.scale),
+    ),
+    ...layout.bushes.map((t, i) => fp("bush", i, t, foliageClumpsExtent(LOY_KRATHONG_BUSH_CLUMPS, A).footprintRadius * t.scale)),
+    ...layout.lamps.map((t, i) => fp("lamp", i, t, lampR * t.scale)),
+    ...layout.rocks.map((t, i) => fp("rock", i, t, footprintRadius(parts.rock.geometry) * t.scale)),
+  ];
+  /** Every pair with at least one house, in this stretch and against the neighbouring copies (±1 period). */
+  function houseOverlaps(list: readonly Footprint[]): string[] {
+    const misses: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = 0; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (a.kind !== "house" && b.kind !== "house") continue;
+        for (const s of [-1, 0, 1]) {
+          if (i === j && s === 0) continue;
+          if (s === 0 && j < i) continue; // same-stretch pairs once
+          const bx = b.x + s * STRETCH_FRAME.periodX;
+          const bz = b.z + s * STRETCH_FRAME.periodZ;
+          if (Math.hypot(a.x - bx, a.z - bz) < a.r + b.r) misses.push(`${a.kind} ${a.index} × ${b.kind} ${b.index} (copy ${s})`);
+        }
+      }
+    }
+    return misses;
+  }
+
+  it("R12: MFW-77: no house footprint overlaps another house, a tree, a bush, a lamp or a rock, also across the stretch seam", () => {
+    expect(houseOverlaps(footprints())).toEqual([]);
+    // Negative control: a house moved onto tree 0 is reported.
+    const moved = footprints().map((f) =>
+      f.kind === "house" && f.index === 0 ? { ...f, x: layout.trees[0].position.x, z: layout.trees[0].position.z } : f,
+    );
+    expect(houseOverlaps(moved)).toContain("house 0 × tree 0 (copy 0)");
+  });
+
+  it("R13: MFW-77: house body per tier (LOW = the lite shell with the same material)", () => {
+    const FULL = RIVER_HOUSE_BODY_PARTS.FULL;
+    const LITE = RIVER_HOUSE_BODY_PARTS.LITE;
+    expect(FULL).toBe(parts.houseBody);
+    expect(houseBodyForTier("HIGH")).toBe(parts.houseBody);
+    expect(houseBodyForTier("MEDIUM")).toBe(parts.houseBody);
+    expect(houseBodyForTier("LOW")).toBe(LITE);
+    expect(LITE.material).toBe(FULL.material);
+    expect(LITE.castShadow).toBe(FULL.castShadow);
+    expect(LITE.receiveShadow).toBe(FULL.receiveShadow);
+    expect(LITE.geometry.kind).toBe("staticMesh");
+    if (LITE.geometry.kind === "staticMesh") expect(LITE.geometry.mesh).toBe(LOY_KRATHONG_HOUSE_MODEL.liteShell);
+    expect(LITE.yOffset).toBe(LOY_KRATHONG_HOUSE_MODEL.liteShell.centerY);
+    const geometry = createPartGeometry(LITE.geometry);
+    expect(countTriangles(geometry)).toBeLessThanOrEqual(HOUSE_MODEL_MAX_TRIANGLES.liteShell);
+    geometry.dispose();
+    expect(Object.isFrozen(HOUSE_SHELL_TIERS)).toBe(true);
+    expect(HOUSE_SHELL_TIERS).toEqual({ HIGH: "FULL", MEDIUM: "FULL", LOW: "LITE" });
   });
 });

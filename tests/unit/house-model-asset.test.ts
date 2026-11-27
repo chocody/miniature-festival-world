@@ -100,6 +100,18 @@ describe("owner house model asset (MFW-66)", () => {
     expect(HOUSE_MODEL_SPEC.downFaceMaxNormalY).toBeLessThanOrEqual(-Math.hypot(x, z) / Math.hypot(x, y, z));
   });
 
+  it("HA9: MFW-77: the lite shell (LOW) is lighter than the shell, with the same palette, frame and a box inside it", () => {
+    const L = M.liteShell;
+    expect(triangles(L)).toBeGreaterThan(0);
+    expect(triangles(L)).toBeLessThanOrEqual(HOUSE_MODEL_MAX_TRIANGLES.liteShell);
+    expect(triangles(L)).toBeLessThan(triangles(M.shell));
+    expect(L.indices.length % 3).toBe(0);
+    for (const i of L.indices) expect(i).toBeLessThan(L.positions.length / 3);
+    expect(L.palette).toEqual(M.shell.palette);
+    expect(L.centerY).toBe(M.shell.centerY);
+    for (let a = 0; a < 3; a++) expect(L.halfExtents[a]).toBeLessThanOrEqual(M.shell.halfExtents[a] + 1e-9);
+  });
+
   it("HA8: docs/design/models.md records the source, the owner's licence note and the screenshots", () => {
     const doc = readFileSync(join(ROOT, "docs/design/models.md"), "utf8");
     expect(doc).toContain(SOURCE_SHA256);

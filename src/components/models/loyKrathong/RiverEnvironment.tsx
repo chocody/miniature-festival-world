@@ -21,7 +21,14 @@ import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
 import type { NudgeSource } from "@/core/effects";
 import type { BankGeometryData, RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
-import { LOY_KRATHONG_RIVER_FOLIAGE, lampHeadPosition, lampIndexFromInstanceId, lampTapProxyPlacement } from "./riverLayout";
+import { useDeviceStore } from "@/store/useDeviceStore";
+import {
+  LOY_KRATHONG_RIVER_FOLIAGE,
+  houseBodyForTier,
+  lampHeadPosition,
+  lampIndexFromInstanceId,
+  lampTapProxyPlacement,
+} from "./riverLayout";
 import { RiversideFoliage } from "./RiversideFoliage";
 
 export interface RiverEnvironmentProps {
@@ -70,6 +77,7 @@ function useBankGeometry(data: BankGeometryData) {
 export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { layout, shadows, waterRef, lampFocusRef, selectedLampIndex, onWaterSelected, onLampSelected, lightPreset } = props;
   const { lampHeadMeshRef, onPropTapped, nudges = null, rockMeshRef, pierDeckRef } = props;
+  const tier = useDeviceStore((s) => s.qualityTier);
   // Rule 5 (look doc §16): land = "sky" unless a proxy further along the ray takes the tap. Rule 3: the pier defers only to proxies.
   const onLandClick = onPropTapped
     ? (event: ThreeEvent<MouseEvent>) => {
@@ -133,7 +141,12 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
       >
         <meshStandardMaterial {...RIVER_BANK_MATERIAL} />
       </mesh>
-      <InstancedPart name={SCENE_OBJECT_NAMES.houseBodies} part={parts.houseBody} transforms={layout.houses} shadows={shadows} />
+      <InstancedPart
+        name={SCENE_OBJECT_NAMES.houseBodies}
+        part={houseBodyForTier(tier)}
+        transforms={layout.houses}
+        shadows={shadows}
+      />
       <InstancedPart
         name={SCENE_OBJECT_NAMES.houseRoofs}
         part={parts.houseRoof}

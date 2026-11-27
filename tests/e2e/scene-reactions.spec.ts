@@ -75,11 +75,12 @@ const PAN_DRAG_STEPS = 8;
 const SKY_TAP_ATTEMPTS = 3;
 
 /**
- * MFW-75: the second sky tap of the page (seeded) releases a sky lantern from the land point. A walking villager can step onto the
- * located point before the tap lands; that tap hops the villager and spends no draw, so the helper locates the land again. Returns
- * the gimmick count after the lantern.
+ * A sky tap (bare land) that must launch `expected` (seeded: the first sky draw of a page is a firework, the second a sky lantern).
+ * A walking villager can step onto the located point before the tap lands; that tap hops the villager and spends no sky draw, so
+ * the helper locates the land again (at most SKY_TAP_ATTEMPTS taps; MFW-75 for the second tap, MFW-77 for the first). Every tap
+ * adds exactly one to the gimmick count; any other result than `expected` or "villager-hop" fails. Returns the count after the launch.
  */
-async function secondSkyTapReleasesLantern(page: Page, countBefore: number): Promise<number> {
+async function skyTapLaunches(page: Page, countBefore: number, expected: "firework" | "sky-lantern"): Promise<number> {
   let n = countBefore;
   for (let attempt = 0; attempt < SKY_TAP_ATTEMPTS; attempt++) {
     await waitForCameraRest(page);
@@ -89,11 +90,17 @@ async function secondSkyTapReleasesLantern(page: Page, countBefore: number): Pro
     await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n));
     const last = await scene(page).getAttribute("data-last-gimmick");
     if (last === "villager-hop") continue; // a walking villager took the tap; it spends no sky draw
-    expect(last).toBe("sky-lantern"); // seed 8: the second sky draw is a lantern, so anything else is a regression
-    await expect.poll(() => sceneObjectVisible(page, E2E_SKY_LANTERN_NAME)).toBe(true);
+    expect(last).toBe(expected); // seed 8: anything else is a regression
     return n;
   }
-  throw new Error(`no sky lantern after ${SKY_TAP_ATTEMPTS} land taps`);
+  throw new Error(`no ${expected} after ${SKY_TAP_ATTEMPTS} land taps`);
+}
+
+/** MFW-75: the second sky tap of the page (seeded) releases a sky lantern from the land point. Returns the count after it. */
+async function secondSkyTapReleasesLantern(page: Page, countBefore: number): Promise<number> {
+  const n = await skyTapLaunches(page, countBefore, "sky-lantern");
+  await expect.poll(() => sceneObjectVisible(page, E2E_SKY_LANTERN_NAME)).toBe(true);
+  return n;
 }
 
 /** MFW-75: a lamp tap lights the lamp (head glow and the ground light). */
@@ -124,13 +131,10 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
   const programsBefore = await readProgramCount(page);
   const base = await count(page);
 
-  const sky = await locateStableTarget(page, "sky");
-  await page.touchscreen.tap(sky.x, sky.y);
-  await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
+  const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
   await expect.poll(() => sceneObjectVisible(page, E2E_FIREWORK_NAME)).toBe(true); // drawn now (the mesh exists from mount)
   await expect(scene(page)).not.toHaveAttribute("data-selected-target", "lamp"); // a prop tap selects nothing
-  const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75
+  const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75
 
   // A drag that starts on bare land pans the camera and fires no reaction (MFW-57 / MFW-59 tap-drag separation). It pans the
   // village (which sits under the top overlay at the pier framing on 360 × 640) into view.
@@ -169,10 +173,8 @@ test.describe("reduced motion", () => {
     const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL);
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     const base = await count(page);
-    const sky = await locateStableTarget(page, "sky");
-    await page.touchscreen.tap(sky.x, sky.y);
-    await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
-    const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75: the static lantern
+    const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
+    const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75: the static lantern
     // MFW-66: the house tap comes before the lamp tap (the S1 path). After the lamp tap's camera move and the drag, the only house
     // left in the 360 × 640 frame sat about 0.5 px above the bottom card, so a lower roof top (the owner house model) hid it.
     await dragFromLand(page);
@@ -198,11 +200,8 @@ test.describe("LOW", () => {
     await nextFrames(page);
     const programsBefore = await readProgramCount(page);
     const base = await count(page);
-    const sky = await locateStableTarget(page, "sky");
-    await page.touchscreen.tap(sky.x, sky.y);
-    await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
-    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
-    const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75
+    const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
+    const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75
     await lampTapLightsLamp(page, n + 1); // MFW-75
     await nextFrames(page);
     const programsAfter = await readProgramCount(page);
