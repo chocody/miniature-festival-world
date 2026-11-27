@@ -122,7 +122,7 @@ export const SCENE_GIMMICK_KINDS = [
   "rock-bounce",
   "pier-bounce",
   "villager-hop",
-  "sky-lantern", // MFW-75: the empty-ground tap may release a sky lantern instead of a firework
+  "sky-lantern", // MFW-75: the empty-ground tap releases a sky lantern when the HUD switch says so (MFW-85)
 ] as const;
 export type SceneGimmickKind = (typeof SCENE_GIMMICK_KINDS)[number];
 
@@ -146,8 +146,9 @@ export interface SceneTapReaction {
  * tap also puffs chimney smoke and a tree tap also drops a few leaves; the villager keeps the hop (no arm part for a wave; loop
  * decision, not yet reviewed by the owner). The gimmick names are unchanged.
  * MFW-75 (backlog 14.2): a lamp tap only switches the lamp on (no sky lantern rises from a lamp); the empty-ground ("sky") tap starts
- * `skyLaunch`, which picks a firework or a sky lantern at random. For `skyLaunch`, react() reports the gimmick of the kind it picked
- * (SKY_LAUNCH_GIMMICKS), so the `gimmick` of the sky entry is only the type-required default.
+ * `skyLaunch`. MFW-85 (backlog 15.3): it launches the kind chosen with the HUD switch (useDeviceStore.skyLaunchChoice), not a random
+ * pick. For `skyLaunch`, react() reports the gimmick of the kind it launched (SKY_LAUNCH_GIMMICKS), so the `gimmick` of the sky entry
+ * is only the type-required default.
  */
 export const SCENE_TAP_REACTIONS: Readonly<Record<SceneTargetKind, SceneTapReaction>> = Object.freeze({
   house: Object.freeze({ gimmick: "house-lights", effects: Object.freeze(["windowGlow", "chimneySmoke"] as const) }),
@@ -280,20 +281,20 @@ export const SKY_LAUNCH_GIMMICKS: Readonly<Record<SkyLaunchKind, SceneGimmickKin
   firework: "firework",
   skyLantern: "sky-lantern",
 });
-/** Share of sky taps that launch a firework (the rest release a sky lantern). DRAFT (card AC3); 0.5 = no preference until the owner picks one. */
-export const SKY_LAUNCH_SPLIT = Object.freeze({ fireworkShare: 0.5 });
-/**
- * Technical: the fixed seed that tests inject (unit tests and e2e) so the sky launches are deterministic. It is the smallest positive
- * integer whose first two picks (createSeededRandom(seed) with SKY_LAUNCH_SPLIT.fireworkShare) are a firework, then a sky lantern —
- * found with a throw-away loop over 1, 2, 3, … (pinned by gimmicks.config.test.ts). Production seeds from a non-deterministic source
- * once per SceneEffects mount (resolveSkyLaunchSeed), so every visit is a real surprise.
+/*
+ * MFW-85 (backlog 15.3): a HUD switch chooses what the empty-ground tap launches; it replaces the random pick of MFW-75. DRAFT loop
+ * decisions, not yet reviewed by the owner (docs/follow-ups.md, MFW-85).
  */
-export const SKY_LAUNCH_SEED = 8;
-/**
- * Technical test seam: when `window[SKY_LAUNCH_SEED_GLOBAL_NAME]` holds a positive safe integer when the first sky tap creates the generator (lazily, once per mount), SceneEffects seeds its sky
- * launch generator with it instead of a random seed (the e2e scene probe sets SKY_LAUNCH_SEED). Reads nothing else, stores nothing.
- */
-export const SKY_LAUNCH_SEED_GLOBAL_NAME = "__MFW_SKY_LAUNCH_SEED__";
+
+/** The kind a sky tap launches until the user switches. DRAFT (docs/follow-ups.md, MFW-85). */
+export const SKY_LAUNCH_DEFAULT_KIND: SkyLaunchKind = "firework";
+/** LocalStorage key of the remembered choice (this device only); the value is only "firework" | "skyLantern". */
+export const SKY_LAUNCH_CHOICE_STORAGE_KEY = "mfw:skyLaunchChoice:v1";
+/** Thai aria-label of the switch, keyed by the kind chosen now (state + what a tap does). DRAFT copy, owner sign-off from the PR. */
+export const SKY_LAUNCH_SWITCH_COPY: Readonly<Record<SkyLaunchKind, string>> = Object.freeze({
+  firework: "แตะที่ว่างเพื่อปล่อยพลุ — แตะปุ่มนี้เพื่อเปลี่ยนเป็นโคมลอย",
+  skyLantern: "แตะที่ว่างเพื่อปล่อยโคมลอย — แตะปุ่มนี้เพื่อเปลี่ยนเป็นพลุ",
+});
 
 /**
  * Warm light lying on the ground around a lit lamp's foot: a vertex-alpha fan (the blob program, NormalBlending, softer rim than a blob

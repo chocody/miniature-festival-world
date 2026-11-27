@@ -35,12 +35,11 @@ import {
   LAMP_GROUND_LIGHT_LOOK,
   SKY_LAUNCH_GIMMICKS,
   SKY_LAUNCH_KINDS,
-  SKY_LAUNCH_SEED,
-  SKY_LAUNCH_SEED_GLOBAL_NAME,
-  SKY_LAUNCH_SPLIT,
+  SKY_LAUNCH_CHOICE_STORAGE_KEY,
+  SKY_LAUNCH_DEFAULT_KIND,
+  SKY_LAUNCH_SWITCH_COPY,
 } from "./gimmicks.config";
 import { BLOB_SHADOW_LOOK } from "./look.config";
-import { createSeededRandom, pickSkyLaunch } from "@/core/effects/seededRandom";
 import { RIVER_FOLIAGE_SWAY } from "./events/loyKrathong.river.config";
 import { SCENE_CAMERA_ZOOM } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
@@ -239,12 +238,7 @@ describe("scene reactions part 2 (MFW-72)", () => {
   });
 });
 
-describe("lamp light and sky launch (MFW-75)", () => {
-  const firstTwoPicks = (seed: number) => {
-    const r = createSeededRandom(seed);
-    return [pickSkyLaunch(r(), SKY_LAUNCH_SPLIT.fireworkShare), pickSkyLaunch(r(), SKY_LAUNCH_SPLIT.fireworkShare)];
-  };
-
+describe("lamp light and sky launch (MFW-75, MFW-85)", () => {
   it("CF1: the lamp tap only lights the lamp; only the sky entry starts skyLaunch", () => {
     expect(SCENE_TAP_REACTIONS.lamp.effects).toEqual(["lampGlow"]);
     expect(SCENE_TAP_REACTIONS.lamp.gimmick).toBe("lamp-glow");
@@ -273,16 +267,12 @@ describe("lamp light and sky launch (MFW-75)", () => {
     expect(Object.isFrozen(SKY_LAUNCH_GIMMICKS)).toBe(true);
   });
 
-  it("CF4: SKY_LAUNCH_SEED is the smallest positive integer whose first two picks are firework, then sky lantern", () => {
-    expect(Number.isSafeInteger(SKY_LAUNCH_SEED) && SKY_LAUNCH_SEED > 0).toBe(true);
-    expect(firstTwoPicks(SKY_LAUNCH_SEED)).toEqual(["firework", "skyLantern"]);
-    for (let s = 1; s < SKY_LAUNCH_SEED; s++) expect(firstTwoPicks(s), String(s)).not.toEqual(["firework", "skyLantern"]);
-    expect(SKY_LAUNCH_SEED_GLOBAL_NAME).toMatch(/^__MFW_[A-Z_]+__$/);
-  });
-
-  it("CF5: both kinds are reachable (0 < fireworkShare < 1)", () => {
-    expect(SKY_LAUNCH_SPLIT.fireworkShare).toBeGreaterThan(0);
-    expect(SKY_LAUNCH_SPLIT.fireworkShare).toBeLessThan(1);
-    expect(Object.isFrozen(SKY_LAUNCH_SPLIT)).toBe(true);
+  it("CF4: the sky launch choice has a default kind, a storage key and a Thai label per kind", () => {
+    expect([...SKY_LAUNCH_KINDS]).toContain(SKY_LAUNCH_DEFAULT_KIND);
+    expect(SKY_LAUNCH_CHOICE_STORAGE_KEY).toMatch(/^mfw:[A-Za-z]+:v1$/);
+    expect(Object.keys(SKY_LAUNCH_SWITCH_COPY).sort()).toEqual([...SKY_LAUNCH_KINDS].sort());
+    for (const label of Object.values(SKY_LAUNCH_SWITCH_COPY)) expect(label).toMatch(/[\u0E00-\u0E7F]/);
+    expect(SKY_LAUNCH_SWITCH_COPY.firework).not.toBe(SKY_LAUNCH_SWITCH_COPY.skyLantern);
+    expect(Object.isFrozen(SKY_LAUNCH_SWITCH_COPY)).toBe(true);
   });
 });

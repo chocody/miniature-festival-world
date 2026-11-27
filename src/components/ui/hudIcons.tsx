@@ -81,3 +81,35 @@ export function FlagIcon({ className }: HudIconProps): JSX.Element {
     </Svg>
   );
 }
+
+/** MFW-85: a small centre with radial sparks (the sky tap launches a firework). */
+export function FireworkIcon({ className }: HudIconProps): JSX.Element {
+  const { burst, spark } = HUD_GLYPH_COLORS.firework;
+  return (
+    <Svg glyph="firework" className={className}>
+      <path d="M16.3 12.0L20.0 12.0M15.0 15.0L17.7 17.7M12.0 16.3L12.0 20.0M9.0 15.0L6.3 17.7M7.7 12.0L4.0 12.0M9.0 9.0L6.3 6.3M12.0 7.7L12.0 4.0M15.0 9.0L17.7 6.3" stroke={burst} strokeWidth="2.4" />
+      <circle cx="12" cy="12" r="2.4" fill={spark} stroke={burst} strokeWidth="1.4" />
+      <circle cx="22.2" cy="12.0" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="19.2" cy="19.2" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="12.0" cy="22.2" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="4.8" cy="19.2" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="1.8" cy="12.0" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="4.8" cy="4.8" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="12.0" cy="1.8" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+      <circle cx="19.2" cy="4.8" r="1.3" fill={spark} stroke={burst} strokeWidth="0.9" />
+    </Svg>
+  );
+}
+
+/** MFW-85: a rounded paper lantern with a small flame at its base (the sky tap releases a sky lantern). */
+export function SkyLanternIcon({ className }: HudIconProps): JSX.Element {
+  const { body, stroke, flame } = HUD_GLYPH_COLORS.skyLantern;
+  return (
+    <Svg glyph="sky-lantern" className={className}>
+      <path d="M12 1.5v3" stroke={stroke} strokeWidth="1.6" />
+      <path d="M8.5 4.5h7c2.8 2.3 4 5.5 4 9l-2 4.5h-11l-2-4.5c0-3.5 1.2-6.7 4-9z" fill={body} stroke={stroke} strokeWidth="1.6" />
+      <path d="M7.5 18.5h9v2a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1z" fill={stroke} />
+      <path d="M12 17c-2-1.5-2.1-3.6 0-6.2 2.1 2.6 2 4.7 0 6.2z" fill={flame} />
+    </Svg>
+  );
+}

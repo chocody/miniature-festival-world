@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { SKY_LAUNCH_DEFAULT_KIND } from "@/config/gimmicks.config";
 import { DEFAULT_QUALITY_TIER } from "@/config/performance.config";
 import { useDeviceStore } from "./useDeviceStore";
 import { useUIStore } from "./useUIStore";
@@ -39,6 +40,14 @@ describe("useDeviceStore", () => {
     useDeviceStore.getState().setLightPresetChoice("NIGHT");
     expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
     expect(useUIStore.getState()).toBe(ui);
+  });
+  it("DS1: skyLaunchChoice starts at the default kind and only its setter changes it (MFW-85)", () => {
+    expect(useDeviceStore.getState().skyLaunchChoice).toBe(SKY_LAUNCH_DEFAULT_KIND);
+    const before = useDeviceStore.getState();
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
+    const after = useDeviceStore.getState();
+    expect(after.skyLaunchChoice).toBe("skyLantern");
+    expect({ ...after, skyLaunchChoice: before.skyLaunchChoice }).toEqual(before);
   });
   it("setFps", () => {
     useDeviceStore.getState().setFps(42);

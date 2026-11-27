@@ -13,19 +13,15 @@ import {
   SCENE_TAP_REACTIONS,
   SCENE_TARGET_KINDS,
   SKY_LANTERN_LOOK,
-  SKY_LAUNCH_SEED,
-  SKY_LAUNCH_SEED_GLOBAL_NAME,
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
+import { useDeviceStore } from "@/store/useDeviceStore";
 import { BLOB_SHADOW_TIER_GEOMETRY, LOOK_PALETTE } from "@/config/look.config";
 import { EFFECT_KINDS, type EffectPoolCaps } from "@/config/performance.config";
 import {
   chimneySmokeDurationMs,
   chimneySmokeEmitMs,
   createObjectPoolManager,
-  createSeededRandom,
-  pickSkyLaunch,
-  resolveSkyLaunchSeed,
   fallingLeavesDurationMs,
   fallingLeavesEmitMs,
   nudgeDurationMs,
@@ -126,7 +122,6 @@ const ui = (
   reducedMotion = false,
   frame: EndlessRiverFrame | null = null,
   lightPreset: LightPresetId = "NIGHT",
-  skyLaunchRandom?: () => number,
 ) => (
   <SceneEffects
     handleRef={ref}
@@ -146,24 +141,13 @@ const ui = (
     treeLeafAnchors={LOY_KRATHONG_TREE_LEAF_ANCHORS}
     leavesPerFall={LEAVES}
     lampGroundFan={BLOB_SHADOW_TIER_GEOMETRY.LOW}
-    skyLaunchRandom={skyLaunchRandom}
     now={() => NOW}
     frame={frame}
   />
 );
 
-/** MFW-75: the e2e / test seam — every default generator in this file is seeded with SKY_LAUNCH_SEED (firework, then sky lantern). */
-const seam = globalThis as unknown as Record<string, unknown>;
-/** A generator that always picks a firework / a sky lantern, and one that alternates (firework first). */
-const ALWAYS_FIREWORK = () => 0.1;
-const ALWAYS_LANTERN = () => 0.9;
-const alternating = () => {
-  let i = 0;
-  return () => (i++ % 2 === 0 ? 0.1 : 0.9);
-};
-
 beforeEach(() => {
-  seam[SKY_LAUNCH_SEED_GLOBAL_NAME] = SKY_LAUNCH_SEED;
+  useDeviceStore.setState(useDeviceStore.getInitialState(), true); // MFW-85: the sky launch choice is the default (firework)
   NOW = 1_000_000;
   r3f.frame = null;
   r3f.invalidate.mockClear();
@@ -175,7 +159,6 @@ beforeEach(() => {
   spies.meshes.length = 0;
 });
 afterEach(() => {
-  delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
   cleanup();
   vi.restoreAllMocks();
 });
@@ -309,7 +292,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
   it("SE4: fireworks are rate-limited to the WCAG flash rate (t, +100, +200, +340 → t and +340)", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager({ ...CAPS, firework: 3 });
-    render(ui(ref, pools, false, null, "NIGHT", ALWAYS_FIREWORK));
+    render(ui(ref, pools, false, null));
     const t0 = NOW;
     const launched: number[] = [];
     for (const dt of [0, 100, 200, 340]) {
@@ -333,9 +316,21 @@ describe("SceneEffects reactions (MFW-60)", () => {
     expect(states[1].paletteIndex).toBe(1 % FIREWORK_LOOK.palette.length);
   });
 
+  it("SE29: reduced motion with the lantern choice draws the lantern statically, no firework (MFW-85)", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
+    render(ui(ref, createObjectPoolManager(CAPS), true));
+    expect(ref.current!.react("sky", 0, bankPoint)).toBe("sky-lantern");
+    expect(ref.current!.activeCount("firework")).toBe(0);
+    r3f.frame!();
+    const lantern = meshNamed(SCENE_OBJECT_NAMES.skyLanterns);
+    expect(lantern.visible).toBe(true);
+    expect(lantern.count).toBe(2); // body + flame at the static pose
+  });
+
   it("SE5: reduced-motion variants are drawn statically", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref, createObjectPoolManager(CAPS), true, null, "NIGHT", ALWAYS_FIREWORK));
+    render(ui(ref, createObjectPoolManager(CAPS), true, null));
     expect(ref.current!.react("sky", 0, bankPoint)).toBe("firework");
     expect(ref.current!.releaseSkyLantern({ x: 1, z: 1 })).toBe(true); // MFW-75: lanterns come from land points now
     ref.current!.react("lamp", 0, null);
@@ -359,9 +354,10 @@ describe("SceneEffects reactions (MFW-60)", () => {
 
   it("SE6: spamming each kind never exceeds its cap", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", alternating())); // MFW-75: fireworks and lanterns both fill
+    render(ui(ref, createObjectPoolManager(CAPS))); // MFW-85: the choice alternates below so fireworks and lanterns both fill
     for (let i = 0; i < 20; i++) {
       NOW += FIREWORK_MIN_LAUNCH_INTERVAL_MS + 1;
+      useDeviceStore.getState().setSkyLaunchChoice(i % 2 === 0 ? "firework" : "skyLantern");
       ref.current!.react("sky", 0, bankPoint);
       ref.current!.react("water", 0, bankPoint);
       ref.current!.react("house", i % HOUSES, null);
@@ -430,7 +426,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
     for (const reduced of [false, true]) {
       cleanup();
       const ref = createRef<SceneEffectsHandle>();
-      render(ui(ref, createObjectPoolManager({ ...CAPS, firework: 8 }), reduced, null, "NIGHT", ALWAYS_FIREWORK)); // MFW-75
+      render(ui(ref, createObjectPoolManager({ ...CAPS, firework: 8 }), reduced, null)); // MFW-75
       const start = NOW;
       const launches: number[] = [];
       for (let t = 0; t <= 2_000; t += 50) {
@@ -820,18 +816,19 @@ describe("lamp light and sky launch (MFW-75)", () => {
     }
   });
 
-  it("SE24: a firework pick → 'firework'; firework running, no lantern", () => {
+  it("SE24: the default choice (firework) → 'firework'; firework running, no lantern", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", ALWAYS_FIREWORK));
+    render(ui(ref, createObjectPoolManager(CAPS)));
     expect(ref.current!.react("sky", 0, land)).toBe("firework");
     expect(ref.current!.activeCount("firework")).toBe(1);
     expect(ref.current!.activeCount("skyLantern")).toBe(0);
   });
 
-  it("SE25: a lantern pick → 'sky-lantern' sitting on the terrace at the land point; no firework", () => {
+  it("SE25: the lantern choice → 'sky-lantern' sitting on the terrace at the land point; no firework", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager(CAPS);
-    render(ui(ref, pools, false, null, "NIGHT", ALWAYS_LANTERN));
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
+    render(ui(ref, pools));
     expect(ref.current!.react("sky", 0, land)).toBe("sky-lantern");
     const e = [0, 1].map((i) => pools.skyLantern.entryAt(i)).find((x) => x.active)!;
     expect(e.state).toEqual({ x: 1, y: LOY_KRATHONG_RIVER_LAYOUT.bankTopY + SKY_LANTERN_LOOK.geometry.height / 2, z: 2 });
@@ -841,48 +838,48 @@ describe("lamp light and sky launch (MFW-75)", () => {
     expect(meshNamed(SCENE_OBJECT_NAMES.skyLanterns).count).toBe(2); // body + flame
   });
 
-  it("SE26: a non-finite land point returns null without drawing", () => {
-    const random = vi.fn(() => 0.1);
+  it("SE26: a non-finite land point returns null and starts nothing", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", random));
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools));
     expect(ref.current!.react("sky", 0, null)).toBeNull();
     expect(ref.current!.react("sky", 0, { x: Number.NaN, z: 0 })).toBeNull();
     expect(ref.current!.launchFromSky({ x: 0, z: Infinity })).toBeNull();
     expect(ref.current!.releaseSkyLantern(null)).toBe(false);
-    expect(random).not.toHaveBeenCalled();
+    expect(pools.firework.activeCount).toBe(0);
+    expect(pools.skyLantern.activeCount).toBe(0);
   });
 
-  it("SE27: the default generator (seam = SKY_LAUNCH_SEED) gives a firework, then a sky lantern", () => {
+  it("SE27: the choice is read at tap time on the same mount (no remount)", () => {
     const ref = createRef<SceneEffectsHandle>();
     render(ui(ref));
+    const meshes = spies.meshes.length;
     expect(ref.current!.react("sky", 0, land)).toBe("firework");
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
     NOW += 400;
     expect(ref.current!.react("sky", 0, land)).toBe("sky-lantern");
+    useDeviceStore.getState().setSkyLaunchChoice("firework");
+    NOW += 400;
+    expect(ref.current!.react("sky", 0, land)).toBe("firework");
+    expect(spies.meshes.length).toBe(meshes);
   });
 
-  it("SE27b: without the seam the default generator is seeded once per mount from Math.random", () => {
-    delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
-    const random = vi.spyOn(Math, "random").mockReturnValue(0.123);
-    const expected = createSeededRandom(resolveSkyLaunchSeed(undefined, () => 0.123));
+  it("SE27b: an explicit kind wins over the stored choice", () => {
     const ref = createRef<SceneEffectsHandle>();
     render(ui(ref));
-    random.mockClear(); // three draws UUIDs at mount; the seed is drawn lazily on the first sky tap
-    for (let i = 0; i < 6; i++) {
-      NOW += 400;
-      const want = pickSkyLaunch(expected(), 0.5) === "firework" ? "firework" : "sky-lantern";
-      expect(ref.current!.react("sky", 0, land), String(i)).toBe(want);
-    }
-    expect(random).toHaveBeenCalledTimes(1); // one seed per mount, not one draw per tap
+    expect(ref.current!.launchFromSky(land, "skyLantern")).toBe("sky-lantern");
+    expect(ref.current!.activeCount("firework")).toBe(0);
   });
 
   it("SE28: 50 alternating sky taps stay within both caps, create no mesh, and keep the world-view point", () => {
     const frame = getLoyKrathongEndlessRiverFrame();
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager(CAPS);
-    render(ui(ref, pools, false, frame, "NIGHT", alternating()));
+    render(ui(ref, pools, false, frame));
     const created = spies.meshes.length;
     for (let i = 0; i < 50; i++) {
       NOW += 400;
+      useDeviceStore.getState().setSkyLaunchChoice(i % 2 === 0 ? "firework" : "skyLantern");
       ref.current!.react("sky", 0, land);
       r3f.frame!();
       expect(pools.firework.activeCount).toBeLessThanOrEqual(pools.firework.capacity);
@@ -891,8 +888,10 @@ describe("lamp light and sky launch (MFW-75)", () => {
     expect(spies.meshes.length).toBe(created);
     const tap = { x: frame.periodX + 1.5, z: frame.periodZ - 3 };
     NOW += 400;
+    useDeviceStore.getState().setSkyLaunchChoice("firework");
     expect(ref.current!.react("sky", 0, tap, 1)).toBe("firework");
     NOW += 400;
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
     expect(ref.current!.react("sky", 0, tap, 1)).toBe("sky-lantern");
     const newest = <T,>(pool: { capacity: number; entryAt(i: number): { active: boolean; startedAtMs: number; state: T } }) =>
       Array.from({ length: pool.capacity }, (_, i) => pool.entryAt(i))

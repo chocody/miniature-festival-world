@@ -47,7 +47,9 @@ test("flow walks from the active event to SHARED_WORLD_EXPLORE", async ({ page }
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
   await expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
   await expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
-  // MFW-57 / MFW-74: the HUD column holds the rotate button (open question 34), Find My and the day/night toggle; every other button stays absent.
-  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(2); // Find My + day/night toggle
+  // MFW-57 / MFW-74 / MFW-85: the HUD column holds the rotate button (open question 34), Find My, the day/night toggle and the
+  // sky-launch switch; every other button stays absent.
+  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(3); // Find My + day/night toggle + sky-launch switch (MFW-85)
+  await expect(page.getByTestId("sky-launch-switch")).toBeVisible();
   await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

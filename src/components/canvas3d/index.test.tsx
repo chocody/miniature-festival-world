@@ -64,8 +64,7 @@ import {
   SCENE_TAP_HINT_COPY,
   SCENE_TAP_HINT_SEEN_VALUE,
   SCENE_TAP_HINT_STORAGE_KEY,
-  SKY_LAUNCH_SEED,
-  SKY_LAUNCH_SEED_GLOBAL_NAME,
+  SKY_LAUNCH_DEFAULT_KIND,
 } from "@/config/gimmicks.config";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition } from "@/components/models/loyKrathong/riverLayout";
@@ -1197,14 +1196,10 @@ describe("scene gimmicks (MFW-28)", () => {
 describe("scene reactions (MFW-60)", () => {
   const pools = () => poolManagers.at(-1)!;
   const ground = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
-  const seam = globalThis as unknown as Record<string, unknown>;
   beforeEach(() => {
     useDeviceStore.getState().setQualityTier("HIGH");
     poolManagers.length = 0;
-    seam[SKY_LAUNCH_SEED_GLOBAL_NAME] = SKY_LAUNCH_SEED; // MFW-75: the first sky launch of a mount is a firework
-  });
-  afterEach(() => {
-    delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
+    useDeviceStore.getState().setSkyLaunchChoice(SKY_LAUNCH_DEFAULT_KIND); // MFW-85: the default choice (firework)
   });
 
   it("IX1: in WORLD_EXPLORE a ground tap launches a firework, counts once and changes no selection or camera", () => {
@@ -1217,6 +1212,16 @@ describe("scene reactions (MFW-60)", () => {
     expect(viewport().getAttribute("data-selected-target")).toBe(selected);
     expect(r3f.flightStarts.length).toBe(flights);
     expect(pools().activeCount("firework")).toBe(1);
+  });
+
+  it("IX1b: with the lantern choice a ground tap releases a sky lantern (MFW-85)", () => {
+    useDeviceStore.getState().setSkyLaunchChoice("skyLantern");
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
+    fireEvent.click(ground(container));
+    expect(viewport()).toHaveAttribute("data-last-gimmick", "sky-lantern");
+    expect(viewport()).toHaveAttribute("data-gimmick-count", "1");
+    expect(pools().activeCount("skyLantern")).toBe(1);
+    expect(pools().activeCount("firework")).toBe(0);
   });
 
   it("IX2: a prop proxy tap lights the house; a tree tap shakes it; the pier and a villager react too", () => {

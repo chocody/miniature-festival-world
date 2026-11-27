@@ -18,6 +18,7 @@ import { NoWebglNotice } from "./NoWebglNotice";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { OverlaySlot, STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { WishModal } from "./WishModal";
+import { SkyLaunchSwitch } from "./SkyLaunchSwitch";
 import { WorldRotateButton } from "./WorldRotateButton";
 import { ZoneNavigator } from "./ZoneNavigator";
 
@@ -76,12 +77,13 @@ export function FlowRoot({ eventId }: FlowRootProps) {
 
   const overlays = (
     <>
-      {/* HUD column top-left (MFW-74): Find My, day/night toggle, rotate (3D world view only). */}
+      {/* HUD column top-left (MFW-74): Find My, day/night toggle, rotate, sky launch switch (3D world view only). */}
       {interactionMode !== null && (
         <OverlaySlot slot="corner">
           {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer />}
           <DayNightSwitch />
           {flowState === "SHARED_WORLD_EXPLORE" && show3D && <WorldRotateButton onRotate={requestViewRotate} />}
+          {flowState === "SHARED_WORLD_EXPLORE" && show3D && <SkyLaunchSwitch />}
         </OverlaySlot>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && (

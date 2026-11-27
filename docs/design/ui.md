@@ -213,7 +213,7 @@ Positions and widths are unchanged from MFW-54; only surfaces, radius, padding a
 | Customizer | `CustomizerPanel.tsx` |
 | Wish | `WishModal.tsx`, `WishVisibilitySwitch.tsx` |
 | Release | `RitualReleasePanel.tsx`, `FlowStepPlaceholder.tsx` |
-| World HUD (MFW-74: one top-left column of round 44 px buttons — Find My, sun/moon toggle, rotate; river overlap accepted at 360×640 and 1440×900, clearance asserted at 390×844 only, owner 2026-11-27) | `FlowStepPlaceholder.tsx`, `DayNightSwitch.tsx` (toggle), `hudIcons.tsx`, `SceneTapHint.tsx` |
+| World HUD (MFW-74: one top-left column of round 44 px buttons — Find My, sun/moon toggle, rotate, sky launch switch (MFW-85); river overlap accepted at 360×640 and 1440×900, clearance asserted at 390×844 only, owner 2026-11-27) | `FlowStepPlaceholder.tsx`, `DayNightSwitch.tsx` (toggle), `SkyLaunchSwitch.tsx`, `hudIcons.tsx`, `SceneTapHint.tsx` |
 | Zone navigation | `ZoneNavigator.tsx` |
 | My Creations | `MyCreationsDrawer.tsx` |
 | Inspect popup | `InspectPopup.tsx` |

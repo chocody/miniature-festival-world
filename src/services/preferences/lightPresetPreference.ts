@@ -1,3 +1,4 @@
+import { browserStorage } from "./browserStorage";
 import { LIGHT_PRESET_STORAGE_KEY, type LightPresetChoice } from "@/config/look.config";
 
 /**
@@ -36,16 +37,6 @@ export function createLightPresetPreference(storage: Storage | null): LightPrese
       }
     },
   };
-}
-
-/** Local helper (not the owner-token vault's): LocalStorage when the browser allows it, else null. */
-function browserStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage ?? null;
-  } catch {
-    return null;
-  }
 }
 
 let singleton: LightPresetPreference | null = null;

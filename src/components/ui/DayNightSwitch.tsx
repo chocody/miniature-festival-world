@@ -10,7 +10,7 @@ import { UI_CLASSES } from "./uiClasses";
 import { useResolvedLightPreset } from "./useResolvedLightPreset";
 
 /** HUD button recipe (MFW-74): round, 44 px, on the translucent veil (+ `transition-colors`, so reduced motion stays testable); Find My and rotate use the same recipe. */
-const HUD_BUTTON_CLASSES = `${UI_CLASSES.iconButton.replace("bg-paper", "bg-veil")} shadow-float transition-colors`;
+export const HUD_BUTTON_CLASSES = `${UI_CLASSES.iconButton.replace("bg-paper", "bg-veil")} shadow-float transition-colors`;
 
 /**
  * Day / night toggle (MFW-74, open question 32): one round button showing the sun (DAY) or the moon (NIGHT), no text.

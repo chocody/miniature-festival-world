@@ -134,6 +134,9 @@ export const HUD_GLYPH_COLORS = Object.freeze({
   sun: Object.freeze({ fill: LOOK_PALETTE.lanternGlow, stroke: LOOK_PALETTE.doorWood }),
   moon: Object.freeze({ fill: LOOK_PALETTE.flowerYellow, stroke: LOOK_PALETTE.nightSky }),
   krathong: Object.freeze({ leaf: LOOK_PALETTE.leafLight, flower: LOOK_PALETTE.flowerCoral, flame: LOOK_PALETTE.lanternGlow }),
+  // MFW-85: the sky launch switch glyphs (firework burst, sky lantern). DRAFT.
+  firework: Object.freeze({ burst: LOOK_PALETTE.flowerCoral, spark: LOOK_PALETTE.lanternGlow }),
+  skyLantern: Object.freeze({ body: LOOK_PALETTE.lanternGlow, stroke: LOOK_PALETTE.doorWood, flame: LOOK_PALETTE.flameCore }),
 });
 
 export type LookToneMappingId = "NEUTRAL" | "ACES_FILMIC" | "AGX";
