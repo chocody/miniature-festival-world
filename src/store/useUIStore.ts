@@ -12,6 +12,9 @@ export interface UIState {
   /** Release ritual sub-state of RITUAL_RELEASE (MFW-23). Public, parametric data only (invariant C). */
   ritual: RitualState;
   dispatchRitual: (event: RitualEvent) => void;
+  /** Bumped by the HUD rotate button (MFW-74); SceneViewport owns the camera rig and turns the view once per change (as `focusRequestId`). */
+  viewRotateRequestId: number;
+  requestViewRotate: () => void;
 }
 
 export const useUIStore = create<UIState>()((set, get) => ({
@@ -45,4 +48,6 @@ export const useUIStore = create<UIState>()((set, get) => ({
     const next = transitionRitual(current, event);
     if (next !== current) set({ ritual: next });
   },
+  viewRotateRequestId: 0,
+  requestViewRotate: () => set((s) => ({ viewRotateRequestId: s.viewRotateRequestId + 1 })),
 }));

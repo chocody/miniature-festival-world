@@ -15,10 +15,10 @@ import { DayNightSwitch } from "./DayNightSwitch";
 import { FlowStepPlaceholder } from "./FlowStepPlaceholder";
 import { MyCreationsDrawer } from "./MyCreationsDrawer";
 import { NoWebglNotice } from "./NoWebglNotice";
-import { OwnerWishControls } from "./OwnerWishControls";
 import { RitualReleasePanel } from "./RitualReleasePanel";
 import { OverlaySlot, STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { WishModal } from "./WishModal";
+import { WorldRotateButton } from "./WorldRotateButton";
 import { ZoneNavigator } from "./ZoneNavigator";
 
 /** three / R3F / react-spring live only in this async chunk, fetched once a 3D tier and a canvas mode are known (MFW-44). */
@@ -42,6 +42,7 @@ export function FlowRoot({ eventId }: FlowRootProps) {
   const qualityTier = useDeviceStore((s) => s.qualityTier);
   const reducedMotion = useDeviceStore((s) => s.reducedMotion);
   const profiled = useDeviceStore((s) => s.profiled);
+  const requestViewRotate = useUIStore((s) => s.requestViewRotate);
   const enterActiveEvent = useUIStore((s) => s.enterActiveEvent);
   const enteredEventId = useUIStore((s) => s.selectedEventId);
   const ritual = useUIStore((s) => s.ritual);
@@ -75,17 +76,17 @@ export function FlowRoot({ eventId }: FlowRootProps) {
 
   const overlays = (
     <>
-      {/* Day/night switch (MFW-47): in the world view it heads the top card; in the other canvas modes the top-left corner is free. */}
-      {interactionMode !== null && flowState !== "SHARED_WORLD_EXPLORE" && (
+      {/* HUD column top-left (MFW-74): Find My, day/night toggle, rotate (3D world view only). */}
+      {interactionMode !== null && (
         <OverlaySlot slot="corner">
+          {flowState === "SHARED_WORLD_EXPLORE" && <MyCreationsDrawer />}
           <DayNightSwitch />
+          {flowState === "SHARED_WORLD_EXPLORE" && show3D && <WorldRotateButton onRotate={requestViewRotate} />}
         </OverlaySlot>
       )}
       {flowState === "SHARED_WORLD_EXPLORE" && (
         <OverlaySlot slot="top">
-          <DayNightSwitch />
           <ZoneNavigator />
-          <MyCreationsDrawer renderEntryExtra={(entry) => <OwnerWishControls creationId={entry.id} zone={entry} />} />
         </OverlaySlot>
       )}
       {flowState === "CUSTOMIZE_OBJECT" ? (

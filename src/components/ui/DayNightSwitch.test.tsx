@@ -1,133 +1,84 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LIGHT_PRESET_STORAGE_KEY, LIGHT_PRESET_SWITCH_COPY as COPY } from "@/config/look.config";
+import { LIGHT_PRESET_STORAGE_KEY, LIGHT_PRESET_TOGGLE_COPY as COPY } from "@/config/look.config";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { DayNightSwitch } from "./DayNightSwitch";
 
+const setClock = (h: number) => vi.setSystemTime(new Date(2026, 10, 26, h, 0));
+const toggle = () => screen.getByTestId("day-night-toggle");
+
 beforeEach(() => {
+  vi.useFakeTimers();
+  setClock(20);
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+  useDeviceStore.getState().setQualityTier("HIGH"); // profiled
   localStorage.removeItem(LIGHT_PRESET_STORAGE_KEY);
 });
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  vi.useRealTimers();
   localStorage.removeItem(LIGHT_PRESET_STORAGE_KEY);
 });
 
-describe("DayNightSwitch", () => {
-  it("renders nothing before profiling; renders the three radios once profiled (MFW-51)", () => {
-    const { container, rerender } = render(<DayNightSwitch />);
-    expect(container).toBeEmptyDOMElement();
-    act(() => useDeviceStore.getState().setQualityTier("LOW"));
-    rerender(<DayNightSwitch />);
-    expect(screen.getByRole("radiogroup", { name: COPY.groupLabel })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
+describe("DayNightSwitch (MFW-74 toggle)", () => {
+  it("D1 one icon button, no radiogroup, moon at 20:00 with a Thai label and no text", () => {
+    render(<DayNightSwitch />);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(toggle().querySelector('[data-glyph="moon"]')).not.toBeNull();
+    expect(toggle()).toHaveAttribute("aria-label", COPY.NIGHT);
+    expect(toggle()).toHaveAttribute("data-light-preset", "NIGHT");
+    expect(toggle().textContent).toBe("");
   });
 
-  it("shows three radios on a 3D tier, AUTO checked by default", () => {
-    useDeviceStore.getState().setQualityTier("HIGH");
+  it("D2 a click switches to DAY and stores it; the next click returns to AUTO and removes the key", () => {
     render(<DayNightSwitch />);
-    const group = screen.getByRole("radiogroup", { name: COPY.groupLabel });
-    expect(group).toHaveAttribute("data-light-preset-choice", "AUTO");
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
-    expect(screen.getByRole("radio", { name: COPY.AUTO })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: COPY.DAY })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("radio", { name: COPY.NIGHT })).toHaveAttribute("aria-checked", "false");
-  });
-
-  it("a click overrides the preset and keeps it on the device; AUTO removes the key", () => {
-    useDeviceStore.getState().setQualityTier("HIGH");
-    render(<DayNightSwitch />);
-    fireEvent.click(screen.getByRole("radio", { name: COPY.NIGHT }));
-    expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
-    expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");
-    expect(screen.getByRole("radio", { name: COPY.NIGHT })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("radio", { name: COPY.AUTO }));
+    fireEvent.click(toggle());
+    expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
+    expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("DAY");
+    expect(toggle().querySelector('[data-glyph="sun"]')).not.toBeNull();
+    expect(toggle()).toHaveAttribute("aria-label", COPY.DAY);
+    fireEvent.click(toggle());
     expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
     expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBeNull();
+    expect(toggle().querySelector('[data-glyph="moon"]')).not.toBeNull();
   });
 
-  it("the store still updates when storage throws", () => {
-    useDeviceStore.getState().setQualityTier("MEDIUM");
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("quota");
-    });
+  it("D3 at 10:00 with AUTO a click stores NIGHT", () => {
+    setClock(10);
     render(<DayNightSwitch />);
-    fireEvent.click(screen.getByRole("radio", { name: COPY.DAY }));
-    expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
-    expect(screen.getByRole("radio", { name: COPY.DAY })).toHaveAttribute("aria-checked", "true");
+    expect(toggle()).toHaveAttribute("data-light-preset", "DAY");
+    fireEvent.click(toggle());
+    expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
+    expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");
   });
 
-  describe("roving keyboard (MFW-55)", () => {
-    const radio = (choice: "AUTO" | "DAY" | "NIGHT") => screen.getByRole("radio", { name: COPY[choice] });
-    const renderHigh = () => {
-      useDeviceStore.getState().setQualityTier("HIGH");
+  it("D4 renders nothing before profiling", () => {
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+    const { container } = render(<DayNightSwitch />);
+    expect(container).toBeEmptyDOMElement();
+    act(() => useDeviceStore.getState().setQualityTier("LOW"));
+    expect(screen.getByTestId("day-night-toggle")).toBeInTheDocument();
+  });
+
+  it("D5 is a 44 px round button on the veil", () => {
+    render(<DayNightSwitch />);
+    for (const c of ["min-h-11", "min-w-11", "rounded-full", "bg-veil", "shadow-float"]) expect(toggle().className.split(" ")).toContain(c);
+  });
+
+  it("D6 the choice still changes when storage throws", () => {
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    try {
       render(<DayNightSwitch />);
-    };
-
-    it("only the checked radio is a tab stop", () => {
-      renderHigh();
-      expect(radio("AUTO").tabIndex).toBe(0);
-      expect(radio("DAY").tabIndex).toBe(-1);
-      expect(radio("NIGHT").tabIndex).toBe(-1);
-    });
-
-    it("ArrowRight moves to the next choice, focuses it and stores it", () => {
-      renderHigh();
-      fireEvent.keyDown(radio("AUTO"), { key: "ArrowRight" });
-      expect(radio("DAY")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("DAY"));
+      expect(() => fireEvent.click(toggle())).not.toThrow();
       expect(useDeviceStore.getState().lightPresetChoice).toBe("DAY");
-      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("DAY");
-      expect(radio("DAY").tabIndex).toBe(0);
-      expect(radio("AUTO").tabIndex).toBe(-1);
-    });
-
-    it("ArrowLeft wraps from the first to the last", () => {
-      renderHigh();
-      fireEvent.keyDown(radio("AUTO"), { key: "ArrowLeft" });
-      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("NIGHT"));
-      expect(useDeviceStore.getState().lightPresetChoice).toBe("NIGHT");
-    });
-
-    it("ArrowDown / ArrowUp act like Right / Left", () => {
-      renderHigh();
-      fireEvent.keyDown(radio("AUTO"), { key: "ArrowDown" });
-      expect(radio("DAY")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("DAY"));
-      fireEvent.keyDown(radio("DAY"), { key: "ArrowUp" });
-      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("AUTO"));
-      fireEvent.keyDown(radio("AUTO"), { key: "ArrowUp" });
-      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
-      fireEvent.keyDown(radio("NIGHT"), { key: "ArrowDown" });
-      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
-    });
-
-    it("Home and End jump to the first and last", () => {
-      renderHigh();
-      fireEvent.click(radio("DAY"));
-      fireEvent.keyDown(radio("DAY"), { key: "End" });
-      expect(radio("NIGHT")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("NIGHT"));
-      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBe("NIGHT");
-      fireEvent.keyDown(radio("NIGHT"), { key: "Home" });
-      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
-      expect(document.activeElement).toBe(radio("AUTO"));
-      expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
-      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBeNull();
-    });
-
-    it("other keys do nothing", () => {
-      renderHigh();
-      const notPrevented = fireEvent.keyDown(radio("AUTO"), { key: "a" });
-      fireEvent.keyDown(radio("AUTO"), { key: "constructor" });
-      expect(notPrevented).toBe(true);
-      expect(radio("AUTO")).toHaveAttribute("aria-checked", "true");
-      expect(useDeviceStore.getState().lightPresetChoice).toBe("AUTO");
-      expect(localStorage.getItem(LIGHT_PRESET_STORAGE_KEY)).toBeNull();
-    });
+      expect(toggle().querySelector('[data-glyph="sun"]')).not.toBeNull();
+      expect(toggle()).toHaveAttribute("aria-label", COPY.DAY);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -11,24 +11,18 @@ export const MY_CREATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
  */
 export const MY_CREATIONS_MAX_ENTRIES = 50;
 
-/** Release time shown in the list: device-local time, Thai locale. Lead UI choice. */
-export const MY_CREATIONS_TIME_LOCALE = "th-TH";
-export const MY_CREATIONS_TIME_FORMAT: Readonly<Intl.DateTimeFormatOptions> = Object.freeze({
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+/**
+ * Picker date (owner decision 2026-11-26): English "26 NOV 2026" plus a 24-hour "21:05", device-local. The month table is
+ * explicit so the text never depends on the runtime's Intl data.
+ */
+export const MY_CREATIONS_MONTHS: readonly string[] = Object.freeze([
+  "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+]);
 
-/** Drawer copy. Spec gives only "ค้นหาของฉัน"; the rest is DRAFT Thai, PLACEHOLDER (MFW-30 Open question 5). */
+/** Picker copy. `openButton` is the Find My button's aria-label, `title` the list's aria-label; the rest is screen-reader status. DRAFT Thai (MFW-30 Open question 5). */
 export const MY_CREATIONS_COPY = Object.freeze({
   openButton: "ค้นหาของฉัน",
   title: "กระทงของฉัน",
-  deviceOnly: "รายการนี้เก็บไว้ในเครื่องนี้เท่านั้น",
-  empty: "ยังไม่มีกระทงที่ปล่อยจากเครื่องนี้",
-  itemLabel: (ordinal: number, zoneId: number, releasedAt: string) =>
-    `กระทงที่ ${ordinal} · คุ้งน้ำที่ ${zoneId} · ปล่อยเมื่อ ${releasedAt}`,
-  close: "ปิด",
   searching: "กำลังค้นหากระทงของคุณ…",
   found: (zoneId: number) => `พบกระทงของคุณที่คุ้งน้ำที่ ${zoneId}`,
   notFound: "ไม่พบกระทงนี้บนสายน้ำแล้ว",

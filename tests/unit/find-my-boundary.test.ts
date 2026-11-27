@@ -27,6 +27,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     "@/services/api/findMyCreation",
     "@/services/auth/myCreationsVault",
     "@/store/useWorldStore",
+    "./hudIcons", // MFW-74: SVG icons, imports only look.config
     "./uiClasses", // MFW-55: class-string constants only (no imports)
   ],
 };

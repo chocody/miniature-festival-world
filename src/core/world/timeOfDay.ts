@@ -41,3 +41,9 @@ export function msUntilNextPresetChange(date: Date, h: DayNightHours): number {
     dayStart > now ? dayStart : nightStart > now ? nightStart : new Date(y, m, d + 1, h.dayStartHour).getTime();
   return Math.max(MIN_DELAY_MS, next - now);
 }
+
+/** The choice a one-tap toggle stores: the other preset, or "AUTO" when that preset is what the clock shows anyway (so the scene follows real time again). */
+export function nextLightPresetChoice(shown: LightPresetId, auto: LightPresetId): LightPresetChoice {
+  const target: LightPresetId = shown === "DAY" ? "NIGHT" : "DAY";
+  return target === auto ? "AUTO" : target;
+}

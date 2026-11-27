@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_STAGE_VIEWPORTS, E2E_WATER_TAP_OFFSET_PX, e2eFramedZoom } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
+import { seedSecondOwnEntry } from "./helpers/hud";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import {
   SCENE_SELECTOR,
@@ -132,6 +133,7 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
     });
 
     test("3D: overlays take their own taps, the stage the rest", async ({ page }) => {
+      await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
       const errors = await open3D(page);
       await toRitual(page);
       await releaseToWorld(page);

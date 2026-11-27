@@ -87,7 +87,7 @@ test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) 
   await expect(viewport).toHaveAttribute("data-river-item-count", "3");
   await expect(viewport).toHaveAttribute("data-zone-id", "1");
   await expect(page.locator("canvas")).toHaveCount(1);
-  // MFW-57: the 3D world also shows the rotate button (open question 34); every other button stays absent.
-  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(1);
+  // MFW-57 / MFW-74: the HUD column holds the rotate button (open question 34), Find My and the day/night toggle; every other button stays absent.
+  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(2); // Find My + day/night toggle
   await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

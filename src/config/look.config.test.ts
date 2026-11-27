@@ -13,7 +13,8 @@ import {
   LIGHT_PRESET_CHOICES,
   LIGHT_PRESET_IDS,
   LIGHT_PRESET_STORAGE_KEY,
-  LIGHT_PRESET_SWITCH_COPY,
+  LIGHT_PRESET_TOGGLE_COPY,
+  HUD_GLYPH_COLORS,
   LIGHT_PRESETS,
   LOOK_PALETTE,
   RIVER_KRATHONG_BLOB_SHADOW_RADIUS,
@@ -42,7 +43,7 @@ describe("look config (MFW-47)", () => {
   });
 
   it("is frozen, nested preset objects included", () => {
-    for (const o of [LIGHT_PRESETS, LOOK_PALETTE, BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, DAY_NIGHT_HOURS, LIGHT_PRESET_SWITCH_COPY]) {
+    for (const o of [LIGHT_PRESETS, LOOK_PALETTE, BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY, HUD_GLYPH_COLORS, HUD_GLYPH_COLORS.sun, HUD_GLYPH_COLORS.moon, HUD_GLYPH_COLORS.krathong]) {
       expect(Object.isFrozen(o)).toBe(true);
     }
     for (const id of LIGHT_PRESET_IDS) {
@@ -84,18 +85,22 @@ describe("look config (MFW-47)", () => {
     expect(RIVER_KRATHONG_BLOB_SHADOW_RADIUS).toBe(KRATHONG_BLOB_SHADOW.radius * RIVER_KRATHONG_SCALE);
   });
 
-  it("switch copy and choices", () => {
-    for (const text of Object.values(LIGHT_PRESET_SWITCH_COPY)) expect(text.trim().length).toBeGreaterThan(0);
+  it("toggle copy, glyph colours and choices", () => {
+    expect(Object.keys(LIGHT_PRESET_TOGGLE_COPY)).toEqual(["DAY", "NIGHT"]);
+    for (const text of Object.values(LIGHT_PRESET_TOGGLE_COPY)) expect(text.trim().length).toBeGreaterThan(0);
+    const palette = new Set<string>(Object.values(LOOK_PALETTE));
+    for (const group of Object.values(HUD_GLYPH_COLORS)) {
+      for (const hex of Object.values(group)) expect(palette.has(hex), hex).toBe(true);
+    }
     expect(LIGHT_PRESET_CHOICES).toEqual(["AUTO", "DAY", "NIGHT"]);
     expect(LIGHT_PRESET_STORAGE_KEY).toMatch(/^mfw:[A-Za-z]+:v1$/);
   });
 
-  it("the e2e spec duplicates the storage key and switch copy exactly", () => {
-    const spec = readFileSync(join(process.cwd(), "tests/e2e/look-dev.spec.ts"), "utf8");
+  it("the e2e HUD helper duplicates the storage key and toggle labels exactly", () => {
+    const spec = readFileSync(join(process.cwd(), "tests/e2e/helpers/hud.ts"), "utf8");
     expect(spec).toContain(`"${LIGHT_PRESET_STORAGE_KEY}"`);
-    expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.AUTO}"`);
-    expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.NIGHT}"`);
-    expect(spec).toContain(`"${LIGHT_PRESET_SWITCH_COPY.groupLabel}"`);
+    expect(spec).toContain(`"${LIGHT_PRESET_TOGGLE_COPY.DAY}"`);
+    expect(spec).toContain(`"${LIGHT_PRESET_TOGGLE_COPY.NIGHT}"`);
   });
 });
 

@@ -6,7 +6,7 @@ import { WORLD_ROTATE_BUTTON_CLASSES, WorldRotateButton } from "./WorldRotateBut
 
 afterEach(cleanup);
 
-describe("WorldRotateButton (MFW-57)", () => {
+describe("WorldRotateButton (MFW-57, MFW-74)", () => {
   it("is a labelled 44 px icon button on the veil that rotates once per click", () => {
     const onRotate = vi.fn();
     render(<WorldRotateButton onRotate={onRotate} />);
@@ -15,8 +15,10 @@ describe("WorldRotateButton (MFW-57)", () => {
     const glyph = button.querySelector('span[aria-hidden="true"]')!;
     expect(glyph).toHaveTextContent(WORLD_VIEW_ROTATE_BUTTON_COPY.glyph);
     const classes = button.className.split(" ");
-    for (const c of ["min-h-11", "min-w-11", "rounded-full", "bg-veil", "shadow-float", "fixed"]) expect(classes).toContain(c);
+    for (const c of ["min-h-11", "min-w-11", "rounded-full", "bg-veil", "shadow-float", "pointer-events-auto"]) expect(classes).toContain(c);
     expect(classes).not.toContain("bg-paper");
+    expect(classes).not.toContain("fixed"); // R1 (MFW-74): positioned by the HUD column, not by itself
+    expect(button.className).not.toContain("top-[");
     expect(button.className).toBe(WORLD_ROTATE_BUTTON_CLASSES);
     expect(UI_CLASSES.iconButton).toContain("min-h-11 min-w-11");
     fireEvent.click(button);

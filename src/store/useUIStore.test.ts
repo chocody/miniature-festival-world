@@ -74,4 +74,12 @@ describe("useUIStore ritual", () => {
     before.dispatch({ type: "REVISE_WISH" });
     expect(useUIStore.getState()).toBe(before);
   });
+
+  it("U1 requestViewRotate bumps viewRotateRequestId 0 → 1 → 2", () => {
+    expect(useUIStore.getState().viewRotateRequestId).toBe(0);
+    useUIStore.getState().requestViewRotate();
+    expect(useUIStore.getState().viewRotateRequestId).toBe(1);
+    useUIStore.getState().requestViewRotate();
+    expect(useUIStore.getState().viewRotateRequestId).toBe(2);
+  });
 });

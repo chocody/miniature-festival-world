@@ -1,22 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
-import {
-  MY_CREATIONS_COPY as COPY,
-  MY_CREATIONS_TIME_FORMAT,
-  MY_CREATIONS_TIME_LOCALE,
-} from "@/config/myCreations.config";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { MY_CREATIONS_COPY as COPY, MY_CREATIONS_MONTHS } from "@/config/myCreations.config";
 import { getFindMyCreation, type FindMyCreation } from "@/services/api/findMyCreation";
 import { getMyCreationsVault, type MyCreationEntry, type MyCreationsVault } from "@/services/auth/myCreationsVault";
 import { useWorldStore } from "@/store/useWorldStore";
+import { KrathongIcon, SearchIcon } from "./hudIcons";
 import { UI_CLASSES } from "./uiClasses";
+
+/** HUD button recipe (MFW-74): round, 44 px, on the translucent veil; the day/night toggle and rotate use the same recipe. */
+const HUD_BUTTON_CLASSES = `${UI_CLASSES.iconButton.replace("bg-paper", "bg-veil")} shadow-float`;
 
 export interface MyCreationsDrawerProps {
   readonly vault?: Pick<MyCreationsVault, "list" | "subscribe">; // default getMyCreationsVault() (resolved in effects/handlers only)
   readonly finder?: Pick<FindMyCreation, "find">; // default getFindMyCreation()
   readonly now?: () => number; // default Date.now
-  /** Optional extra control per entry (MFW-31 adds the owner's reader here); FlowRoot passes nothing. */
-  readonly renderEntryExtra?: (entry: MyCreationEntry) => ReactNode;
 }
 
 export type FindMyStatus =
@@ -26,9 +24,18 @@ export type FindMyStatus =
   | { readonly kind: "not_found" }
   | { readonly kind: "failed" };
 
-/** createdAt to a short device-local Thai date and time, e.g. "25 พ.ย. 13:05". */
-export function formatReleaseTime(createdAt: string): string {
-  return new Intl.DateTimeFormat(MY_CREATIONS_TIME_LOCALE, MY_CREATIONS_TIME_FORMAT).format(new Date(createdAt));
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** createdAt to an English device-local date, e.g. "26 NOV 2026" (owner decision 2026-11-26; explicit month table, no Intl). */
+export function formatPickerDate(createdAt: string): string {
+  const d = new Date(createdAt);
+  return `${d.getDate()} ${MY_CREATIONS_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** createdAt to a device-local 24-hour time, e.g. "21:05". */
+export function formatPickerTime(createdAt: string): string {
+  const d = new Date(createdAt);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function statusText(status: FindMyStatus): string {
@@ -49,19 +56,21 @@ function statusText(status: FindMyStatus): string {
 const NO_ENTRIES: readonly MyCreationEntry[] = Object.freeze([]);
 const IDLE: FindMyStatus = Object.freeze({ kind: "idle" });
 
-/** "ค้นหาของฉัน": lists this device's creations and asks Find My to focus one (MFW-30). Never reads the owner token. */
+/**
+ * Find My (MFW-30, compact since MFW-74): one round search button. One creation on this device: the button goes straight to it;
+ * two or more: it opens a small picker (thumbnail, date, time) beside the button. Hidden without creations. Never reads the owner token.
+ */
 export function MyCreationsDrawer({
   vault,
   finder,
   now = Date.now,
-  renderEntryExtra,
 }: MyCreationsDrawerProps): ReactElement | null {
   const eventId = useWorldStore((s) => s.eventId);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<readonly MyCreationEntry[]>(NO_ENTRIES);
   const [status, setStatus] = useState<FindMyStatus>(IDLE);
   const requestRef = useRef(0);
-  const listId = useId();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const refresh = useCallback(() => {
     if (eventId === null) return;
@@ -79,7 +88,19 @@ export function MyCreationsDrawer({
     };
   }, [eventId, vault, refresh]);
 
-  if (eventId === null) return null;
+  const pickerOpenNow = open && entries.length > 1;
+  useEffect(() => {
+    if (!pickerOpenNow) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return; // already handled elsewhere
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pickerOpenNow]);
+
+  if (eventId === null || entries.length === 0) return null;
 
   async function select(entry: MyCreationEntry) {
     const req = ++requestRef.current;
@@ -101,59 +122,46 @@ export function MyCreationsDrawer({
     setStatus(next);
   }
 
+  const many = entries.length > 1;
+  const pickerOpen = many && open;
+
   return (
-    <div
-      data-testid="my-creations"
-      data-open={String(open)}
-      data-entry-count={entries.length}
-      className="flex w-full flex-col gap-2"
-    >
+    <div data-testid="my-creations" data-open={String(pickerOpen)} data-entry-count={entries.length} className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        aria-expanded={open}
-        aria-controls={listId}
-        className={`${UI_CLASSES.secondaryButton} w-full`}
+        aria-label={COPY.openButton}
+        aria-expanded={many ? pickerOpen : undefined}
+        className={HUD_BUTTON_CLASSES}
         onClick={() => {
+          if (!many) {
+            void select(entries[0]);
+            return;
+          }
           if (!open) refresh();
           setOpen(!open);
         }}
       >
-        {COPY.openButton}
+        <SearchIcon />
       </button>
-      {open && (
-        <section id={listId} aria-label={COPY.title} data-testid="my-creations-list" className="flex flex-col gap-2">
-          <h2 className={UI_CLASSES.subheading}>{COPY.title}</h2>
-          <p className={UI_CLASSES.caption}>{COPY.deviceOnly}</p>
-          {entries.length === 0 ? (
-            <p className="text-body text-ink-muted">{COPY.empty}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {entries.map((entry, index) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    className={UI_CLASSES.listRow}
-                    onClick={() => void select(entry)}
-                  >
-                    {COPY.itemLabel(entries.length - index, entry.zoneId, formatReleaseTime(entry.createdAt))}
-                  </button>
-                  {renderEntryExtra?.(entry)}
-                </li>
-              ))}
-            </ul>
-          )}
-          <button type="button" className={`${UI_CLASSES.ghostButton} self-start`} onClick={() => setOpen(false)}>
-            {COPY.close}
-          </button>
-        </section>
+      {pickerOpen && (
+        <ul
+          aria-label={COPY.title}
+          data-testid="my-creations-list"
+          className={`${UI_CLASSES.floating} absolute top-0 left-full ml-2 flex max-h-[60dvh] w-max flex-col gap-1 overflow-y-auto p-2`}
+        >
+          {entries.map((entry) => (
+            <li key={entry.id}>
+              <button type="button" className={`${UI_CLASSES.listRow} flex items-center gap-2`} onClick={() => void select(entry)}>
+                <KrathongIcon className="h-8 w-8" />
+                <span>{formatPickerDate(entry.createdAt)}</span>{" "}
+                <span>{formatPickerTime(entry.createdAt)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-      <p
-        role="status"
-        aria-live="polite"
-        data-testid="find-my-status"
-        data-find-my-status={status.kind}
-        className={UI_CLASSES.caption}
-      >
+      <p role="status" aria-live="polite" data-testid="find-my-status" data-find-my-status={status.kind} className="sr-only">
         {statusText(status)}
       </p>
     </div>

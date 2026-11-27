@@ -2004,18 +2004,20 @@ describe("camera drag-to-travel (MFW-57)", () => {
     expect(container.querySelector("ringGeometry")).toBeNull();
   });
 
-  it("rotate button only in WORLD_EXPLORE, outside the section", () => {
-    const { rerender } = render(<SceneViewport mode="CUSTOMIZE" />);
-    expect(rotateButton()).toBeNull();
-    rerender(<SceneViewport mode="RITUAL_RELEASE" />);
-    expect(rotateButton()).toBeNull();
-    cleanup();
+  it("S5 the scene renders no rotate button (it lives in the HUD column, MFW-74)", () => {
+    for (const mode of ["CUSTOMIZE", "RITUAL_RELEASE", "WORLD_EXPLORE"] as const) {
+      render(<SceneViewport mode={mode} />);
+      expect(rotateButton()).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("S4 mounted at a request id does not rotate; a new request turns the view once (instant under reduced motion)", () => {
+    useUIStore.setState({ viewRotateRequestId: 3 });
     r3f.flightStarts.length = 0;
     render(<SceneViewport mode="WORLD_EXPLORE" />);
-    const button = rotateButton()!;
-    expect(button).not.toBeNull();
-    expect(viewport().contains(button)).toBe(false);
-    fireEvent.click(button);
+    expect(r3f.flightStarts).toHaveLength(0);
+    act(() => useUIStore.getState().requestViewRotate());
     expect(r3f.flightStarts).toHaveLength(1);
     expect(r3f.flightStarts[0].immediate).toBe(false);
     expect(r3f.flightStarts[0].to).toMatchObject({ yawRad: expect.closeTo(WORLD_VIEW_ROTATE_STEP_RADIANS, 9) });
@@ -2023,8 +2025,14 @@ describe("camera drag-to-travel (MFW-57)", () => {
 
     useDeviceStore.getState().setReducedMotion(true);
     render(<SceneViewport mode="WORLD_EXPLORE" />);
-    fireEvent.click(rotateButton()!);
+    act(() => useUIStore.getState().requestViewRotate());
     expect(r3f.flightStarts.at(-1)!.immediate).toBe(true);
+    cleanup();
+
+    const before = r3f.flightStarts.length;
+    render(<SceneViewport mode="CUSTOMIZE" />);
+    act(() => useUIStore.getState().requestViewRotate());
+    expect(r3f.flightStarts).toHaveLength(before); // only the world view rotates
   });
 
   it("wheel zooms only in WORLD_EXPLORE", () => {

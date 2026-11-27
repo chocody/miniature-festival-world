@@ -3,6 +3,7 @@ import { E2E_MY_CREATION_ENTRY_KEYS_SORTED, E2E_MY_CREATIONS_STORAGE_KEY, makeOw
 import { E2E_CREATION_ID, E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
+import { seedSecondOwnEntry } from "./helpers/hud";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
@@ -84,11 +85,9 @@ async function releaseThenMoveAway(page: Page, withOwnItem: boolean, startUrl = 
 }
 
 async function openAndSelect(page: Page) {
+  // MFW-74: one entry on this device, so the button goes straight to it (no picker).
   await page.getByRole("button", { name: "ค้นหาของฉัน" }).click();
-  const entries = page.locator('[data-testid="my-creations-list"] li > button');
-  await expect(entries).toHaveCount(1);
-  await expect(entries.first()).toContainText("คุ้งน้ำที่ 2");
-  await entries.first().click();
+  await expect(page.locator('[data-testid="my-creations-list"]')).toHaveCount(0);
 }
 
 test("3D: finds my krathong in another zone", async ({ page }) => {
@@ -154,8 +153,9 @@ test("the release is recorded on this device only", async ({ page }) => {
 test.describe("360 px", () => {
   test.use({ viewport: { width: 360, height: 640 } });
 
-  test("the drawer fits", async ({ page }) => {
+  test("the Find My button fits and the picker stays on screen", async ({ page }) => {
     await lowTier(page);
+    await seedSecondOwnEntry(page); // two entries: the button opens the picker
     await releaseThenMoveAway(page, true);
     const open = page.getByRole("button", { name: "ค้นหาของฉัน" });
     await expect(open).toBeInViewport();

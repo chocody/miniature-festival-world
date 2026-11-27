@@ -63,7 +63,7 @@ export async function expectPanelPlacement(locator: Locator, vp: StageViewport):
   expect(box.height).toBeLessThan(vp.height);
 }
 
-/** World controls: a card at the top (phone: inset from both sides; wide: a narrow top-left card). */
+/** World controls: a card at the top (phone: inset from both sides; wide: a narrow top card that starts right of the HUD column, MFW-74). */
 export async function expectTopSlotPlacement(page: Page, vp: StageViewport): Promise<void> {
   const top = page.locator('[data-overlay-slot="top"]');
   await expect(top).toBeVisible();
@@ -73,7 +73,8 @@ export async function expectTopSlotPlacement(page: Page, vp: StageViewport): Pro
     expect(box.width).toBeLessThanOrEqual(vp.width - 20);
     return;
   }
-  expect(box.x).toBeLessThanOrEqual(24);
+  expect(box.x).toBeLessThanOrEqual(24 + 44 + 24); // gutter + one 44 px HUD button + gutter
+  expect(box.x).toBeGreaterThanOrEqual(44);
   expect(box.width).toBeLessThanOrEqual(336);
 }
 

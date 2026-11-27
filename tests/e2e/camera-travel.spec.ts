@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneItem } from "./fixtures/zoneFixtures";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
+import { seedSecondOwnEntry } from "./helpers/hud";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import {
@@ -107,7 +108,7 @@ async function openWorld(page: Page) {
   return errors;
 }
 
-/** MFW-57 × MFW-55: the rotate button is visible and clear of every overlay slot (top card, bottom sheet, hint). */
+/** MFW-57 × MFW-74: the rotate button is visible and clear of every overlay slot but its own (the top-left HUD column): top card, bottom sheet, hint. */
 async function expectRotateButtonClear(page: Page) {
   const button = page.getByRole("button", { name: E2E_WORLD_ROTATE_BUTTON_NAME });
   await expect(button).toBeVisible();
@@ -115,13 +116,15 @@ async function expectRotateButtonClear(page: Page) {
   expect(b.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
   expect(b.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX - 0.5);
   const vp = page.viewportSize()!;
+  expect(b.x + b.width).toBeLessThanOrEqual(vp.width / 2); // MFW-74: top-left HUD column
+  expect(b.y + b.height).toBeLessThanOrEqual(vp.height / 2);
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.y).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(vp.width);
   expect(b.y + b.height).toBeLessThanOrEqual(vp.height);
   for (const slot of await page.locator("[data-overlay-slot]").all()) {
     const o = await slot.boundingBox();
-    if (!o || o.width === 0 || o.height === 0) continue;
+    if (!o || o.width === 0 || o.height === 0 || (await slot.getAttribute("data-overlay-slot")) === "corner") continue;
     const overlaps = b.x < o.x + o.width && o.x < b.x + b.width && b.y < o.y + o.height && o.y < b.y + b.height;
     expect(overlaps, `rotate button overlaps the ${await slot.getAttribute("data-overlay-slot")} slot`).toBe(false);
   }
@@ -244,11 +247,12 @@ test.describe("touch", () => {
 
 test.describe("rotate button layout", () => {
   for (const viewport of [E2E_SWIFTSHADER_3D_VIEWPORT, { width: 390, height: 844 }]) {
-    test(`${viewport.width}×${viewport.height}: the rotate button is clear of the top card and the bottom sheet`, async ({ page }) => {
+    test(`${viewport.width}×${viewport.height}: the rotate button sits in the HUD column, clear of the top card and the bottom sheet`, async ({ page }) => {
       await page.setViewportSize(viewport);
+      await seedSecondOwnEntry(page); // two entries: Find My opens the picker
       const errors = await openWorld(page);
       await expectRotateButtonClear(page);
-      await page.getByRole("button", { name: "ค้นหาของฉัน" }).click(); // the top card grows with My Creations
+      await page.getByRole("button", { name: "ค้นหาของฉัน" }).click(); // the picker opens beside the HUD column
       await expect(page.getByTestId("my-creations")).toHaveAttribute("data-open", "true");
       await expectRotateButtonClear(page);
       expect(errors.pageErrors).toEqual([]);
