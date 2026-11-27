@@ -115,3 +115,40 @@ export function streamedZoneIds(
   }
   return Object.freeze(out);
 }
+
+/** MFW-99: "ring" = endless river (wraps, anchor moves with the camera); "linear" = tree bands (band = zone id, no wrap). */
+export const ZONE_TOPOLOGIES = Object.freeze(["ring", "linear"] as const);
+export type ZoneTopology = (typeof ZONE_TOPOLOGIES)[number];
+
+/** Identity anchor of the linear topology: stretch (band) b shows zone b. Frozen; never moves. */
+export const LINEAR_ZONE_ANCHOR: StretchAnchor = Object.freeze({ stretchIndex: ZONE_ID_MIN, zoneId: ZONE_ID_MIN });
+
+function requireLinearZoneCount(zoneCount: number): void {
+  if (!Number.isSafeInteger(zoneCount) || zoneCount < ZONE_ID_MIN) throw new RangeError("zone count must be >= ZONE_ID_MIN");
+}
+
+/** N = max(zoneCount ?? ZONE_ID_MIN, currentZone). */
+export function linearZoneCount(zoneCount: number | null, currentZone: number): number {
+  if (!Number.isSafeInteger(currentZone) || currentZone < ZONE_ID_MIN) throw new RangeError("current zone must be >= ZONE_ID_MIN");
+  if (zoneCount !== null) requireLinearZoneCount(zoneCount);
+  return Math.max(zoneCount ?? ZONE_ID_MIN, currentZone);
+}
+
+/** min(max(target, ZONE_ID_MIN), zoneCount). */
+export function clampLinearZone(target: number, zoneCount: number): number {
+  if (!Number.isSafeInteger(target)) throw new RangeError("target must be a safe integer");
+  requireLinearZoneCount(zoneCount);
+  return Math.min(Math.max(target, ZONE_ID_MIN), zoneCount);
+}
+
+/** Zones b, b−1, b+1, …, b−r, b+r that lie in [ZONE_ID_MIN, linearZoneCount(zoneCount, b)]; out-of-range ones are skipped (no wrap). Frozen. */
+export function linearStreamedZoneIds(currentZone: number, zoneCount: number | null, radius: number): readonly number[] {
+  requireRadius(radius);
+  const n = linearZoneCount(zoneCount, currentZone);
+  const out: number[] = [currentZone];
+  for (let k = 1; k <= radius; k++) {
+    if (currentZone - k >= ZONE_ID_MIN) out.push(currentZone - k);
+    if (currentZone + k <= n) out.push(currentZone + k);
+  }
+  return Object.freeze(out);
+}

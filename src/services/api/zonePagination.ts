@@ -1,7 +1,16 @@
 import type { FestivalEventId } from "@/config/events/types";
 import { FESTIVAL_EVENT_IDS } from "@/config/events/types";
 import { WORLD_INITIAL_ZONE_POLICY, ZONE_ID_MIN, type InitialZonePolicy } from "@/config/world.config";
-import { streamedZoneIds, zoneIdForStretch } from "@/core/world/riverStretches";
+import {
+  LINEAR_ZONE_ANCHOR,
+  ZONE_TOPOLOGIES,
+  clampLinearZone,
+  linearStreamedZoneIds,
+  linearZoneCount,
+  streamedZoneIds,
+  zoneIdForStretch,
+  type ZoneTopology,
+} from "@/core/world/riverStretches";
 import { isClientZoneId, pickInitialZoneId } from "@/core/world/zoneManager";
 import { INITIAL_WORLD_STATE, NO_STREAMED_ZONES, NO_ZONE_ITEMS, useWorldStore, type WorldState } from "@/store/useWorldStore";
 import type { PublicCreation } from "./creationTypes";
@@ -18,6 +27,8 @@ export interface ZonePaginationOptions {
   readonly fetch?: typeof fetch;
   readonly store?: WorldStoreLike; // default useWorldStore
   readonly initialZonePolicy?: InitialZonePolicy; // default WORLD_INITIAL_ZONE_POLICY
+  /** MFW-99: default "ring" (Loy endless river). "linear": tree bands, band = zone id, no wrap. */
+  readonly topology?: ZoneTopology;
 }
 
 export type TravelDirection = -1 | 1;
@@ -27,13 +38,14 @@ export interface ZonePagination {
   /**
    * Make `zoneId` the visible zone: drop the old items, load this zone (spec §6.7 "await loadZone(zoneId)"). MFW-58: the CURRENT
    * stretch now shows it (the zone↔stretch anchor moves to the camera), so Find My and release always stay local.
+   * MFW-99 "linear": the band becomes `zoneId` (identity anchor, no wrap).
    */
   loadZone(zoneId: number): Promise<ZoneLoadOutcome>;
   retry(): Promise<ZoneLoadOutcome>;
   leaveWorld(): void;
-  /** MFW-58: the camera is now in stretch `stretchIndex`. Never clears focusedCreationId. */
+  /** MFW-58: the camera is now in stretch `stretchIndex`. Never clears focusedCreationId. MFW-99 "linear": clamps into [1, zoneCount]; a no-op before a zone is chosen. */
   setCurrentStretch(stretchIndex: number): void;
-  /** MFW-58: one stretch up- or downstream: the registered travel driver (3D camera flight) if any, else setCurrentStretch(S ± 1), e.g. while the scene chunk loads. */
+  /** MFW-58: one stretch up- or downstream: the registered travel driver (3D camera flight) if any, else setCurrentStretch(S ± 1), e.g. while the scene chunk loads. MFW-99 "linear": a no-op past either end (the driver is not called). */
   jumpBy(delta: TravelDirection): void;
   /** MFW-58: the 3D scene drives jumps by flying the camera. The returned unregister clears it only if it is still the same driver. */
   registerTravelDriver(driver: (delta: TravelDirection) => void): () => void;
@@ -57,6 +69,9 @@ function withZone(map: StreamedZones, zoneId: number, items: readonly PublicCrea
 export function createZonePagination(options: ZonePaginationOptions = {}): ZonePagination {
   const store: WorldStoreLike = options.store ?? useWorldStore;
   const policy = options.initialZonePolicy ?? WORLD_INITIAL_ZONE_POLICY;
+  const topology: ZoneTopology = options.topology ?? "ring";
+  if (!(ZONE_TOPOLOGIES as readonly string[]).includes(topology)) throw new RangeError("unknown zone topology");
+  const linear = topology === "linear";
   const fetchImpl = options.fetch;
   let generation = 0;
   let controller: AbortController | null = null;
@@ -83,8 +98,14 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
     return { gen: generation, signal: next.signal };
   }
 
+  function wantedZoneIds(s: WorldState): readonly number[] {
+    if (s.stretchAnchor === null) return [];
+    if (linear) return linearStreamedZoneIds(s.currentStretchIndex, s.zoneCount, streamRadius);
+    return streamedZoneIds(s.currentStretchIndex, s.stretchAnchor, s.zoneCount, streamRadius);
+  }
+
   function isStreamed(s: WorldState, zoneId: number): boolean {
-    return s.stretchAnchor !== null && streamedZoneIds(s.currentStretchIndex, s.stretchAnchor, s.zoneCount, streamRadius).includes(zoneId);
+    return s.stretchAnchor !== null && wantedZoneIds(s).includes(zoneId);
   }
 
   /** Writes a fetched zone: its streamed entry, and zoneItems + "ready" when it is the zone under the camera. */
@@ -102,7 +123,7 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
     const s = store.getState();
     const eventId = s.eventId;
     if (eventId === null || s.stretchAnchor === null) return;
-    const wanted = streamedZoneIds(s.currentStretchIndex, s.stretchAnchor, s.zoneCount, streamRadius);
+    const wanted = wantedZoneIds(s);
     let streamed = s.streamedZoneItems;
     for (const key of Object.keys(streamed)) {
       const zoneId = Number(key);
@@ -134,7 +155,8 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
   }
 
   async function loadZoneInternal(zoneId: number, refreshDirectory: boolean): Promise<ZoneLoadOutcome> {
-    const { eventId, currentStretchIndex: stretch, streamedZoneItems } = store.getState();
+    const { eventId, currentStretchIndex, streamedZoneItems } = store.getState();
+    const stretch = linear ? zoneId : currentStretchIndex;
     if (eventId === null || !isClientZoneId(zoneId)) return "invalid";
     const { gen, signal } = begin();
     streams.get(zoneId)?.abort(); // the zone is fetched fresh below
@@ -142,7 +164,8 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
     mainZoneInFlight = zoneId;
     // Release the old zone first (invariant E): the previous items are dropped before the new request resolves.
     store.setState({
-      stretchAnchor: Object.freeze({ stretchIndex: stretch, zoneId }),
+      ...(linear ? { currentStretchIndex: zoneId } : {}),
+      stretchAnchor: linear ? LINEAR_ZONE_ANCHOR : Object.freeze({ stretchIndex: stretch, zoneId }),
       currentZoneId: zoneId,
       zoneStatus: "loading",
       zoneItems: NO_ZONE_ITEMS,
@@ -215,6 +238,11 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
       directoryController = null;
       const s = store.getState();
       if (!dir.ok || s.eventId !== eventId || s.currentZoneId === null || dir.zoneCount === s.zoneCount) return;
+      if (linear) {
+        store.setState({ zoneCount: dir.zoneCount }); // the band and its identity anchor never move
+        syncStream();
+        return;
+      }
       // The zone under the camera never changes: the anchor moves to the current stretch with the new count.
       store.setState({
         zoneCount: dir.zoneCount,
@@ -224,15 +252,17 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
     });
   }
 
-  function setCurrentStretch(stretchIndex: number): void {
-    if (!Number.isSafeInteger(stretchIndex)) return;
+  function setCurrentStretch(requested: number): void {
+    if (!Number.isSafeInteger(requested)) return;
     const s = store.getState();
+    if (linear && (s.eventId === null || s.stretchAnchor === null)) return;
+    const stretchIndex = linear ? clampLinearZone(requested, linearZoneCount(s.zoneCount, s.currentStretchIndex)) : requested;
     if (stretchIndex === s.currentStretchIndex) return;
     if (s.eventId === null || s.stretchAnchor === null) {
       store.setState({ currentStretchIndex: stretchIndex });
       return;
     }
-    const zoneId = zoneIdForStretch(stretchIndex, s.stretchAnchor, s.zoneCount) as number;
+    const zoneId = linear ? stretchIndex : (zoneIdForStretch(stretchIndex, s.stretchAnchor, s.zoneCount) as number);
     const cached = s.streamedZoneItems[zoneId];
     store.setState({
       currentStretchIndex: stretchIndex,
@@ -263,6 +293,12 @@ export function createZonePagination(options: ZonePaginationOptions = {}): ZoneP
     setCurrentStretch,
     jumpBy(delta) {
       if (delta !== -1 && delta !== 1) return;
+      if (linear) {
+        const s = store.getState();
+        if (s.eventId === null || s.stretchAnchor === null) return;
+        const target = s.currentStretchIndex + delta;
+        if (target < ZONE_ID_MIN || target > linearZoneCount(s.zoneCount, s.currentStretchIndex)) return;
+      }
       if (travelDriver !== null) {
         travelDriver(delta);
         return;
