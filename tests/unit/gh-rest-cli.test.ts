@@ -323,3 +323,17 @@ describe("pr-land", { timeout: 30_000 }, () => {
   });
 });
 
+
+describe("release-ff", () => {
+  it("RC1 release-ff refuses without --owner-approved, with exit 1 and no gh call", () => {
+    const r = runCli(["release-ff", "--sha", SHA], [], CLOUD);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).reason).toContain("owner-approved");
+    expect(r.calls.some((c) => c.args[0] === "api")).toBe(false);
+  });
+
+  it("RC2 release-ff rejects a malformed sha as a usage error", () => {
+    expect(runCli(["release-ff", "--sha", "nothex", "--owner-approved"], [], CLOUD).code).toBe(2);
+    expect(runCli(["--help"], [], { MFW_GH_MODE: "local" }).stdout).toContain("release-ff");
+  });
+});

@@ -27,6 +27,9 @@
 //                                          "GATE: PASS sha=<sha>"; keeps every pr-merge refusal and checks them first
 //   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations, the run's jobs and the failing job log tail
 //   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
+//   release-ff --sha <40-hex> [--check] [--owner-approved]   owner only: fast-forwards `release` (the Vercel production
+//                                          branch from 19 Dec) to a `main` sha whose `ci` passed; --check runs the checks
+//                                          and writes nothing; refuses without --owner-approved unless --check; never forces
 //
 // Mode: MFW_GH_MODE=cloud|local, else cloud when CLAUDE_CODE_REMOTE is set, else local.
 //   local: GH_TOKEN=$(gh auth token -u chocody) and git uses `gh auth git-credential`.
@@ -77,6 +80,9 @@ const USAGE = `Usage: node scripts/gh-rest.mjs <command>
                                          a ci-rerun), then pr-merge only on "GATE: PASS sha=<sha>"
   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations, the run's jobs and the failing job log tail
   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
+  release-ff --sha <40-hex> [--check] [--owner-approved]   owner only: fast-forwards release (the Vercel production
+                                         branch from 19 Dec) to a main sha whose ci passed; --check runs the checks
+                                         and writes nothing; refuses without --owner-approved unless --check; never forces
 
 Mode: MFW_GH_MODE=cloud|local, else cloud when CLAUDE_CODE_REMOTE is set, else local.
 Exit: 0 ok · 1 GitHub/API error or refused · 2 usage or environment (no token).`;
@@ -296,6 +302,16 @@ const COMMANDS = {
   "ci-rerun"(args) {
     const { positionals } = opts(args, {}, 1);
     print(github().ciRerun(positionals[0]));
+  },
+  "release-ff"(args) {
+    const { values } = opts(args, { sha: { type: "string" }, check: { type: "boolean" }, "owner-approved": { type: "boolean" } });
+    if (!isSha(values.sha)) throw new UsageError("release-ff --sha <40 hex chars> [--check] [--owner-approved]");
+    const result = github().releaseFastForward(values.sha, {
+      ownerApproved: Boolean(values["owner-approved"]),
+      check: Boolean(values.check),
+    });
+    print(result);
+    process.exitCode = result.reason === null ? 0 : 1;
   },
 };
 

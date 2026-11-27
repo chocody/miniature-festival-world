@@ -68,3 +68,10 @@ merged by the owner, not the loop (label `owner-merge`).
 
 Never merge on pending or failed checks. If `ci` fails, fix the cause and push; do not skip or loosen a check.
 loop-ticket allows one CI fix per ticket; a second failure parks the ticket with `needs-human`.
+
+## Production deploys (release branch)
+
+- `ci.yml` runs on PRs and on push to `main`, not on `release`. That is enough: `release` only points at a `main` sha whose `ci` check-run succeeded, which `release-ff` checks before it moves.
+- From 19 Dec 2026 production deploys from `release`, so merging to `main` no longer deploys production. Staging keeps tracking `main`.
+- The owner moves it: `node scripts/gh-rest.mjs release-ff --sha <main-sha> --check`, then the same with `--owner-approved` (fast-forward only, never forced).
+- Rollback: Vercel Instant Rollback to the previous production deployment, or fix forward on `main`. Steps: [docs/runbooks/release.md](runbooks/release.md) (`docs/runbooks/release.md`).
