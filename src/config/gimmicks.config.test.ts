@@ -31,7 +31,15 @@ import {
   TAP_SHAKE_WIND,
   VILLAGER_TAP_HOP,
   WINDOW_GLOW_LOOK,
+  LAMP_GROUND_LIGHT_LOOK,
+  SKY_LAUNCH_GIMMICKS,
+  SKY_LAUNCH_KINDS,
+  SKY_LAUNCH_SEED,
+  SKY_LAUNCH_SEED_GLOBAL_NAME,
+  SKY_LAUNCH_SPLIT,
 } from "./gimmicks.config";
+import { BLOB_SHADOW_LOOK } from "./look.config";
+import { createSeededRandom, pickSkyLaunch } from "@/core/effects/seededRandom";
 import { RIVER_FOLIAGE_SWAY } from "./events/loyKrathong.river.config";
 import { SCENE_CAMERA_ZOOM } from "./camera.config";
 import { MIN_TOUCH_TARGET_PX } from "./customizer.config";
@@ -120,8 +128,9 @@ describe("scene reactions (MFW-60)", () => {
       expect(Object.isFrozen(r)).toBe(true);
     }
     expect(Object.isFrozen(SCENE_TAP_REACTIONS)).toBe(true);
-    expect(SCENE_TAP_REACTIONS.lamp.effects).toEqual(["lampGlow", "skyLantern"]);
-    expect(SCENE_TAP_REACTIONS.sky.effects).toEqual(["firework"]);
+    // MFW-75: a lamp tap only lights the lamp; the sky tap launches a firework or a sky lantern (skyLaunch).
+    expect(SCENE_TAP_REACTIONS.lamp.effects).toEqual(["lampGlow"]);
+    expect(SCENE_TAP_REACTIONS.sky.effects).toEqual(["skyLaunch"]);
     // MFW-72 (slice 2): smoke with the house lights, falling leaves with the tree shake; the villager keeps the hop.
     expect(SCENE_TAP_REACTIONS.house.effects).toEqual(["windowGlow", "chimneySmoke"]);
     expect(SCENE_TAP_REACTIONS.tree.effects).toEqual(["nudge", "fallingLeaves"]);
@@ -218,5 +227,53 @@ describe("scene reactions part 2 (MFW-72)", () => {
     const data = buildLeafShellMeshData(FALLING_LEAF_LOOK.shell);
     expect(data.triangleCount).toBeGreaterThan(0);
     expect(data.indices.length).toBe(3 * data.triangleCount);
+  });
+});
+
+describe("lamp light and sky launch (MFW-75)", () => {
+  const firstTwoPicks = (seed: number) => {
+    const r = createSeededRandom(seed);
+    return [pickSkyLaunch(r(), SKY_LAUNCH_SPLIT.fireworkShare), pickSkyLaunch(r(), SKY_LAUNCH_SPLIT.fireworkShare)];
+  };
+
+  it("CF1: the lamp tap only lights the lamp; only the sky entry starts skyLaunch", () => {
+    expect(SCENE_TAP_REACTIONS.lamp.effects).toEqual(["lampGlow"]);
+    expect(SCENE_TAP_REACTIONS.lamp.gimmick).toBe("lamp-glow");
+    for (const kind of SCENE_TARGET_KINDS) {
+      expect(SCENE_TAP_REACTIONS[kind].effects.includes("skyLaunch"), kind).toBe(kind === "sky");
+    }
+  });
+
+  it("CF2: the ground light is a soft, faint warm patch above the blob shadows", () => {
+    const L = LAMP_GROUND_LIGHT_LOOK;
+    expect(L.radius).toBeGreaterThan(0);
+    expect(L.opacity).toBeGreaterThan(0);
+    expect(L.opacity).toBeLessThanOrEqual(1);
+    expect(L.falloffExponent).toBeGreaterThan(BLOB_SHADOW_LOOK.falloffExponent); // a softer rim than a blob
+    expect(L.liftY).toBeGreaterThan(BLOB_SHADOW_LOOK.liftY);
+    expect(L.color).toBe(LAMP_GLOW_LOOK.color);
+    expect(Object.isFrozen(L)).toBe(true);
+  });
+
+  it("CF3: the sky tap starts skyLaunch; every launch kind maps to a known gimmick", () => {
+    expect(SCENE_TAP_REACTIONS.sky.effects).toEqual(["skyLaunch"]);
+    expect([...SKY_LAUNCH_KINDS]).toEqual(["firework", "skyLantern"]);
+    expect(Object.keys(SKY_LAUNCH_GIMMICKS).sort()).toEqual([...SKY_LAUNCH_KINDS].sort());
+    for (const g of Object.values(SKY_LAUNCH_GIMMICKS)) expect(SCENE_GIMMICK_KINDS).toContain(g);
+    expect(SKY_LAUNCH_GIMMICKS).toEqual({ firework: "firework", skyLantern: "sky-lantern" });
+    expect(Object.isFrozen(SKY_LAUNCH_GIMMICKS)).toBe(true);
+  });
+
+  it("CF4: SKY_LAUNCH_SEED is the smallest positive integer whose first two picks are firework, then sky lantern", () => {
+    expect(Number.isSafeInteger(SKY_LAUNCH_SEED) && SKY_LAUNCH_SEED > 0).toBe(true);
+    expect(firstTwoPicks(SKY_LAUNCH_SEED)).toEqual(["firework", "skyLantern"]);
+    for (let s = 1; s < SKY_LAUNCH_SEED; s++) expect(firstTwoPicks(s), String(s)).not.toEqual(["firework", "skyLantern"]);
+    expect(SKY_LAUNCH_SEED_GLOBAL_NAME).toMatch(/^__MFW_[A-Z_]+__$/);
+  });
+
+  it("CF5: both kinds are reachable (0 < fireworkShare < 1)", () => {
+    expect(SKY_LAUNCH_SPLIT.fireworkShare).toBeGreaterThan(0);
+    expect(SKY_LAUNCH_SPLIT.fireworkShare).toBeLessThan(1);
+    expect(Object.isFrozen(SKY_LAUNCH_SPLIT)).toBe(true);
   });
 });

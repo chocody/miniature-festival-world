@@ -5,7 +5,13 @@ import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { DRAG_START_DISTANCE_PX } from "@/config/interaction.config";
-import { KRATHONG_MARK_CUE, SCENE_TAP_HINT_SEEN_VALUE, SCENE_TAP_HINT_STORAGE_KEY } from "@/config/gimmicks.config";
+import {
+  KRATHONG_MARK_CUE,
+  SCENE_TAP_HINT_SEEN_VALUE,
+  SCENE_TAP_HINT_STORAGE_KEY,
+  SKY_LAUNCH_SEED,
+  SKY_LAUNCH_SEED_GLOBAL_NAME,
+} from "@/config/gimmicks.config";
 import { TIER_PIN_QUERY_PARAM, TIER_PIN_QUERY_VALUE } from "@/config/perfProbe.config";
 import * as probe from "../e2e/helpers/sceneProbe";
 
@@ -35,5 +41,9 @@ describe("scene-taps e2e literals", () => {
     // MFW-72 scene reactions part 2
     expect(probe.E2E_CHIMNEY_SMOKE_NAME).toBe(SCENE_OBJECT_NAMES.chimneySmoke);
     expect(probe.E2E_FALLING_LEAVES_NAME).toBe(SCENE_OBJECT_NAMES.fallingLeaves);
+    // MFW-75 lamp light and sky launch
+    expect(probe.E2E_LAMP_GROUND_LIGHT_NAME).toBe(SCENE_OBJECT_NAMES.lampGroundLights);
+    expect(probe.E2E_SKY_LAUNCH_SEED_GLOBAL).toBe(SKY_LAUNCH_SEED_GLOBAL_NAME);
+    expect(probe.E2E_SKY_LAUNCH_SEED).toBe(SKY_LAUNCH_SEED);
   });
 });

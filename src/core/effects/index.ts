@@ -4,3 +4,4 @@ export * from "./objectPoolManager";
 export * from "./gimmickCurves";
 export * from "./sceneNudges";
 export * from "./reactionCurves";
+export * from "./seededRandom";

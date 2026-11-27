@@ -6,9 +6,12 @@ import { Vector3, type Camera } from "three";
 import {
   FIREWORK_LOOK,
   FIREWORK_MIN_LAUNCH_INTERVAL_MS,
-  LAMP_GLOW_LOOK,
   NUDGE_TARGET_KINDS,
   SCENE_TAP_REACTIONS,
+  SKY_LANTERN_LOOK,
+  SKY_LAUNCH_GIMMICKS,
+  SKY_LAUNCH_SEED_GLOBAL_NAME,
+  SKY_LAUNCH_SPLIT,
   WINDOW_GLOW_LOOK,
   type NudgeTargetKind,
   type SceneGimmickKind,
@@ -21,7 +24,10 @@ import type { WorldVec3, WorldXZ } from "@/core/coordinates";
 import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import {
   chimneySmokeEmitMs,
+  createSeededRandom,
   fallingLeavesEmitMs,
+  pickSkyLaunch,
+  resolveSkyLaunchSeed,
   releaseExpiredNudges,
   retriggerGlow,
   startNudge,
@@ -39,12 +45,14 @@ import {
   createEffectFrameScratch,
   createFireworkMesh,
   createLampGlowMesh,
+  createLampGroundLightMesh,
   createRippleMesh,
   createSkyLanternMesh,
   createWindowGlowMesh,
   disposeEffectMesh,
+  disposeLampGroundLightMesh,
   writeFireworkInstances,
-  writeLampGlowInstances,
+  writeLampLightInstances,
   writeRippleInstances,
   writeSkyLanternInstances,
   writeWindowGlowInstances,
@@ -59,6 +67,17 @@ export const SCENE_EFFECT_CLOCK = (): number => Date.now();
 const isNudgeKind = (kind: SceneTargetKind): kind is NudgeTargetKind =>
   (NUDGE_TARGET_KINDS as readonly SceneTargetKind[]).includes(kind);
 const isFiniteXZ = (at: WorldXZ | null): at is WorldXZ => at !== null && Number.isFinite(at.x) && Number.isFinite(at.z);
+
+/**
+ * MFW-75 (caller override of the spec's D3): the sky launch generator is seeded once per SceneEffects mount from a non-deterministic
+ * source (Math.random), so every visit is a real surprise; tests set window[SKY_LAUNCH_SEED_GLOBAL_NAME] (the e2e scene probe) or pass
+ * `skyLaunchRandom` to make the picks deterministic.
+ */
+function createDefaultSkyLaunchRandom(): () => number {
+  const override =
+    typeof window === "undefined" ? undefined : (window as unknown as Record<string, unknown>)[SKY_LAUNCH_SEED_GLOBAL_NAME];
+  return createSeededRandom(resolveSkyLaunchSeed(override, Math.random));
+}
 
 /** Tap-time scratch of the smoke drift (one per SceneEffects; never per tap or per frame). */
 interface DriftScratch {
@@ -91,8 +110,9 @@ export interface SceneEffectsHandle {
   /** Starts a ripple at a world-view-group-local point (non-finite → ignored). Recycles the oldest when the pool is full. */
   spawnRipple(at: WorldXZ): void;
   /**
-   * Lights lamp `lampIndex` of stretch copy `stretchIndex` (MFW-58, default 0); a lit lamp (same index and stretch) is re-triggered
-   * without dipping (WCAG). Non-integer or out-of-range → ignored (false).
+   * Switches lamp `lampIndex` of stretch copy `stretchIndex` on (MFW-58, default 0). MFW-75: a lit lamp stays lit; a re-tap of a lit
+   * lamp (same index and stretch) changes nothing (true). A full glow pool recycles the oldest lit lamp, which goes dark.
+   * Non-integer or out-of-range → ignored (false).
    */
   lightLamp(lampIndex: number, stretchIndex?: number): boolean;
   /** Lights the windows of house `houseIndex` of stretch `stretchIndex` (re-tap: stays lit). Out of range → false. */
@@ -102,8 +122,17 @@ export interface SceneEffectsHandle {
    * Launches closer than FIREWORK_MIN_LAUNCH_INTERVAL_MS are ignored.
    */
   launchFirework(at: WorldXZ | null): boolean;
-  /** A sky lantern rises from lamp `lampIndex`'s head in stretch `stretchIndex` (+ s·T). Out of range → false. */
-  releaseSkyLantern(lampIndex: number, stretchIndex?: number): boolean;
+  /**
+   * MFW-75: a sky lantern rises from a land point in world-view space (already includes the stretch offset), sitting on the terrace
+   * (fireworkBaseY + half its height). Null / non-finite → false. No lantern ever rises from a lamp.
+   */
+  releaseSkyLantern(at: WorldXZ | null): boolean;
+  /**
+   * MFW-75: the empty-ground tap. Draws one value from the seeded generator and launches a firework or a sky lantern
+   * (pickSkyLaunch with SKY_LAUNCH_SPLIT); returns its gimmick (SKY_LAUNCH_GIMMICKS) or null when nothing started. A non-finite `at`
+   * returns null without drawing; a rate-limited firework (WCAG) spends the draw and returns null (no fallback to a lantern).
+   */
+  launchFromSky(at: WorldXZ | null): SceneGimmickKind | null;
   /**
    * MFW-72: a smoke puff rises from house `houseIndex`'s roof in stretch `stretchIndex` (+ s·T). False under reduced motion (no
    * particles), for an index out of range or a non-safe-integer stretch. A re-tap on the same (house, stretch) while it is still
@@ -146,6 +175,10 @@ export interface SceneEffectsProps {
   readonly treeLeafAnchors: readonly TreeLeafAnchor[];
   /** MFW-72: FALLING_LEAVES_PER_TAP[tier]. */
   readonly leavesPerFall: number;
+  /** MFW-75: BLOB_SHADOW_TIER_GEOMETRY[tier], the fan of the lamp ground light. */
+  readonly lampGroundFan: Readonly<{ segments: number; rings: number }>;
+  /** MFW-75: the sky launch generator ([0, 1) values). Default: one seeded generator per mount (createDefaultSkyLaunchRandom). Tests inject. */
+  readonly skyLaunchRandom?: () => number;
   /** Clock in ms; default SCENE_EFFECT_CLOCK. Injectable for tests. */
   readonly now?: () => number;
   /**
@@ -176,6 +209,8 @@ export function SceneEffects({
   smokePuffs,
   treeLeafAnchors,
   leavesPerFall,
+  lampGroundFan,
+  skyLaunchRandom,
   now = SCENE_EFFECT_CLOCK,
   frame = null,
 }: SceneEffectsProps) {
@@ -183,6 +218,11 @@ export function SceneEffects({
   const camera = useThree((state) => (state as { camera?: Camera }).camera);
   const ripple = useMemo(() => createRippleMesh(pools.ripple.capacity), [pools.ripple.capacity]);
   const glow = useMemo(() => createLampGlowMesh(pools.glow.capacity, lampHead.geometry), [pools.glow.capacity, lampHead.geometry]);
+  const { segments: fanSegments, rings: fanRings } = lampGroundFan; // keyed on the numbers, not the object identity
+  const lampGround = useMemo(
+    () => createLampGroundLightMesh(pools.glow.capacity, { segments: fanSegments, rings: fanRings }),
+    [pools.glow.capacity, fanSegments, fanRings],
+  );
   const windows = useMemo(
     () => createWindowGlowMesh(pools.windowGlow.capacity, windowsPerHouse, windowPart.geometry),
     [pools.windowGlow.capacity, windowsPerHouse, windowPart.geometry],
@@ -204,8 +244,10 @@ export function SceneEffects({
   const driftScratch = useRef<DriftScratch | null>(null);
   const lastLaunchMs = useRef(-Infinity);
   const launchCounter = useRef(0);
+  const defaultSkyRandom = useRef<(() => number) | null>(null);
   useEffect(() => () => disposeEffectMesh(ripple), [ripple]);
   useEffect(() => () => disposeEffectMesh(glow), [glow]);
+  useEffect(() => () => disposeLampGroundLightMesh(lampGround), [lampGround]);
   useEffect(() => () => disposeEffectMesh(windows), [windows]);
   useEffect(() => () => disposeEffectMesh(fireworks), [fireworks]);
   useEffect(() => () => disposeEffectMesh(lanterns), [lanterns]);
@@ -226,16 +268,11 @@ export function SceneEffects({
     };
     const lightLamp = (lampIndex: number, stretchIndex: number = 0): boolean => {
       if (!validLamp(lampIndex) || !Number.isSafeInteger(stretchIndex)) return false;
-      const t = now();
       for (let s = 0; s < pools.glow.capacity; s++) {
         const e = pools.glow.entryAt(s);
-        if (e.active && e.state.lampIndex === lampIndex && e.state.stretchIndex === stretchIndex) {
-          retriggerGlow(e, t, LAMP_GLOW_LOOK.attackMs);
-          invalidate();
-          return true;
-        }
+        if (e.active && e.state.lampIndex === lampIndex && e.state.stretchIndex === stretchIndex) return true; // already lit: stays lit
       }
-      const entry = pools.glow.acquire(t);
+      const entry = pools.glow.acquire(now()); // a full pool recycles the oldest lit lamp (it goes dark)
       entry.state.lampIndex = lampIndex;
       entry.state.stretchIndex = stretchIndex;
       invalidate();
@@ -273,15 +310,22 @@ export function SceneEffects({
       invalidate();
       return true;
     };
-    const releaseSkyLantern = (lampIndex: number, stretchIndex: number = 0): boolean => {
-      if (!validLamp(lampIndex) || !Number.isSafeInteger(stretchIndex)) return false;
-      const lamp = lamps[lampIndex];
+    const releaseSkyLantern = (at: WorldXZ | null): boolean => {
+      if (!isFiniteXZ(at)) return false;
       const e = pools.skyLantern.acquire(now());
-      e.state.x = lamp.position.x + (frame === null ? 0 : stretchIndex * frame.periodX);
-      e.state.y = lamp.position.y + lampHead.yOffset * lamp.scale;
-      e.state.z = lamp.position.z + (frame === null ? 0 : stretchIndex * frame.periodZ);
+      e.state.x = at.x;
+      e.state.y = fireworkBaseY + SKY_LANTERN_LOOK.geometry.height / 2; // sits on the terrace
+      e.state.z = at.z;
       invalidate();
       return true;
+    };
+    const launchFromSky = (at: WorldXZ | null): SceneGimmickKind | null => {
+      if (!isFiniteXZ(at)) return null; // no draw for a tap without a land point
+      let random = skyLaunchRandom;
+      if (random === undefined) random = defaultSkyRandom.current ??= createDefaultSkyLaunchRandom();
+      const kind = pickSkyLaunch(random(), SKY_LAUNCH_SPLIT.fireworkShare);
+      const started = kind === "firework" ? launchFirework(at) : releaseSkyLantern(at);
+      return started ? SKY_LAUNCH_GIMMICKS[kind] : null;
     };
     const puffChimneySmoke = (houseIndex: number, stretchIndex: number = 0): boolean => {
       if (reducedMotion || !Number.isSafeInteger(stretchIndex)) return false;
@@ -332,12 +376,14 @@ export function SceneEffects({
       lightHouse,
       launchFirework,
       releaseSkyLantern,
+      launchFromSky,
       puffChimneySmoke,
       dropLeaves,
       react(kind, index, at, stretchIndex = 0) {
         if (!Number.isSafeInteger(stretchIndex)) return null;
         const reaction = SCENE_TAP_REACTIONS[kind];
         let started = false;
+        let launched: SceneGimmickKind | null = null;
         for (const effect of reaction.effects) {
           switch (effect) {
             case "ripple":
@@ -345,9 +391,6 @@ export function SceneEffects({
               break;
             case "lampGlow":
               started = lightLamp(index, stretchIndex) || started;
-              break;
-            case "skyLantern":
-              started = releaseSkyLantern(index, stretchIndex) || started;
               break;
             case "windowGlow":
               started = lightHouse(index, stretchIndex) || started;
@@ -359,8 +402,9 @@ export function SceneEffects({
                 started = true;
               }
               break;
-            case "firework":
-              started = launchFirework(at) || started;
+            case "skyLaunch":
+              launched = launchFromSky(at);
+              started = launched !== null || started;
               break;
             case "chimneySmoke":
               started = puffChimneySmoke(index, stretchIndex) || started;
@@ -372,14 +416,13 @@ export function SceneEffects({
               break; // krathong taps are served by RiverFlow / OwnKrathong and the inspect popup
           }
         }
-        return started ? reaction.gimmick : null;
+        return started ? (launched ?? reaction.gimmick) : null;
       },
       activeCount: (kind) => pools.activeCount(kind),
     };
   }, [
     pools,
     lamps,
-    lampHead.yOffset,
     houseWindows,
     windowsPerHouse,
     fireworkBaseY,
@@ -392,13 +435,14 @@ export function SceneEffects({
     treeLeafAnchors,
     leavesPerFall,
     camera,
+    skyLaunchRandom,
   ]);
 
   useFrame(() => {
     const t = now();
     const s = scratch.current;
     const a = writeRippleInstances(ripple, pools.ripple, t, reducedMotion, waterSurfaceY, s);
-    const b = writeLampGlowInstances(glow, pools.glow, lamps, lampHead, t, reducedMotion, s, frame);
+    const b = writeLampLightInstances(glow, lampGround, pools.glow, lamps, lampHead, t, reducedMotion, s, frame); // ramping lamps only
     const c = writeWindowGlowInstances(windows, pools.windowGlow, houseWindows, windowsPerHouse, windowPart, t, reducedMotion, s, frame);
     const d = writeFireworkInstances(fireworks, pools.firework, t, reducedMotion, s);
     const e = writeSkyLanternInstances(lanterns, pools.skyLantern, t, reducedMotion, s);
@@ -413,6 +457,7 @@ export function SceneEffects({
     <>
       <primitive object={ripple.mesh} dispose={null} />
       <primitive object={glow.mesh} dispose={null} />
+      <primitive object={lampGround} dispose={null} />
       <primitive object={windows.mesh} dispose={null} />
       <primitive object={fireworks.mesh} dispose={null} />
       <primitive object={lanterns.mesh} dispose={null} />

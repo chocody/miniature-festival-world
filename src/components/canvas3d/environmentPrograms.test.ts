@@ -10,6 +10,7 @@ import {
 } from "@/config/events/loyKrathong.river.config";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, WATER_HIGHLIGHT_LOOK } from "@/config/look.config";
 import { TOY_MATTE_MATERIALS, type MatteMaterialSpec } from "@/config/scene.config";
+import { LAMP_GROUND_LIGHT_LOOK } from "@/config/gimmicks.config";
 import { buildRingFanData, buildShoreHighlightData } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "@/components/models/loyKrathong/riverLayout";
 import { createBlobShadowGeometry, createBlobShadowMaterial, createFanMaterial, createVertexAlphaGeometry } from "./blobShadowMeshes";
@@ -38,12 +39,13 @@ describe("environment programs (MFW-49 AC5)", () => {
     }
   });
 
-  it("every fan material (blobs, shore, glints, ripples) shares the blob program parameters", () => {
+  it("every fan material (blobs, shore, glints, ripples, MFW-75 lamp ground light) shares the blob program parameters", () => {
     const fans = [
       createBlobShadowMaterial(),
       createFanMaterial({ color: WATER_HIGHLIGHT_LOOK.color, opacity: WATER_HIGHLIGHT_LOOK.shoreOpacity, additive: false }),
       createFanMaterial({ color: WATER_HIGHLIGHT_LOOK.color, opacity: WATER_HIGHLIGHT_LOOK.glintOpacity, additive: false }),
       createFanMaterial({ color: WATER_HIGHLIGHT_LOOK.color, opacity: WATER_HIGHLIGHT_LOOK.rippleOpacity, additive: false }),
+      createFanMaterial({ color: LAMP_GROUND_LIGHT_LOOK.color, opacity: LAMP_GROUND_LIGHT_LOOK.opacity, additive: false }),
     ];
     for (const m of fans) {
       expect(m).toBeInstanceOf(MeshBasicMaterial);

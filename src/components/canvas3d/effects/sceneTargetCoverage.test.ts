@@ -47,6 +47,7 @@ const NOT_AN_OBJECT: readonly NameKey[] = [
   "skyLanterns",
   "chimneySmoke", // MFW-72 effects
   "fallingLeaves",
+  "lampGroundLights", // MFW-75 effect
   "riverBatchMeshPrefix",
   "lampTapPrefix",
   "riverHitPrefix",

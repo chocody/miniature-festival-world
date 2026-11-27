@@ -13,13 +13,19 @@ import {
   SCENE_TAP_REACTIONS,
   SCENE_TARGET_KINDS,
   SKY_LANTERN_LOOK,
+  SKY_LAUNCH_SEED,
+  SKY_LAUNCH_SEED_GLOBAL_NAME,
   WINDOW_GLOW_LOOK,
 } from "@/config/gimmicks.config";
+import { BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { EFFECT_KINDS, type EffectPoolCaps } from "@/config/performance.config";
 import {
   chimneySmokeDurationMs,
   chimneySmokeEmitMs,
   createObjectPoolManager,
+  createSeededRandom,
+  pickSkyLaunch,
+  resolveSkyLaunchSeed,
   fallingLeavesDurationMs,
   fallingLeavesEmitMs,
   nudgeDurationMs,
@@ -75,6 +81,12 @@ vi.mock("./effectMeshes", async (importOriginal) => {
       spies.glow();
       return track(actual.createLampGlowMesh(...args));
     },
+    // MFW-75: the ground light is a bare InstancedMesh
+    createLampGroundLightMesh: (...args: Parameters<typeof actual.createLampGroundLightMesh>) => {
+      const mesh = actual.createLampGroundLightMesh(...args);
+      spies.meshes.push(mesh);
+      return mesh;
+    },
     createWindowGlowMesh: (...args: Parameters<typeof actual.createWindowGlowMesh>) => track(actual.createWindowGlowMesh(...args)),
     createFireworkMesh: (...args: Parameters<typeof actual.createFireworkMesh>) => track(actual.createFireworkMesh(...args)),
     createSkyLanternMesh: (...args: Parameters<typeof actual.createSkyLanternMesh>) => track(actual.createSkyLanternMesh(...args)),
@@ -114,6 +126,7 @@ const ui = (
   reducedMotion = false,
   frame: EndlessRiverFrame | null = null,
   lightPreset: LightPresetId = "NIGHT",
+  skyLaunchRandom?: () => number,
 ) => (
   <SceneEffects
     handleRef={ref}
@@ -132,12 +145,25 @@ const ui = (
     smokePuffs={PUFFS}
     treeLeafAnchors={LOY_KRATHONG_TREE_LEAF_ANCHORS}
     leavesPerFall={LEAVES}
+    lampGroundFan={BLOB_SHADOW_TIER_GEOMETRY.LOW}
+    skyLaunchRandom={skyLaunchRandom}
     now={() => NOW}
     frame={frame}
   />
 );
 
+/** MFW-75: the e2e / test seam — every default generator in this file is seeded with SKY_LAUNCH_SEED (firework, then sky lantern). */
+const seam = globalThis as unknown as Record<string, unknown>;
+/** A generator that always picks a firework / a sky lantern, and one that alternates (firework first). */
+const ALWAYS_FIREWORK = () => 0.1;
+const ALWAYS_LANTERN = () => 0.9;
+const alternating = () => {
+  let i = 0;
+  return () => (i++ % 2 === 0 ? 0.1 : 0.9);
+};
+
 beforeEach(() => {
+  seam[SKY_LAUNCH_SEED_GLOBAL_NAME] = SKY_LAUNCH_SEED;
   NOW = 1_000_000;
   r3f.frame = null;
   r3f.invalidate.mockClear();
@@ -149,6 +175,7 @@ beforeEach(() => {
   spies.meshes.length = 0;
 });
 afterEach(() => {
+  delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
   cleanup();
   vi.restoreAllMocks();
 });
@@ -167,17 +194,17 @@ describe("SceneEffects", () => {
     expect(r3f.invalidate).toHaveBeenCalledTimes(10);
   });
 
-  it("lights lamps, re-triggers a lit lamp without dipping and ignores bad indices", () => {
+  it("lights lamps, keeps a lit lamp lit on a re-tap and ignores bad indices", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager(CAPS);
     render(ui(ref, pools));
     expect(ref.current!.lightLamp(1)).toBe(true);
     NOW += LAMP_GLOW_LOOK.attackMs * 3;
-    ref.current!.lightLamp(1);
+    expect(ref.current!.lightLamp(1)).toBe(true);
     expect(ref.current!.activeCount("glow")).toBe(1);
-    // MFW-60 (WCAG): the re-tap keeps the glow at its peak (age = attack), it does not restart the attack from dark.
+    // MFW-75: the re-tap changes nothing (the lamp is already on; no dip, no restart).
     const lit = [0, 1].map((s) => pools.glow.entryAt(s)).find((e) => e.active)!;
-    expect(NOW - lit.startedAtMs).toBe(LAMP_GLOW_LOOK.attackMs);
+    expect(NOW - lit.startedAtMs).toBe(LAMP_GLOW_LOOK.attackMs * 3);
     ref.current!.lightLamp(0);
     expect(ref.current!.activeCount("glow")).toBe(2);
     ref.current!.lightLamp(lamps.length - 1);
@@ -201,7 +228,7 @@ describe("SceneEffects", () => {
     NOW += Math.max(RIPPLE_LOOK.durationMs, LAMP_GLOW_LOOK.durationMs) + 1;
     r3f.frame!();
     expect(ref.current!.activeCount("ripple")).toBe(0);
-    expect(ref.current!.activeCount("glow")).toBe(0);
+    expect(ref.current!.activeCount("glow")).toBe(1); // MFW-75: a lit lamp stays lit, but a steady lamp does not keep the loop alive
     r3f.invalidate.mockClear();
     r3f.frame!();
     expect(r3f.invalidate).not.toHaveBeenCalled();
@@ -224,16 +251,16 @@ describe("SceneEffects", () => {
     expect(m).toHaveBeenCalledTimes(1);
     expect(i).toHaveBeenCalledTimes(1);
     view.unmount();
-    // MFW-60 / MFW-72: seven effect meshes (ripple, lamp glow, window glow, firework, sky lantern, chimney smoke, falling leaves)
-    // are disposed on unmount.
-    expect(g).toHaveBeenCalledTimes(8);
-    expect(m).toHaveBeenCalledTimes(8);
-    expect(i).toHaveBeenCalledTimes(8);
+    // MFW-60 / MFW-72 / MFW-75: eight effect meshes (ripple, lamp glow, lamp ground light, window glow, firework, sky lantern,
+    // chimney smoke, falling leaves) are disposed on unmount.
+    expect(g).toHaveBeenCalledTimes(9);
+    expect(m).toHaveBeenCalledTimes(9);
+    expect(i).toHaveBeenCalledTimes(9);
   });
 
-  it("renders exactly seven primitives (MFW-60: + window glow, firework, sky lantern; MFW-72: + chimney smoke, falling leaves)", () => {
+  it("renders exactly eight primitives (MFW-60: + window glow, firework, sky lantern; MFW-72: + smoke, leaves; MFW-75: + ground light)", () => {
     const { container } = render(ui(createRef<SceneEffectsHandle>()));
-    expect(container.querySelectorAll("primitive")).toHaveLength(7);
+    expect(container.querySelectorAll("primitive")).toHaveLength(8);
   });
 });
 
@@ -279,30 +306,10 @@ describe("SceneEffects reactions (MFW-60)", () => {
     expect(mesh.count).toBe(W);
   });
 
-  it("SE3: a lamp tap gives a glow and a sky lantern", () => {
-    const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref));
-    expect(ref.current!.react("lamp", 3, null)).toBe("lamp-glow");
-    expect(ref.current!.activeCount("glow")).toBe(1);
-    expect(ref.current!.activeCount("skyLantern")).toBe(1);
-    NOW += 1_000;
-    r3f.frame!();
-    const lantern = meshNamed(SCENE_OBJECT_NAMES.skyLanterns);
-    expect(lantern.count).toBe(2); // body + flame
-    const m = new Matrix4();
-    lantern.getMatrixAt(0, m);
-    const p = new Vector3().setFromMatrixPosition(m);
-    const head = lamps[3].position.y + RIVER_ENVIRONMENT_PARTS.lampHead.yOffset * lamps[3].scale;
-    expect(p.y).toBeGreaterThan(head);
-    NOW += SKY_LANTERN_LOOK.durationMs;
-    r3f.frame!();
-    expect(ref.current!.activeCount("skyLantern")).toBe(0);
-  });
-
   it("SE4: fireworks are rate-limited to the WCAG flash rate (t, +100, +200, +340 → t and +340)", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager({ ...CAPS, firework: 3 });
-    render(ui(ref, pools));
+    render(ui(ref, pools, false, null, "NIGHT", ALWAYS_FIREWORK));
     const t0 = NOW;
     const launched: number[] = [];
     for (const dt of [0, 100, 200, 340]) {
@@ -328,8 +335,9 @@ describe("SceneEffects reactions (MFW-60)", () => {
 
   it("SE5: reduced-motion variants are drawn statically", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref, createObjectPoolManager(CAPS), true));
-    ref.current!.react("sky", 0, bankPoint);
+    render(ui(ref, createObjectPoolManager(CAPS), true, null, "NIGHT", ALWAYS_FIREWORK));
+    expect(ref.current!.react("sky", 0, bankPoint)).toBe("firework");
+    expect(ref.current!.releaseSkyLantern({ x: 1, z: 1 })).toBe(true); // MFW-75: lanterns come from land points now
     ref.current!.react("lamp", 0, null);
     r3f.frame!();
     const fw = meshNamed(SCENE_OBJECT_NAMES.fireworks);
@@ -351,7 +359,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
 
   it("SE6: spamming each kind never exceeds its cap", () => {
     const ref = createRef<SceneEffectsHandle>();
-    render(ui(ref));
+    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", alternating())); // MFW-75: fireworks and lanterns both fill
     for (let i = 0; i < 20; i++) {
       NOW += FIREWORK_MIN_LAUNCH_INTERVAL_MS + 1;
       ref.current!.react("sky", 0, bankPoint);
@@ -391,7 +399,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
     const pools = createObjectPoolManager(CAPS);
     const view = render(ui(ref, pools));
     const created = spies.meshes.length;
-    expect(created).toBe(7); // MFW-72: + chimney smoke, falling leaves
+    expect(created).toBe(8); // MFW-72: + chimney smoke, falling leaves; MFW-75: + lamp ground light
     for (let i = 0; i < 3; i++) r3f.frame!();
     view.rerender(ui(ref, pools));
     expect(spies.meshes.length).toBe(created);
@@ -401,7 +409,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
     expect(disposed.mock.contexts).toEqual([firework]);
     expect(meshNamed(SCENE_OBJECT_NAMES.fireworks)).not.toBe(firework);
     view.unmount();
-    expect(disposed).toHaveBeenCalledTimes(8); // the replaced firework + the seven meshes
+    expect(disposed).toHaveBeenCalledTimes(9); // the replaced firework + the eight meshes
   });
 
   it("SE9: react(krathong) returns null and starts nothing", () => {
@@ -422,7 +430,7 @@ describe("SceneEffects reactions (MFW-60)", () => {
     for (const reduced of [false, true]) {
       cleanup();
       const ref = createRef<SceneEffectsHandle>();
-      render(ui(ref, createObjectPoolManager({ ...CAPS, firework: 8 }), reduced));
+      render(ui(ref, createObjectPoolManager({ ...CAPS, firework: 8 }), reduced, null, "NIGHT", ALWAYS_FIREWORK)); // MFW-75
       const start = NOW;
       const launches: number[] = [];
       for (let t = 0; t <= 2_000; t += 50) {
@@ -444,22 +452,22 @@ describe("SceneEffects across stretches (MFW-58)", () => {
     return new Vector3().setFromMatrixPosition(m);
   };
 
-  it("react(lamp, 2, null, 1): the glow sits at lamps[2] + T and the sky lantern rises from lamp + T", () => {
+  it("react(lamp, 2, null, 1): the head glow and the ground light sit at lamps[2] + T; no sky lantern (MFW-75)", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager(CAPS);
     render(ui(ref, pools, false, frame));
     expect(ref.current!.react("lamp", 2, null, 1)).toBe(SCENE_TAP_REACTIONS.lamp.gimmick);
     NOW += LAMP_GLOW_LOOK.attackMs;
     r3f.frame!();
-    const glow = at(meshNamed(SCENE_OBJECT_NAMES.lampGlows), 0);
-    expect(glow.x).toBeCloseTo(lamps[2].position.x + frame.periodX, 4);
-    expect(glow.z).toBeCloseTo(lamps[2].position.z + frame.periodZ, 4);
-    const lantern = [0, 1].map((i) => pools.skyLantern.entryAt(i)).find((e) => e.active)!;
-    expect(lantern.state.x).toBeCloseTo(lamps[2].position.x + frame.periodX, 9);
-    expect(lantern.state.z).toBeCloseTo(lamps[2].position.z + frame.periodZ, 9);
+    for (const name of [SCENE_OBJECT_NAMES.lampGlows, SCENE_OBJECT_NAMES.lampGroundLights]) {
+      const p = at(meshNamed(name), 0);
+      expect(p.x, name).toBeCloseTo(lamps[2].position.x + frame.periodX, 4);
+      expect(p.z, name).toBeCloseTo(lamps[2].position.z + frame.periodZ, 4);
+    }
+    expect(pools.skyLantern.activeCount).toBe(0);
   });
 
-  it("the same lamp in another stretch is a separate glow; a re-tap in the same stretch re-triggers it", () => {
+  it("the same lamp in another stretch is a separate glow; a re-tap in the same stretch keeps it lit", () => {
     const ref = createRef<SceneEffectsHandle>();
     const pools = createObjectPoolManager({ ...CAPS, glow: 3 });
     render(ui(ref, pools, false, frame));
@@ -723,5 +731,154 @@ describe("smoke drift from the camera (MFW-72 fix round)", () => {
     ref.current!.puffChimneySmoke(1);
     const st = [0, 1].map((i) => pools.chimneySmoke.entryAt(i)).find((e) => e.active)!.state;
     expect([st.driftX, st.driftZ]).toEqual([1, 0]);
+  });
+});
+
+describe("lamp light and sky launch (MFW-75)", () => {
+  const land = { x: 1, z: 2 };
+  const glowEntries = (pools: ObjectPoolManager) =>
+    Array.from({ length: pools.glow.capacity }, (_, i) => pools.glow.entryAt(i)).filter((e) => e.active);
+
+  it("SE20: a lamp tap lights the lamp and releases no sky lantern", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref));
+    expect(ref.current!.react("lamp", 0, null)).toBe("lamp-glow");
+    expect(ref.current!.activeCount("glow")).toBe(1);
+    expect(ref.current!.activeCount("skyLantern")).toBe(0);
+    NOW += LAMP_GLOW_LOOK.attackMs;
+    r3f.frame!();
+    expect(meshNamed(SCENE_OBJECT_NAMES.lampGlows).visible).toBe(true);
+    expect(meshNamed(SCENE_OBJECT_NAMES.lampGroundLights).visible).toBe(true);
+    expect(meshNamed(SCENE_OBJECT_NAMES.skyLanterns).visible).toBe(false);
+  });
+
+  it("SE21: the lamp stays lit long after the old glow duration", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref));
+    ref.current!.react("lamp", 0, null);
+    NOW += 10 * LAMP_GLOW_LOOK.durationMs;
+    r3f.frame!();
+    expect(ref.current!.activeCount("glow")).toBe(1);
+    expect(meshNamed(SCENE_OBJECT_NAMES.lampGroundLights).count).toBe(1);
+    expect(meshNamed(SCENE_OBJECT_NAMES.lampGlows).count).toBe(1);
+  });
+
+  it("SE22: a re-tap keeps one entry and its start; the cap + 1st lamp darkens the first-lit lamp", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools));
+    ref.current!.react("lamp", 0, null);
+    const startedAt = glowEntries(pools)[0].startedAtMs;
+    NOW += 500;
+    expect(ref.current!.react("lamp", 0, null)).toBe("lamp-glow");
+    expect(glowEntries(pools)).toHaveLength(1);
+    expect(glowEntries(pools)[0].startedAtMs).toBe(startedAt);
+    for (let i = 1; i <= CAPS.glow; i++) {
+      NOW += 10;
+      ref.current!.react("lamp", i, null);
+    }
+    const lit = glowEntries(pools).map((e) => e.state.lampIndex).sort();
+    expect(lit).toHaveLength(CAPS.glow);
+    expect(lit).not.toContain(0); // the first-lit lamp went dark
+  });
+
+  it("SE23: the loop runs during the attack only; under reduced motion a lit lamp never keeps it alive", () => {
+    for (const reduced of [false, true]) {
+      cleanup();
+      const ref = createRef<SceneEffectsHandle>();
+      render(ui(ref, createObjectPoolManager(CAPS), reduced));
+      ref.current!.react("lamp", 1, null);
+      r3f.invalidate.mockClear(); // the tap's own invalidate
+      r3f.frame!();
+      expect(r3f.invalidate.mock.calls.length, `attack, reduced=${reduced}`).toBe(reduced ? 0 : 1);
+      NOW += LAMP_GLOW_LOOK.attackMs;
+      r3f.invalidate.mockClear();
+      r3f.frame!();
+      r3f.frame!();
+      expect(r3f.invalidate, `lit, reduced=${reduced}`).not.toHaveBeenCalled();
+      expect(meshNamed(SCENE_OBJECT_NAMES.lampGroundLights).visible).toBe(true);
+    }
+  });
+
+  it("SE24: a firework pick → 'firework'; firework running, no lantern", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", ALWAYS_FIREWORK));
+    expect(ref.current!.react("sky", 0, land)).toBe("firework");
+    expect(ref.current!.activeCount("firework")).toBe(1);
+    expect(ref.current!.activeCount("skyLantern")).toBe(0);
+  });
+
+  it("SE25: a lantern pick → 'sky-lantern' sitting on the terrace at the land point; no firework", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools, false, null, "NIGHT", ALWAYS_LANTERN));
+    expect(ref.current!.react("sky", 0, land)).toBe("sky-lantern");
+    const e = [0, 1].map((i) => pools.skyLantern.entryAt(i)).find((x) => x.active)!;
+    expect(e.state).toEqual({ x: 1, y: LOY_KRATHONG_RIVER_LAYOUT.bankTopY + SKY_LANTERN_LOOK.geometry.height / 2, z: 2 });
+    expect(pools.firework.activeCount).toBe(0);
+    NOW += 1_000;
+    r3f.frame!();
+    expect(meshNamed(SCENE_OBJECT_NAMES.skyLanterns).count).toBe(2); // body + flame
+  });
+
+  it("SE26: a non-finite land point returns null without drawing", () => {
+    const random = vi.fn(() => 0.1);
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref, createObjectPoolManager(CAPS), false, null, "NIGHT", random));
+    expect(ref.current!.react("sky", 0, null)).toBeNull();
+    expect(ref.current!.react("sky", 0, { x: Number.NaN, z: 0 })).toBeNull();
+    expect(ref.current!.launchFromSky({ x: 0, z: Infinity })).toBeNull();
+    expect(ref.current!.releaseSkyLantern(null)).toBe(false);
+    expect(random).not.toHaveBeenCalled();
+  });
+
+  it("SE27: the default generator (seam = SKY_LAUNCH_SEED) gives a firework, then a sky lantern", () => {
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref));
+    expect(ref.current!.react("sky", 0, land)).toBe("firework");
+    NOW += 400;
+    expect(ref.current!.react("sky", 0, land)).toBe("sky-lantern");
+  });
+
+  it("SE27b: without the seam the default generator is seeded once per mount from Math.random", () => {
+    delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.123);
+    const expected = createSeededRandom(resolveSkyLaunchSeed(undefined, () => 0.123));
+    const ref = createRef<SceneEffectsHandle>();
+    render(ui(ref));
+    random.mockClear(); // three draws UUIDs at mount; the seed is drawn lazily on the first sky tap
+    for (let i = 0; i < 6; i++) {
+      NOW += 400;
+      const want = pickSkyLaunch(expected(), 0.5) === "firework" ? "firework" : "sky-lantern";
+      expect(ref.current!.react("sky", 0, land), String(i)).toBe(want);
+    }
+    expect(random).toHaveBeenCalledTimes(1); // one seed per mount, not one draw per tap
+  });
+
+  it("SE28: 50 alternating sky taps stay within both caps, create no mesh, and keep the world-view point", () => {
+    const frame = getLoyKrathongEndlessRiverFrame();
+    const ref = createRef<SceneEffectsHandle>();
+    const pools = createObjectPoolManager(CAPS);
+    render(ui(ref, pools, false, frame, "NIGHT", alternating()));
+    const created = spies.meshes.length;
+    for (let i = 0; i < 50; i++) {
+      NOW += 400;
+      ref.current!.react("sky", 0, land);
+      r3f.frame!();
+      expect(pools.firework.activeCount).toBeLessThanOrEqual(pools.firework.capacity);
+      expect(pools.skyLantern.activeCount).toBeLessThanOrEqual(pools.skyLantern.capacity);
+    }
+    expect(spies.meshes.length).toBe(created);
+    const tap = { x: frame.periodX + 1.5, z: frame.periodZ - 3 };
+    NOW += 400;
+    expect(ref.current!.react("sky", 0, tap, 1)).toBe("firework");
+    NOW += 400;
+    expect(ref.current!.react("sky", 0, tap, 1)).toBe("sky-lantern");
+    const newest = <T,>(pool: { capacity: number; entryAt(i: number): { active: boolean; startedAtMs: number; state: T } }) =>
+      Array.from({ length: pool.capacity }, (_, i) => pool.entryAt(i))
+        .filter((e) => e.active)
+        .sort((a, b) => b.startedAtMs - a.startedAtMs)[0].state;
+    expect(newest(pools.firework)).toMatchObject({ x: tap.x, z: tap.z });
+    expect(newest(pools.skyLantern)).toMatchObject({ x: tap.x, z: tap.z });
   });
 });

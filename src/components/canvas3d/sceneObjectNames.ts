@@ -51,4 +51,6 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   // MFW-72 scene reactions part 2
   chimneySmoke: "scene-chimney-smoke",
   fallingLeaves: "scene-falling-leaves",
+  // MFW-75 lamp light
+  lampGroundLights: "scene-lamp-ground-lights",
 });

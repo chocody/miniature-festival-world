@@ -10,6 +10,12 @@ export interface LampGlowFrame {
   scale: number;
   done: boolean;
 }
+/** MFW-75: a lit lamp (head glow intensity and ground light growth); there is no "done": a lit lamp never expires by age. */
+export interface LampLightFrame {
+  intensity: number;
+  groundScale: number;
+  animating: boolean;
+}
 export interface BounceFrame {
   scale: number;
   done: boolean;
@@ -46,6 +52,9 @@ export function createRippleFrame(): RippleFrame {
 }
 export function createLampGlowFrame(): LampGlowFrame {
   return { intensity: 0, scale: 1, done: true };
+}
+export function createLampLightFrame(): LampLightFrame {
+  return { intensity: 0, groundScale: 0, animating: false };
 }
 export function createBounceFrame(): BounceFrame {
   return { scale: 1, done: true };
@@ -126,6 +135,26 @@ export function writeLampGlowFrameAt(
   out.intensity = look.peakIntensity * envelope * flicker;
   out.scale = writeBounceAt(t, reducedMotion, scratchBounce, bounce).scale;
   out.done = false;
+  return out;
+}
+
+/**
+ * MFW-75: a lamp switches on and stays lit. u = min(1, age / attackMs); intensity = peakIntensity · u, groundScale = 1 − (1 − u)²,
+ * animating while age < attackMs. Reduced motion: at full strength from the first frame, never animating (instant). Pure,
+ * allocation-free.
+ */
+export function writeLampLightFrameAt(ageMs: number, reducedMotion: boolean, out: LampLightFrame): LampLightFrame {
+  if (reducedMotion) {
+    out.intensity = LAMP_GLOW_LOOK.peakIntensity;
+    out.groundScale = 1;
+    out.animating = false;
+    return out;
+  }
+  const t = normaliseAge(ageMs);
+  const u = Math.min(1, t / LAMP_GLOW_LOOK.attackMs);
+  out.intensity = LAMP_GLOW_LOOK.peakIntensity * u;
+  out.groundScale = 1 - (1 - u) ** 2;
+  out.animating = t < LAMP_GLOW_LOOK.attackMs;
   return out;
 }
 

@@ -22,7 +22,12 @@ export const RIPPLE_LOOK = Object.freeze({
   surfaceOffsetY: 0.01, // above the water surface (no z-fighting)
 });
 
-/** Lamp light-up: an unlit additive skin just over the lamp head (no halo, MFW-67); attack → hold (flicker) → release. No light source (MFW-27 D5). */
+/**
+ * Lamp light-up: an unlit additive skin just over the lamp head (no halo, MFW-67). No light source (MFW-27 D5). MFW-75: a tapped
+ * lamp switches on and STAYS lit (it ramps up over `attackMs`, instant under reduced motion); the lamp reads `color`,
+ * `peakIntensity`, `shellScale` and `attackMs` only. `durationMs`, `releaseMs` and the flicker no longer apply to the lamp (the
+ * window glow still reads `attackMs` and the flicker periods).
+ */
 export const LAMP_GLOW_LOOK = Object.freeze({
   color: "#ffc46b",
   peakIntensity: 1,
@@ -117,6 +122,7 @@ export const SCENE_GIMMICK_KINDS = [
   "rock-bounce",
   "pier-bounce",
   "villager-hop",
+  "sky-lantern", // MFW-75: the empty-ground tap may release a sky lantern instead of a firework
 ] as const;
 export type SceneGimmickKind = (typeof SCENE_GIMMICK_KINDS)[number];
 
@@ -124,10 +130,9 @@ export type SceneGimmickKind = (typeof SCENE_GIMMICK_KINDS)[number];
 export type SceneEffectId =
   | "ripple"
   | "lampGlow"
-  | "skyLantern"
   | "windowGlow"
   | "nudge"
-  | "firework"
+  | "skyLaunch"
   | "markCue"
   | "chimneySmoke"
   | "fallingLeaves";
@@ -140,6 +145,9 @@ export interface SceneTapReaction {
  * by RiverFlow / OwnKrathong and the inspect popup; SceneEffectsHandle.react() never handles it. Slice 2 shipped in MFW-72: a house
  * tap also puffs chimney smoke and a tree tap also drops a few leaves; the villager keeps the hop (no arm part for a wave; loop
  * decision, not yet reviewed by the owner). The gimmick names are unchanged.
+ * MFW-75 (backlog 14.2): a lamp tap only switches the lamp on (no sky lantern rises from a lamp); the empty-ground ("sky") tap starts
+ * `skyLaunch`, which picks a firework or a sky lantern at random. For `skyLaunch`, react() reports the gimmick of the kind it picked
+ * (SKY_LAUNCH_GIMMICKS), so the `gimmick` of the sky entry is only the type-required default.
  */
 export const SCENE_TAP_REACTIONS: Readonly<Record<SceneTargetKind, SceneTapReaction>> = Object.freeze({
   house: Object.freeze({ gimmick: "house-lights", effects: Object.freeze(["windowGlow", "chimneySmoke"] as const) }),
@@ -149,10 +157,10 @@ export const SCENE_TAP_REACTIONS: Readonly<Record<SceneTargetKind, SceneTapReact
   rock: Object.freeze({ gimmick: "rock-bounce", effects: Object.freeze(["nudge"] as const) }),
   pier: Object.freeze({ gimmick: "pier-bounce", effects: Object.freeze(["nudge"] as const) }),
   villager: Object.freeze({ gimmick: "villager-hop", effects: Object.freeze(["nudge"] as const) }),
-  lamp: Object.freeze({ gimmick: "lamp-glow", effects: Object.freeze(["lampGlow", "skyLantern"] as const) }),
+  lamp: Object.freeze({ gimmick: "lamp-glow", effects: Object.freeze(["lampGlow"] as const) }),
   water: Object.freeze({ gimmick: "ripple", effects: Object.freeze(["ripple"] as const) }),
   krathong: Object.freeze({ gimmick: "inspect", effects: Object.freeze(["markCue"] as const) }),
-  sky: Object.freeze({ gimmick: "firework", effects: Object.freeze(["firework"] as const) }),
+  sky: Object.freeze({ gimmick: "firework", effects: Object.freeze(["skyLaunch"] as const) }),
 } satisfies Record<SceneTargetKind, SceneTapReaction>);
 
 /** How a "nudge" moves each object type. */
@@ -238,7 +246,7 @@ export const FIREWORK_MIN_LAUNCH_INTERVAL_MS = MS_PER_SECOND / WCAG_MAX_FLASHES_
 export const FIREWORK_SPARK_GEOMETRY = Object.freeze({ kind: "icosahedron", radius: 1, detail: 0 } as const);
 
 /**
- * Sky lantern (โคมลอย) released from a tapped lamp head: a warm paper lantern with a small bright flame under its opening rises,
+ * Sky lantern (โคมลอย): MFW-75 — it now rises from a tapped land point (the empty-ground "sky" tap), not from a lamp head. A warm paper lantern with a small bright flame under its opening rises,
  * drifts downwind, sways, then shrinks away. NormalBlending, unlit. Sized from screenshots at the MFW-68 framing. DRAFT.
  */
 export const SKY_LANTERN_LOOK = Object.freeze({
@@ -255,8 +263,49 @@ export const SKY_LANTERN_LOOK = Object.freeze({
   swayPeriodMs: 2_000,
   durationMs: 6_000,
   fadeStartRatio: 0.7, // the size shrinks to 0 over the last 30 %
-  reducedMotionOffsetY: 0.8, // static lantern this high above the lamp head
+  reducedMotionOffsetY: 0.8, // static lantern this high above its launch point
   reducedMotionHoldMs: 1_600,
+});
+
+/*
+ * MFW-75 (backlog 14.2): the lamp light and the sky launch. Loop decisions, not yet reviewed by the owner; DRAFT values are listed in
+ * docs/follow-ups.md (MFW-75).
+ */
+
+/** What the empty-ground tap can launch (SceneEffectsHandle.launchFromSky). */
+export const SKY_LAUNCH_KINDS = Object.freeze(["firework", "skyLantern"] as const);
+export type SkyLaunchKind = (typeof SKY_LAUNCH_KINDS)[number];
+/** The data-last-gimmick value of each sky launch kind. */
+export const SKY_LAUNCH_GIMMICKS: Readonly<Record<SkyLaunchKind, SceneGimmickKind>> = Object.freeze({
+  firework: "firework",
+  skyLantern: "sky-lantern",
+});
+/** Share of sky taps that launch a firework (the rest release a sky lantern). DRAFT (card AC3); 0.5 = no preference until the owner picks one. */
+export const SKY_LAUNCH_SPLIT = Object.freeze({ fireworkShare: 0.5 });
+/**
+ * Technical: the fixed seed that tests inject (unit tests and e2e) so the sky launches are deterministic. It is the smallest positive
+ * integer whose first two picks (createSeededRandom(seed) with SKY_LAUNCH_SPLIT.fireworkShare) are a firework, then a sky lantern —
+ * found with a throw-away loop over 1, 2, 3, … (pinned by gimmicks.config.test.ts). Production seeds from a non-deterministic source
+ * once per SceneEffects mount (resolveSkyLaunchSeed), so every visit is a real surprise.
+ */
+export const SKY_LAUNCH_SEED = 8;
+/**
+ * Technical test seam: when `window[SKY_LAUNCH_SEED_GLOBAL_NAME]` holds a positive safe integer when the first sky tap creates the generator (lazily, once per mount), SceneEffects seeds its sky
+ * launch generator with it instead of a random seed (the e2e scene probe sets SKY_LAUNCH_SEED). Reads nothing else, stores nothing.
+ */
+export const SKY_LAUNCH_SEED_GLOBAL_NAME = "__MFW_SKY_LAUNCH_SEED__";
+
+/**
+ * Warm light lying on the ground around a lit lamp's foot: a vertex-alpha fan (the blob program, NormalBlending, softer rim than a blob
+ * shadow) that grows in over LAMP_GLOW_LOOK.attackMs. `radius` (world units × lamp scale), `opacity` and `falloffExponent` are DRAFT
+ * (owner reviews the screenshots); `liftY` is technical (just above the blob shadows' BLOB_SHADOW_LOOK.liftY 0.006, no z-fighting).
+ */
+export const LAMP_GROUND_LIGHT_LOOK = Object.freeze({
+  color: LAMP_GLOW_LOOK.color,
+  opacity: 0.3,
+  radius: 0.6,
+  falloffExponent: 2.5,
+  liftY: 0.008,
 });
 
 /*

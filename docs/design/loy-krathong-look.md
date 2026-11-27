@@ -983,3 +983,44 @@ Screenshots (`screenshots/mfw-72/`, default framing after release, no pan):
 | Falling leaves, phone, day (0.9 s) | ![falling leaves day](screenshots/mfw-72/day-falling-leaves.png) |
 | Falling leaves, phone, night (0.9 s) | ![falling leaves night](screenshots/mfw-72/night-falling-leaves.png) |
 | Reduced motion house tap, phone, night (windows lit, no smoke) | ![reduced motion house night](screenshots/mfw-72/night-reduced-motion-house.png) |
+
+## 19. Lamp light and sky launch (MFW-75, backlog 14.2)
+
+Config: `LAMP_GLOW_LOOK`, `LAMP_GROUND_LIGHT_LOOK`, `SKY_LAUNCH_SPLIT`, `SKY_LAUNCH_SEED`, `SKY_LAUNCH_GIMMICKS` and
+`SKY_LANTERN_LOOK` in `src/config/gimmicks.config.ts`; curve `writeLampLightFrameAt` in `src/core/effects/gimmickCurves.ts`; generator
+`createSeededRandom` / `pickSkyLaunch` / `resolveSkyLaunchSeed` in `src/core/effects/seededRandom.ts`. Config wins over this note.
+Owner (2026-11-26): "every tap should feel natural". How it is built and every number is a loop decision, not yet reviewed by the owner
+(DRAFT values in docs/follow-ups.md, MFW-75).
+
+### 19.1 The lamp switches on and stays lit
+
+- A lamp tap records `lamp-glow`, still selects the lamp and flies to it, and **nothing rises from the lamp** (the sky lantern moved to
+  the empty-ground tap). The head skin (§16, `LAMP_GLOW_LOOK.shellScale`, no bounce, no flicker) ramps up over `attackMs` (120 ms) and
+  stays lit; a re-tap changes nothing. The glow pool cap (`EFFECT_POOL_CAPS[tier].glow`) bounds the lit lamps: one more lamp recycles
+  the oldest lit lamp, which goes dark (D1).
+- **Ground light.** A soft warm patch lies around the lamp foot: one vertex-alpha fan per lit lamp (`scene-lamp-ground-lights`, capacity
+  = the glow cap), the blob shadow program (`createFanMaterial`, NormalBlending, no new shader program), `LAMP_GROUND_LIGHT_LOOK`
+  colour #ffc46b, opacity 0.3, radius 0.6 × lamp scale, falloff exponent 2.5 (softer rim than a blob shadow's 1.6, so there is no
+  visible edge), lifted 0.008 above the ground. It grows in with the head (`groundScale = 1 − (1 − u)²`). It is not additive (the MFW-67
+  halo probe passes it as is) and there is no light source (no per-fragment cost on lit materials).
+- **Reduced motion** (invariant F): the head and the ground light are at full strength from the first frame (no ramp).
+- The demand frameloop runs only while a lamp ramps up; a steadily lit lamp costs no frames.
+- Screenshots (390×844, the lamp at the centre after its fly-to): `screenshots/mfw-75/after-night-lamp-lit.png`,
+  `screenshots/mfw-75/after-day-lamp-lit.png` and desktop 1440×900 `screenshots/mfw-75/after-desktop-night-lamp-lit.png`; before
+  (MFW-60: a lantern rose from the lamp) `screenshots/mfw-75/before-night-lamp-tap.png`, `screenshots/mfw-75/before-day-lamp-tap.png`.
+  At 390×844 the patch is ≈ 43 px in radius; in neither preset does it read as a ring, a halo or a disc (a faint warm smudge at
+  the foot; checked on 4× crops). Owner reviews the look (Open question 2 of the spec).
+
+### 19.2 The empty-ground tap launches a firework or a sky lantern
+
+- The "sky" tap (bare land, §16) starts `skyLaunch`: one draw `u` from the sky launch generator; `u < SKY_LAUNCH_SPLIT.fireworkShare`
+  (0.5, DRAFT) → the §16 firework (`firework`), else a sky lantern (`sky-lantern`) that sits on the terrace at the tapped land point
+  (`fireworkBaseY` + half its height) and rises with the unchanged `SKY_LANTERN_LOOK`. Both stay pooled with their fixed caps.
+- A rate-limited firework (WCAG 2.3.1, `FIREWORK_MIN_LAUNCH_INTERVAL_MS`) spends the draw and starts nothing (no lantern fallback); a tap
+  without a land point draws nothing.
+- **Seed.** Production seeds the generator (mulberry32) once per SceneEffects mount from `Math.random`, so every visit is a surprise.
+  Tests set `window.__MFW_SKY_LAUNCH_SEED__` (the e2e scene probe does) or inject the generator, with `SKY_LAUNCH_SEED` = 8: the
+  smallest positive integer whose first two picks are a firework, then a sky lantern (found with a throw-away loop; pinned by
+  `gimmicks.config.test.ts`). Screenshot: `screenshots/mfw-75/after-night-sky-lantern.png` (the second sky tap of a page).
+- Reduced motion: the static variants of §16 (static starburst, static lantern 0.8 above its launch point).
+

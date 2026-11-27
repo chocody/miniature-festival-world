@@ -36,6 +36,11 @@ export const E2E_DRAG_START_DISTANCE_PX = 8; // = DRAG_START_DISTANCE_PX
 export const E2E_DESIGN_BUCKET_MESH = "river-batch-18";
 export const E2E_DESIGN_BODY_NAME = "krathong-design-body"; // = SCENE_OBJECT_NAMES.krathongDesignBody
 const KRATHONG_MODELS_READY_TIMEOUT_MS = 20_000;
+// MFW-75 lamp light and sky launch
+export const E2E_LAMP_GROUND_LIGHT_NAME = "scene-lamp-ground-lights"; // = SCENE_OBJECT_NAMES.lampGroundLights (not additive: no allowlist)
+export const E2E_SKY_LAUNCH_SEED_GLOBAL = "__MFW_SKY_LAUNCH_SEED__"; // = SKY_LAUNCH_SEED_GLOBAL_NAME
+/** = SKY_LAUNCH_SEED: with it the first sky tap of a page is a firework and the second a sky lantern. */
+export const E2E_SKY_LAUNCH_SEED = 8;
 
 const WATER_GRID_X_FROM = 0.1;
 const WATER_GRID_X_TO = 0.9;
@@ -119,7 +124,17 @@ interface ObservedRenderer {
   info?: { programs?: unknown[] | null; render?: { calls: number; triangles: number } };
 }
 
+/**
+ * Installs the probe before the app loads. MFW-75: it also sets the sky launch seed seam (E2E_SKY_LAUNCH_SEED), so the random
+ * firework / sky lantern choice of an empty-ground tap is deterministic in every spec that uses the probe.
+ */
 export async function installSceneProbe(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ name, seed }) => {
+      (window as unknown as Record<string, unknown>)[name] = seed;
+    },
+    { name: E2E_SKY_LAUNCH_SEED_GLOBAL, seed: E2E_SKY_LAUNCH_SEED },
+  );
   await page.addInitScript(() => {
     const w = window as unknown as ProbeWindow;
     const probe = { scene: null as ProbeScene | null, camera: null as ProbeCamera | null, renderer: null as ObservedRenderer | null };
