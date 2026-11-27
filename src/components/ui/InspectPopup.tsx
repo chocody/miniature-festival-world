@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { LOY_KRATHONG_COPY } from "@/config/events/loyKrathong.copy";
 import { KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
-import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { krathongDesignThumbnailUrl } from "@/config/krathongDesigns.config";
 import { krathongDesignForAppearance } from "@/core/customization/krathongDesign";
 import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
@@ -10,6 +10,7 @@ import { getReportSession, type ReportSession } from "@/services/api/reportClien
 import type { InspectedCreation } from "./inspectedCreation";
 import { UI_CLASSES, UI_GLYPHS } from "./uiClasses";
 import { WishReportControl } from "./WishReportControl";
+import { useEventCopy } from "./EventCopyContext";
 
 export interface InspectPopupProps {
   readonly creation: InspectedCreation;
@@ -29,7 +30,10 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
   const session = reportSession ?? getReportSession();
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
-  const copy = INSPECT_POPUP_COPY;
+  const eventCopy = useEventCopy();
+  const copy = eventCopy.inspect;
+  // Only the Loy entry has krathong thumbnails; other events render none until their ornament thumbnails exist (16.26/16.27).
+  const showKrathongThumb = eventCopy === LOY_KRATHONG_COPY;
   const design = krathongDesignForAppearance(creation.appearance);
   const isOpen = creation.publicWishText !== null;
 
@@ -57,14 +61,16 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
           <span aria-hidden="true">{UI_GLYPHS.close}</span>
         </button>
       </div>
-      <span
-        role="img"
-        aria-label={KRATHONG_DESIGN_LABELS[design]}
-        data-testid="inspect-design"
-        data-design-id={design}
-        className="mt-3 block size-12 rounded-field bg-cover bg-center"
-        style={{ backgroundImage: `url(${krathongDesignThumbnailUrl(design)})` }}
-      />
+      {showKrathongThumb && (
+        <span
+          role="img"
+          aria-label={KRATHONG_DESIGN_LABELS[design]}
+          data-testid="inspect-design"
+          data-design-id={design}
+          className="mt-3 block size-12 rounded-field bg-cover bg-center"
+          style={{ backgroundImage: `url(${krathongDesignThumbnailUrl(design)})` }}
+        />
+      )}
       {isOpen && (
         <>
           <p className="mt-3" data-testid="inspect-display-name">

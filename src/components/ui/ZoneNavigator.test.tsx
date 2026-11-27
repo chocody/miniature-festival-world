@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { INITIAL_WORLD_STATE, useWorldStore, type WorldState } from "@/store/useWorldStore";
-import { ZONE_NAV_COPY, ZoneNavigator } from "./ZoneNavigator";
+import { ZONE_NAV_COPY } from "@/config/zoneNav.config";
+import { ZoneNavigator } from "./ZoneNavigator";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 const pagination = { jumpBy: vi.fn(), retry: vi.fn(async () => "loaded" as const) };
 const setWorld = (partial: Partial<WorldState>) => act(() => useWorldStore.setState(partial));
@@ -121,5 +124,20 @@ describe("ZoneNavigator", () => {
     setWorld({ ...base, currentZoneId: 2, zoneCount: 3 });
     const { container } = render(<ZoneNavigator pagination={pagination} />);
     expect(container.innerHTML).not.toMatch(/animate-|transition/);
+  });
+
+  it("CC8 (MFW-91): christmas copy: nav and arrow names; the vertical labels are not rendered yet", () => {
+    setWorld({ eventId: "christmas", zoneStatus: "ready", currentZoneId: 2, zoneCount: 3 });
+    render(
+      <EventCopyProvider eventId="christmas">
+        <ZoneNavigator pagination={pagination} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.zoneNav;
+    expect(screen.getByRole("navigation", { name: c.navLabel })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: c.upstream })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: c.downstream })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: c.vertical!.up })).toBeNull();
+    expect(screen.queryByRole("button", { name: c.vertical!.down })).toBeNull();
   });
 });

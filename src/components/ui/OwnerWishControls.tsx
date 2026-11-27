@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
-import { OWNER_SWITCH_COPY } from "@/config/ownerWish.config";
 import {
   getOwnedWishStateReader,
   syncWorldAfterSwitch,
@@ -12,6 +11,7 @@ import type { OwnerWishRevealer } from "@/services/api/ownerWishClient";
 import { getWishVisibilitySwitcher, type WishVisibilitySwitcher } from "@/services/api/wishVisibilityClient";
 import { describeModerationReasons, type ModerationReason } from "@/services/moderation";
 import { PrivateWishReveal } from "./PrivateWishReveal";
+import { useEventCopy } from "./EventCopyContext";
 import { UI_CLASSES } from "./uiClasses";
 import { WishVisibilitySwitch } from "./WishVisibilitySwitch";
 
@@ -60,6 +60,7 @@ export function OwnerWishControls({
   revealer,
   onSwitched = defaultOnSwitched,
 }: OwnerWishControlsProps): ReactElement {
+  const copy = useEventCopy().ownerSwitch;
   const statusId = useId();
   const [state, setState] = useState<ControlsState>(() => initialState(knownOpen, zone !== undefined));
   // The drawer reads the state once per mount; the popup gets it from the public row.
@@ -152,7 +153,6 @@ export function OwnerWishControls({
     });
   };
 
-  const copy = OWNER_SWITCH_COPY;
   const warning = state.message === "blocked" ? describeModerationReasons(state.reasons) : null;
   const statusText =
     state.view === "loading"

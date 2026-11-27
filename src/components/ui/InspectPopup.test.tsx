@@ -9,6 +9,8 @@ import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import type { ReportSession, ReportSubmitOutcome } from "@/services/api/reportClient";
 import { InspectPopup } from "./InspectPopup";
 import type { InspectedCreation } from "./inspectedCreation";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 afterEach(cleanup);
 
@@ -223,5 +225,35 @@ describe("InspectPopup design thumbnail (MFW-81)", () => {
       expect(dialog.textContent).not.toContain(label);
     }
     expect(container.querySelectorAll('[data-testid="inspect-design"]')).toHaveLength(1);
+  });
+
+  it("CC4 (MFW-91): christmas copy: dialog name and from label", () => {
+    const { session } = fakeSession();
+    render(
+      <EventCopyProvider eventId="christmas">
+        <InspectPopup creation={creation()} onClose={vi.fn()} reportSession={session} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.inspect;
+    expect(screen.getByRole("dialog", { name: c.dialogTitle })).toBeInTheDocument();
+    expect(screen.getByTestId("inspect-display-name")).toHaveTextContent(c.fromLabel);
+  });
+
+  it("Round 2 (MFW-91): christmas shows no krathong thumbnail and no Loy wording; Loy keeps the span", () => {
+    const { session } = fakeSession();
+    const { unmount } = render(
+      <EventCopyProvider eventId="christmas">
+        <InspectPopup creation={creation()} onClose={vi.fn()} reportSession={session} />
+      </EventCopyProvider>,
+    );
+    expect(screen.queryByTestId("inspect-design")).toBeNull();
+    const attrs = Array.from(document.querySelectorAll("[aria-label]")).map((el) => el.getAttribute("aria-label"));
+    const all = [document.body.textContent ?? "", ...attrs].join("\n");
+    for (const w of ["กระทง", "สายน้ำ", "คุ้งน้ำ", "ลอย"]) expect(all, w).not.toContain(w);
+    unmount();
+    render(<InspectPopup creation={creation()} onClose={vi.fn()} reportSession={session} />);
+    const span = screen.getByTestId("inspect-design");
+    expect(span).toHaveAttribute("aria-label", KRATHONG_DESIGN_LABELS.banana_leaf_01);
+    expect(span).toHaveAttribute("data-design-id", "banana_leaf_01");
   });
 });

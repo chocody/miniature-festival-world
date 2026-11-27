@@ -7,6 +7,8 @@ import type { OwnerWishRevealer } from "@/services/api/ownerWishClient";
 import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import { OwnerWishSection, shouldOfferOwnerControls } from "./OwnerWishSection";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 const ID = "950118ce-7d93-4cb6-bd84-44d91c5de9e3";
 const creation = (wish: string | null) => ({ id: ID, appearance: DEFAULT_KRATHONG_APPEARANCE, publicWishText: wish, displayName: null });
@@ -55,5 +57,16 @@ describe("OwnerWishSection", () => {
     unregister = registerOwnedCreationPredicate((id) => id === ID);
     render(<OwnerWishSection creation={creation(null)} />);
     expect(screen.getByRole("button", { name: OWNER_WISH_COPY.reveal })).toBeInTheDocument();
+  });
+
+  it("CC6 (MFW-91): christmas copy: reveal button, device note and switch heading", () => {
+    render(
+      <EventCopyProvider eventId="christmas">
+        <OwnerWishSection creation={creation(null)} isOwned={() => true} />
+      </EventCopyProvider>,
+    );
+    expect(screen.getByRole("button", { name: CHRISTMAS_COPY.ownerWish.reveal })).toBeInTheDocument();
+    expect(screen.getByText(CHRISTMAS_COPY.ownerWish.deviceOnlyNote)).toBeInTheDocument();
+    expect(screen.getByText(CHRISTMAS_COPY.ownerSwitch.heading)).toBeInTheDocument();
   });
 });

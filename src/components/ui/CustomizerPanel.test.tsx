@@ -7,6 +7,8 @@ import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -131,5 +133,20 @@ describe("CustomizerPanel", () => {
     expect(screen.queryByRole("group", { name: CUSTOMIZER_COPY.designGroupLabel })).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(btn("ถัดไป")).toBeInTheDocument();
+  });
+
+  it("CC1 (MFW-91): christmas copy: panel, gesture hint, buttons, no design group", () => {
+    const ref = { current: { rotate: vi.fn(), zoom: vi.fn() } as CustomizeViewControl | null };
+    render(
+      <EventCopyProvider eventId="christmas">
+        <CustomizerPanel eventId="christmas" onDone={vi.fn()} viewControlRef={ref} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.customizer;
+    expect(screen.getByRole("region", { name: c.panelLabel })).toBeInTheDocument();
+    expect(screen.getByText(c.gestureHint)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: c.rotateLeft })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: c.done })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: c.designGroupLabel })).toBeNull();
   });
 });

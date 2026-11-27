@@ -5,6 +5,8 @@ import type { FindMyOutcome } from "@/services/api/findMyCreation";
 import type { MyCreationEntry } from "@/services/auth/myCreationsVault";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import { formatPickerDate, formatPickerTime, MyCreationsDrawer } from "./MyCreationsDrawer";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 const NOW = Date.parse("2026-11-26T13:30:00.000Z");
 const local = (y: number, m: number, d: number, h: number, mi: number) => new Date(y, m, d, h, mi).toISOString();
@@ -199,5 +201,23 @@ describe("MyCreationsDrawer (MFW-74 picker)", () => {
     fireEvent.click(findMyButton());
     for (const e of entries) expect(Object.keys(e)).toEqual(["id", "eventId", "zoneId", "createdAt", "expiresAt"]);
     expect(container.textContent).not.toMatch(/spawnProgress|coord|ขอให้/);
+  });
+
+  it("CC5 (MFW-91): christmas copy: list name, ornament icon rows, not-found status", async () => {
+    find.mockResolvedValue("not_found");
+    render(
+      <EventCopyProvider eventId="christmas">
+        <MyCreationsDrawer vault={vault} finder={{ find }} now={() => NOW} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.myCreations;
+    fireEvent.click(findMyButton());
+    expect(screen.getByTestId("my-creations-list")).toHaveAttribute("aria-label", c.title);
+    for (const row of rows()) {
+      expect(row.querySelector('svg[data-glyph="ornament"]')).not.toBeNull();
+      expect(row.querySelector('svg[data-glyph="krathong"]')).toBeNull();
+    }
+    await act(async () => fireEvent.click(rows()[0]));
+    expect(status()).toHaveTextContent(c.notFound);
   });
 });

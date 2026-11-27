@@ -12,6 +12,8 @@ import { useBuilderStore } from "@/store/useBuilderStore";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 import { WishModal } from "./WishModal";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { EventCopyProvider } from "./EventCopyContext";
 
 const CLEAN = "ขอให้ทุกคนมีความสุข";
 const PHONE = "โทรหาฉัน 081-234-5678";
@@ -275,5 +277,18 @@ describe("WishModal", () => {
     expect(nameBox()).toHaveValue(NAME);
     expect(textbox()).toHaveValue(CLEAN);
     expect(sw()).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("CC3 (MFW-91): christmas copy: title, labels, and the shared moderation hint", () => {
+    render(
+      <EventCopyProvider eventId="christmas">
+        <WishModal onSubmitted={vi.fn()} />
+      </EventCopyProvider>,
+    );
+    const c = CHRISTMAS_COPY.wish;
+    expect(screen.getByRole("dialog", { name: c.title })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: c.textLabel })).toHaveAttribute("placeholder", c.textPlaceholder);
+    fireEvent.click(sw());
+    expect(screen.getByTestId("wish-public-hint")).toHaveTextContent(MODERATION_COPY.publicHint);
   });
 });
