@@ -24,6 +24,10 @@ const root = (page: Page) => page.locator("[data-flow-state]");
 for (const size of SIZES) {
   for (const preset of ["DAY", "NIGHT"] as const) {
     test(`X78 ${size.name} ${preset}`, async ({ page }, testInfo) => {
+      // Triple budget (90 s): on the 2-vCPU CI runner SwiftShader HIGH draws ≈ 1–2 FPS with multi-second stalls at 1440 × 900. PR #84 CI
+      // (MFW-1, 2026-11-27): desktop hit the 30 s test timeout (30.0–30.4 s; the customize screenshot 7.1 s, the "ถัดไป" tap 14.5 s,
+      // then the release and the camera rest); it took 16.8–24.5 s before the village and 25.1–27.8 s on MFW-77; phone 6.9–24.1 s.
+      test.slow();
       const shot = async (name: string) => {
         const path = testInfo.outputPath(`${name}-${size.name}-${preset.toLowerCase()}.png`);
         await page.screenshot({ path });

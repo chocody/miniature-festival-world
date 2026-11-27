@@ -22,7 +22,9 @@ export default defineConfig({
   reporter: isCI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,
-    trace: "retain-on-failure",
+    // Record a trace only on the first retry: recording on every attempt costs time on the 2-vCPU CI runner (MFW-1). Retries
+    // exist only on CI (retries: 1), so a local run records no trace.
+    trace: "on-first-retry",
   },
   projects: [
     {
