@@ -91,7 +91,7 @@ interface SceneObject {
   getWorldPosition(target: Vec3): Vec3;
   __r3f?: { root: { getState(): R3FState } };
   isMesh?: boolean;
-  geometry?: { type?: string };
+  geometry?: { type?: string; attributes?: { normal?: { version: number; count: number; getY(index: number): number } } };
   material?: { blending?: number } | { blending?: number }[];
   scale?: { x: number };
 }
@@ -416,6 +416,28 @@ export async function readProgramCount(page: Page): Promise<number | null> {
     const programs = (window as unknown as ProbeWindow).__mfwProbe?.renderer?.info?.programs;
     return Array.isArray(programs) ? programs.length : null;
   });
+}
+
+/**
+ * MFW-79: the water swells. Over every water mesh (one per stretch copy) with a normal attribute: the max normal-buffer version
+ * (rises when the swells are rewritten) and the min normal y (< 1 = shaded swells). null when there is no probe scene or no water.
+ */
+export async function readWaterNormals(page: Page): Promise<{ version: number; minNormalY: number } | null> {
+  return page.evaluate((waterName) => {
+    const scene = (window as unknown as ProbeWindow).__mfwProbe?.scene;
+    if (!scene) return null;
+    let version = -1;
+    let minNormalY = Infinity;
+    let found = false;
+    scene.traverse((o) => {
+      const normal = o.name === waterName ? o.geometry?.attributes?.normal : undefined;
+      if (!normal) return;
+      found = true;
+      version = Math.max(version, normal.version);
+      for (let i = 0; i < normal.count; i++) minNormalY = Math.min(minNormalY, normal.getY(i));
+    });
+    return found ? { version, minNormalY } : null;
+  }, E2E_WATER_NAME);
 }
 
 /** Draw calls and triangles of the last rendered frame; null before the first frame. */

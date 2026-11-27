@@ -12,6 +12,8 @@ import { assertRiversidePath, type RiversidePathDefinition } from "./riversidePa
 
 /** The channel reuses the lane curve machinery; this id is never matched against a SplinePathCoord. */
 export const RIVER_CHANNEL_CURVE_ID = 0;
+/** Vertices across a ribbon row unless a caller asks for more (2 = one quad strip, the pre-MFW-79 ribbon). */
+export const DEFAULT_RIBBON_COLUMNS = 2;
 
 /** -1 = left of the flow, 1 = right of the flow (the +right vector of splineProgressToWorld). */
 export type BankSide = -1 | 1;
@@ -79,6 +81,8 @@ export interface RiverEnvironmentDefinition {
   readonly bankWidth: number; // > 0
   readonly waterUnderlap: number; // >= 0 and < bankWidth: water extends this far under each bank
   readonly ribbonSegments: number; // integer >= 1
+  /** MFW-79: vertices across each water ribbon row, integer >= 2 (default DEFAULT_RIBBON_COLUMNS). Water only. */
+  readonly waterColumns?: number;
   readonly bankProfile: readonly BankProfilePoint[]; // bank cross-section, last offset === bankWidth
   readonly ground: RiverGroundDefinition;
   readonly houses: readonly HousePlacement[];
@@ -127,6 +131,7 @@ export interface RiverEnvironmentLayout {
   readonly waterSurfaceY: number;
   readonly bankTopY: number; // village terrace height
   readonly ribbonSegments: number;
+  readonly waterColumns: number; // resolved (MFW-79)
   readonly bankProfile: readonly BankProfilePoint[];
   readonly ground: RiverGroundLayout;
   readonly water: RibbonGeometryData;
@@ -197,13 +202,17 @@ export function buildRibbonGeometryData(
   fromOffset: number,
   toOffset: number,
   segments: number,
+  columns: number = DEFAULT_RIBBON_COLUMNS,
 ): RibbonGeometryData {
-  return buildRibbonRowsGeometryData(channel, fromOffset, toOffset, segments, 0, segments);
+  return buildRibbonRowsGeometryData(channel, fromOffset, toOffset, segments, 0, segments, columns);
 }
 
 /**
  * Rows fromRow..toRow of a ribbon of `segments` rows along the channel (row i at progress i / segments), between the lateral offsets
  * fromOffset < toOffset. buildRibbonGeometryData = rows 0..segments (bit-identical).
+ * MFW-79: `columns` vertices across each row (integer >= 2); vertex (r, k) at index r·columns + k, lateral
+ * fromOffset + (toOffset − fromOffset)·k / (columns − 1). Quad (row i, strip k): a = i·columns + k, b = a + 1, c = a + columns,
+ * d = c + 1, triangles (a, b, c) and (b, d, c). columns = 2 is bit-identical to the pre-MFW-79 ribbon.
  */
 export function buildRibbonRowsGeometryData(
   channel: RiverLane,
@@ -212,7 +221,9 @@ export function buildRibbonRowsGeometryData(
   segments: number,
   fromRow: number,
   toRow: number,
+  columns: number = DEFAULT_RIBBON_COLUMNS,
 ): RibbonGeometryData {
+  if (!Number.isInteger(columns) || columns < 2) throw new RangeError("columns must be an integer >= 2");
   requireFinite(fromOffset, "fromOffset");
   requireFinite(toOffset, "toOffset");
   if (!(fromOffset < toOffset)) throw new RangeError("fromOffset must be < toOffset");
@@ -221,20 +232,28 @@ export function buildRibbonRowsGeometryData(
     throw new RangeError("rows must be integers with 0 <= fromRow < toRow <= segments");
   }
   const rows = toRow - fromRow;
-  const vertexCount = (rows + 1) * 2;
+  const strips = columns - 1;
+  const vertexCount = (rows + 1) * columns;
   const positions = new Float32Array(vertexCount * 3);
-  const indices = new Uint32Array(rows * 6);
+  const indices = new Uint32Array(rows * strips * 6);
   for (let r = 0; r <= rows; r++) {
     const { centerline: c, right } = riverFrameAt(channel, (fromRow + r) / segments);
-    const o = r * 6;
-    positions[o] = c.x + right.x * fromOffset;
-    positions[o + 2] = c.z + right.z * fromOffset;
-    positions[o + 3] = c.x + right.x * toOffset;
-    positions[o + 5] = c.z + right.z * toOffset;
+    for (let k = 0; k < columns; k++) {
+      // The last column uses toOffset itself, so columns = 2 stays bit-identical (no rounding of from + (to − from)).
+      const lateral = k === strips ? toOffset : fromOffset + ((toOffset - fromOffset) * k) / strips;
+      const o = (r * columns + k) * 3;
+      positions[o] = c.x + right.x * lateral;
+      positions[o + 2] = c.z + right.z * lateral;
+    }
   }
   for (let i = 0; i < rows; i++) {
-    const a = 2 * i;
-    indices.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6);
+    for (let k = 0; k < strips; k++) {
+      const a = i * columns + k;
+      const b = a + 1;
+      const c = a + columns;
+      const d = c + 1;
+      indices.set([a, b, c, b, d, c], (i * strips + k) * 6);
+    }
   }
   return { positions, indices, vertexCount };
 }
@@ -451,9 +470,17 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
     if (pathIds.has(path.pathId)) throw new RangeError(`duplicate path pathId ${path.pathId}`);
     pathIds.add(path.pathId);
   }
+  const waterColumns = def.waterColumns ?? DEFAULT_RIBBON_COLUMNS;
+  if (!Number.isInteger(waterColumns) || waterColumns < 2) throw new RangeError("waterColumns must be an integer >= 2");
   const channel = createRiverChannel(def.channel);
   const half = def.channel.width / 2;
-  const water = buildRibbonGeometryData(channel, -(half + def.waterUnderlap), half + def.waterUnderlap, def.ribbonSegments);
+  const water = buildRibbonGeometryData(
+    channel,
+    -(half + def.waterUnderlap),
+    half + def.waterUnderlap,
+    def.ribbonSegments,
+    waterColumns,
+  );
   const left = buildBankProfileGeometryData(channel, -1, def.bankProfile, def.ribbonSegments);
   const right = buildBankProfileGeometryData(channel, 1, def.bankProfile, def.ribbonSegments);
   const strips = buildGroundStripsData(
@@ -473,6 +500,7 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
     waterSurfaceY: def.waterSurfaceY,
     bankTopY: def.bankTopY,
     ribbonSegments: def.ribbonSegments,
+    waterColumns,
     bankProfile: def.bankProfile,
     ground: { y: def.ground.y, holeMargin: def.ground.holeMargin, outerAcross: def.ground.outerAcross, strips },
     water,

@@ -152,13 +152,16 @@ export const FALLING_LEAF_SLOTS = Math.max(...Object.values(FALLING_LEAVES_PER_T
 /**
  * Water effects per 3D tier. LOW = the AC4 cheap variant: static shore highlights only, no moving glints, no krathong ripples.
  * HIGH glintCount 10 → 6 (MFW-49 dev, the lead's first ordered cut for the SwiftShader CI frame budget; equals MEDIUM).
+ * waveMotion (MFW-79): the water swells (RIVER_WATER_WAVES) drift with the flow on HIGH / MEDIUM. LOW: static wave shading
+ * (written once at t = 0, no per-frame normal upload).
  */
-export const WATER_EFFECT_TIERS: Readonly<Record<RenderTier, Readonly<{ glintCount: number; krathongRipples: boolean }>>> =
-  Object.freeze({
-    HIGH: Object.freeze({ glintCount: 6, krathongRipples: true }),
-    MEDIUM: Object.freeze({ glintCount: 6, krathongRipples: true }),
-    LOW: Object.freeze({ glintCount: 0, krathongRipples: false }),
-  });
+export const WATER_EFFECT_TIERS: Readonly<
+  Record<RenderTier, Readonly<{ glintCount: number; krathongRipples: boolean; waveMotion: boolean }>>
+> = Object.freeze({
+  HIGH: Object.freeze({ glintCount: 6, krathongRipples: true, waveMotion: true }),
+  MEDIUM: Object.freeze({ glintCount: 6, krathongRipples: true, waveMotion: true }),
+  LOW: Object.freeze({ glintCount: 0, krathongRipples: false, waveMotion: false }),
+});
 
 /**
  * Environment render budget per 3D tier: static riverside + water effects, main pass, the heavier NIGHT preset, no river krathongs.
@@ -176,6 +179,8 @@ export const WATER_EFFECT_TIERS: Readonly<Record<RenderTier, Readonly<{ glintCou
  * 2026-11-27 "LOW ใช้บ้านแบบเบา", HOUSE_SHELL_TIERS): measured 9 408 → 13 548 (+4 140; 18 412 with the full shell),
  * maxTriangles +4 200. Draw calls unchanged (19 / 19 / 18; the lite shell replaces the geometry of the same InstancedMesh).
  * HIGH shadow pass +7 448 caster triangles (9 × 812 + 5 trunks × 28). See docs/design/loy-krathong-look.md §20.
+ * MFW-79: water ribbon 4 columns, +192 triangles per stretch; measured 23 352 / 22 776 / 13 740; budgets and draw calls unchanged
+ * (look doc §21).
  * These budgets are per stretch copy (MFW-58 endless river): a frame at a stretch seam draws two copies, so the worst seam frame is
  * about twice the environment (estimate, LOW: ≈ 2 × 13.5k ≈ 27k environment triangles) plus the river krathongs.
  */

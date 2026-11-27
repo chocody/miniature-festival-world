@@ -5,6 +5,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DynamicDrawUsage,
   IcosahedronGeometry,
   MeshStandardMaterial,
 } from "three";
@@ -172,6 +173,16 @@ export function createRibbonGeometry(data: RibbonGeometryData): BufferGeometry {
   g.setAttribute("normal", new BufferAttribute(normals, VECTOR3_ITEM_SIZE));
   g.setIndex(new BufferAttribute(data.indices, INDEX_ITEM_SIZE));
   g.computeBoundingSphere();
+  return g;
+}
+
+/**
+ * MFW-79 water ribbon: createRibbonGeometry with a dynamic normal buffer (the swells rewrite it). No other attribute (no color,
+ * uv or tangent): any of those would add a shader program variant.
+ */
+export function createWaterSurfaceGeometry(data: RibbonGeometryData): BufferGeometry {
+  const g = createRibbonGeometry(data);
+  (g.getAttribute("normal") as BufferAttribute).setUsage(DynamicDrawUsage);
   return g;
 }
 
