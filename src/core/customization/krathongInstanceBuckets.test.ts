@@ -37,7 +37,8 @@ describe("krathong instance buckets", () => {
       KRATHONG_BASE_IDS.length + LEAF_FOLD_STYLE_IDS.length * LEAF_COLOR_PALETTE.length + FLOWER_KINDS.length + CANDLE_COLOR_PALETTE.length + 3 // + flowerCentre (MFW-48)
         + KRATHONG_DESIGN_IDS.length, // + one body per owner-supplied design (MFW-65)
     );
-    expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(19);
+    expect(KRATHONG_INSTANCE_BUCKET_COUNT).toBe(23); // MFW-76: five designs
+    expect(krathongInstanceBucketIndex("design:banana_leaf_01", "designBody")).toBe(18); // e2e `river-batch-18` is unchanged
     expect(new Set(KRATHONG_INSTANCE_BUCKETS.map((b) => b.key)).size).toBe(KRATHONG_INSTANCE_BUCKET_COUNT);
     // MFW-65: the design buckets come after incense, so every earlier index is unchanged.
     const designBuckets = KRATHONG_INSTANCE_BUCKETS.slice(-KRATHONG_DESIGN_IDS.length);

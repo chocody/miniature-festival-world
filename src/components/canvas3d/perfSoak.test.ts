@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PERF_SOAK_LATERAL_OFFSETS } from "@/config/perfProbe.config";
+import { KRATHONG_DEFAULT_DESIGN } from "@/config/krathongDesigns.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import { parsePersistableCoord } from "@/core/coordinates";
 import { KRATHONG_INSTANCE_BUCKET_COUNT, KRATHONG_INSTANCE_BUCKETS, parseKrathongAppearance } from "@/core/customization";
@@ -34,8 +35,10 @@ describe("buildPerfSoakZones", () => {
         else expect(c, String(b)).toBe(0);
       });
       const loaded = planKrathongInstances(zone.map((i) => i.appearance), ZONE_ITEM_CAP, { flames: () => [DESIGN_FLAME] });
+      // Every krathong maps to the default design until the picker (MFW-78); the other design buckets (MFW-76) stay empty.
       KRATHONG_INSTANCE_BUCKETS.forEach((bucket, b) => {
-        if (bucket.role === "designBody") expect(loaded.bucketCounts[b], String(b)).toBe(ZONE_ITEM_CAP);
+        if (bucket.role === "designBody")
+          expect(loaded.bucketCounts[b], String(b)).toBe(bucket.geometryKey === `design:${KRATHONG_DEFAULT_DESIGN}` ? ZONE_ITEM_CAP : 0);
       });
     }
     expect(ids.size).toBe(2 * ZONE_ITEM_CAP);

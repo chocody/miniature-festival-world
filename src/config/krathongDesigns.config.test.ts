@@ -45,10 +45,12 @@ function proceduralDefaultRadius(): number {
 
 describe("krathong designs config (MFW-65)", () => {
   it("KC1: ids, default, URLs, budgets", () => {
-    expect(KRATHONG_DESIGN_IDS).toEqual(["banana_leaf_01"]);
+    expect(KRATHONG_DESIGN_IDS).toEqual(["banana_leaf_01", "lotus_bud_01", "marigold_01", "rose_candles_01", "naga_01"]); // MFW-76
     expect(KRATHONG_DESIGN_IDS).toContain(KRATHONG_DEFAULT_DESIGN);
+    expect(KRATHONG_DEFAULT_DESIGN).toBe("banana_leaf_01");
     expect(KRATHONG_DESIGN_PUBLIC_PATH).toBe("/models/krathong");
     expect(krathongDesignUrl("banana_leaf_01", "medium")).toBe("/models/krathong/banana_leaf_01.medium.glb");
+    expect(krathongDesignUrl("naga_01", "low")).toBe("/models/krathong/naga_01.low.glb");
     expect(Number.isInteger(KRATHONG_DESIGN_MAX_FLAMES) && KRATHONG_DESIGN_MAX_FLAMES > 0).toBe(true);
     for (const value of Object.values(KRATHONG_DESIGN_ASSET_BUDGET)) expect(Number.isInteger(value) && value > 0).toBe(true);
     expect(KRATHONG_DESIGN_BODY_MATERIAL).toEqual({ ...KRATHONG_MATTE_SURFACE, color: "#FFFFFF", vertexColors: true });
