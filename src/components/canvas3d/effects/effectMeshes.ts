@@ -18,6 +18,7 @@ import {
   FIREWORK_LOOK,
   FIREWORK_SPARK_GEOMETRY,
   LAMP_GLOW_LOOK,
+  LAMP_GROUND_LIGHT_LOOK,
   NO_BOUNCE,
   RIPPLE_LOOK,
   SKY_LANTERN_LOOK,
@@ -40,6 +41,7 @@ import {
   type FallingLeavesState,
   type SmokePuffFrame,
   createLampGlowFrame,
+  createLampLightFrame,
   createLanternFrame,
   createRippleFrame,
   createShellFrame,
@@ -49,11 +51,13 @@ import {
   writeFireworkShellAt,
   writeFireworkSparkAt,
   writeLampGlowFrameAt,
+  writeLampLightFrameAt,
   writeRippleFrameAt,
   writeSkyLanternAt,
   type FireworkState,
   type LampGlowFrame,
   type LampGlowState,
+  type LampLightFrame,
   type LanternFrame,
   type ObjectPool,
   type RippleFrame,
@@ -65,6 +69,7 @@ import {
 } from "@/core/effects";
 import { stretchOffsetInto, type EndlessRiverFrame, type MutableXZ } from "@/core/coordinates/endlessRiverFrame";
 import type { InstanceTransform } from "@/core/world";
+import { createBlobShadowGeometry, createBlobShadowInstances, createFanMaterial } from "../blobShadowMeshes";
 import { createPartGeometry } from "../geometry";
 import { composeInstanceMatrix } from "../instancing";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
@@ -84,6 +89,7 @@ export interface EffectFrameScratch {
   readonly color: Color;
   readonly ripple: RippleFrame;
   readonly glow: LampGlowFrame;
+  readonly lampLight: LampLightFrame; // MFW-75
   readonly shell: ShellFrame;
   readonly spark: SparkFrame;
   readonly lantern: LanternFrame;
@@ -102,6 +108,7 @@ export function createEffectFrameScratch(): EffectFrameScratch {
     color: new Color(),
     ripple: createRippleFrame(),
     glow: createLampGlowFrame(),
+    lampLight: createLampLightFrame(),
     shell: createShellFrame(),
     spark: createSparkFrame(),
     lantern: createLanternFrame(),
@@ -214,11 +221,39 @@ export function writeRippleInstances(
 }
 
 /**
- * Same for lamp glows; an entry whose lampIndex is outside `lamps` (or whose stretch is not a safe integer) is released. MFW-58: the
- * glow sits at the lamp of its stretch copy, lamp + s·T (`frame`; null = stretch 0 only). Returns n.
+ * MFW-75: the warm light lying on the ground around a lit lamp's foot — one vertex-alpha fan per lit lamp (capacity = the glow pool
+ * cap), the blob program (createFanMaterial, NormalBlending: light on the ground, not an additive glow) with a softer rim
+ * (LAMP_GROUND_LIGHT_LOOK.falloffExponent). Starts empty and invisible (no draw call while no lamp is lit); ignores taps.
  */
-export function writeLampGlowInstances(
-  target: EffectMesh,
+export function createLampGroundLightMesh(capacity: number, fan: Readonly<{ segments: number; rings: number }>): InstancedMesh {
+  assertCapacity(capacity);
+  const L = LAMP_GROUND_LIGHT_LOOK;
+  const geometry = createBlobShadowGeometry({ segments: fan.segments, rings: fan.rings, falloffExponent: L.falloffExponent });
+  const material = createFanMaterial({ color: L.color, opacity: L.opacity, additive: false });
+  const mesh = createBlobShadowInstances(geometry, material, capacity, SCENE_OBJECT_NAMES.lampGroundLights);
+  mesh.visible = false;
+  return mesh;
+}
+
+/** Disposes the ground light's geometry, material and instance buffers. R3F never disposes a <primitive>. */
+export function disposeLampGroundLightMesh(mesh: InstancedMesh): void {
+  mesh.geometry.dispose();
+  const material = mesh.material;
+  if (Array.isArray(material)) for (const m of material) m.dispose();
+  else material.dispose();
+  mesh.dispose();
+}
+
+/**
+ * MFW-75: the lit lamps. An entry whose lampIndex is outside `lamps` (or whose stretch is not a safe integer) is released; a lit lamp
+ * never expires by age. Per entry f = writeLampLightFrameAt(age): the head skin at the lamp head of its stretch copy (lamp + s·T, size
+ * lamp.scale · shellScale, no bounce), colour = base × f.intensity; the ground light S(R, 1, R) at the lamp foot + (0, liftY, 0) with
+ * R = radius · lamp.scale · f.groundScale. Both meshes get count = visible = n. Returns the number of entries still ramping up
+ * (f.animating), not n: a steadily lit lamp does not keep the demand frameloop running. Allocation-free.
+ */
+export function writeLampLightInstances(
+  head: EffectMesh,
+  ground: InstancedMesh,
   pool: ObjectPool<LampGlowState>,
   lamps: readonly InstanceTransform[],
   lampHead: Pick<ScenePartSpec, "yOffset">,
@@ -228,6 +263,8 @@ export function writeLampGlowInstances(
   frame: EndlessRiverFrame | null = null,
 ): number {
   let n = 0;
+  let animating = 0;
+  const G = LAMP_GROUND_LIGHT_LOOK;
   for (let s = 0; s < pool.capacity; s++) {
     const e = pool.entryAt(s);
     if (!e.active) continue;
@@ -236,24 +273,24 @@ export function writeLampGlowInstances(
       pool.release(e);
       continue;
     }
-    const f = writeLampGlowFrameAt(nowMs - e.startedAtMs, reducedMotion, scratch.glow);
-    if (f.done) {
-      pool.release(e);
-      continue;
-    }
-    const size = lamp.scale * LAMP_GLOW_LOOK.shellScale * f.scale;
-    scratch.matrix
-      .makeScale(size, size, size)
-      .setPosition(
-        lamp.position.x + scratchOffset.x,
-        lamp.position.y + lampHead.yOffset * lamp.scale,
-        lamp.position.z + scratchOffset.z,
-      );
-    target.mesh.setMatrixAt(n, scratch.matrix);
-    target.mesh.setColorAt(n, scratch.color.copy(target.baseColor).multiplyScalar(f.intensity));
+    const f = writeLampLightFrameAt(nowMs - e.startedAtMs, reducedMotion, scratch.lampLight);
+    if (f.animating) animating++;
+    const x = lamp.position.x + scratchOffset.x;
+    const z = lamp.position.z + scratchOffset.z;
+    const size = lamp.scale * LAMP_GLOW_LOOK.shellScale;
+    scratch.matrix.makeScale(size, size, size).setPosition(x, lamp.position.y + lampHead.yOffset * lamp.scale, z);
+    head.mesh.setMatrixAt(n, scratch.matrix);
+    head.mesh.setColorAt(n, scratch.color.copy(head.baseColor).multiplyScalar(f.intensity));
+    const r = G.radius * lamp.scale * f.groundScale;
+    scratch.matrix.makeScale(r, 1, r).setPosition(x, lamp.position.y + G.liftY, z);
+    ground.setMatrixAt(n, scratch.matrix);
     n++;
   }
-  return finishWrite(target, n);
+  finishWrite(head, n);
+  ground.count = n;
+  ground.visible = n > 0;
+  if (n > 0) ground.instanceMatrix.needsUpdate = true;
+  return animating;
 }
 
 /** House window light-up (MFW-60): capacity = houseCapacity × windowsPerHouse, additive skins over the window boxes. */

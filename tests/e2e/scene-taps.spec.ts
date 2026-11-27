@@ -7,17 +7,24 @@ import { expectTapHintUnoccluded } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
   E2E_INSPECT_DIALOG_TITLE,
+  E2E_LAMP_GLOW_NAME,
+  E2E_LAMP_GROUND_LIGHT_NAME,
   E2E_PINNED_TIER_URL,
+  E2E_SKY_LANTERN_NAME,
   E2E_TAP_HINT_SEEN_VALUE,
   E2E_TAP_HINT_STORAGE_KEY,
   installSceneProbe,
   listRingAndHaloMeshes,
   locateStableTarget,
+  sceneObjectVisible,
   waitForCameraRest,
   type ScreenPoint,
 } from "./helpers/sceneProbe";
 
-/** MFW-59: taps on water, a lamp and a river krathong, with mouse and touch, on every 3D tier (production build, SwiftShader). */
+/**
+ * MFW-59: taps on water, a lamp and a river krathong, with mouse and touch, on every 3D tier (production build, SwiftShader).
+ * MFW-75: the lamp tap switches the lamp on (head glow + ground light, latched) and releases no sky lantern.
+ */
 
 const root = (page: Page) => page.locator("[data-flow-state]");
 const scene = (page: Page) => page.locator('[aria-label="Toy-like night river preview"]');
@@ -132,6 +139,10 @@ function defineTierTests(pointer: Pointer) {
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "lamp-glow");
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
       await expect(scene(page)).toHaveAttribute("data-selected-target", "lamp");
+      // MFW-75: the head glows and the ground light lies around the foot; nothing rises from the lamp.
+      await expect.poll(() => sceneObjectVisible(page, E2E_LAMP_GLOW_NAME)).toBe(true);
+      await expect.poll(() => sceneObjectVisible(page, E2E_LAMP_GROUND_LIGHT_NAME)).toBe(true);
+      expect(await sceneObjectVisible(page, E2E_SKY_LANTERN_NAME)).toBe(false);
       // MFW-67: the lamp lights up without a highlight ring or any other halo.
       await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
 
@@ -143,6 +154,7 @@ function defineTierTests(pointer: Pointer) {
       await expect(page.getByRole("dialog", { name: E2E_INSPECT_DIALOG_TITLE })).toBeVisible();
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "inspect");
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 3));
+      expect(await sceneObjectVisible(page, E2E_LAMP_GROUND_LIGHT_NAME)).toBe(true); // MFW-75: the lamp stays lit
 
       await nextFrames(page);
       expect(errors.pageErrors).toEqual([]);

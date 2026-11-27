@@ -59,7 +59,13 @@ import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { registerOwnedCreationPredicate } from "@/services/auth/ownedCreationHint";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { DRAG_START_DISTANCE_PX } from "@/config/interaction.config";
-import { SCENE_TAP_HINT_COPY, SCENE_TAP_HINT_SEEN_VALUE, SCENE_TAP_HINT_STORAGE_KEY } from "@/config/gimmicks.config";
+import {
+  SCENE_TAP_HINT_COPY,
+  SCENE_TAP_HINT_SEEN_VALUE,
+  SCENE_TAP_HINT_STORAGE_KEY,
+  SKY_LAUNCH_SEED,
+  SKY_LAUNCH_SEED_GLOBAL_NAME,
+} from "@/config/gimmicks.config";
 import { RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import { LOY_KRATHONG_RIVER_LAYOUT, lampHeadPosition } from "@/components/models/loyKrathong/riverLayout";
 import {
@@ -1117,9 +1123,14 @@ describe("scene gimmicks (MFW-28)", () => {
 describe("scene reactions (MFW-60)", () => {
   const pools = () => poolManagers.at(-1)!;
   const ground = (c: HTMLElement) => c.querySelector(`[name="${SCENE_OBJECT_NAMES.ground}"]`)!;
+  const seam = globalThis as unknown as Record<string, unknown>;
   beforeEach(() => {
     useDeviceStore.getState().setQualityTier("HIGH");
     poolManagers.length = 0;
+    seam[SKY_LAUNCH_SEED_GLOBAL_NAME] = SKY_LAUNCH_SEED; // MFW-75: the first sky launch of a mount is a firework
+  });
+  afterEach(() => {
+    delete seam[SKY_LAUNCH_SEED_GLOBAL_NAME];
   });
 
   it("IX1: in WORLD_EXPLORE a ground tap launches a firework, counts once and changes no selection or camera", () => {
@@ -1158,7 +1169,7 @@ describe("scene reactions (MFW-60)", () => {
     expect(viewport()).not.toHaveAttribute("data-last-gimmick");
   });
 
-  it("IX4: a lamp tap records lamp-glow, still selects and flies, and releases a sky lantern", () => {
+  it("IX4: a lamp tap records lamp-glow, still selects and flies, and releases no sky lantern (MFW-75)", () => {
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     const flights = r3f.flightStarts.length;
     fireEvent.click(lampMesh(container));
@@ -1166,7 +1177,7 @@ describe("scene reactions (MFW-60)", () => {
     expect(viewport()).toHaveAttribute("data-selected-target", "lamp");
     expect(r3f.flightStarts.length).toBe(flights + 1);
     expect(pools().activeCount("glow")).toBe(1);
-    expect(pools().activeCount("skyLantern")).toBe(1);
+    expect(pools().activeCount("skyLantern")).toBe(0);
   });
 
   it("IX5: a water tap still records a ripple through the registry", () => {

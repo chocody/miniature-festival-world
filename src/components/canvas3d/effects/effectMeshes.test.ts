@@ -7,6 +7,7 @@ import {
   FALLING_LEAF_LOOK,
   FIREWORK_LOOK,
   LAMP_GLOW_LOOK,
+  LAMP_GROUND_LIGHT_LOOK,
   NO_BOUNCE,
   RIPPLE_LOOK,
   SKY_LANTERN_LOOK,
@@ -41,19 +42,22 @@ import {
   createEffectFrameScratch,
   createFireworkMesh,
   createLampGlowMesh,
+  createLampGroundLightMesh,
   createRippleMesh,
   createSkyLanternMesh,
   createWindowGlowMesh,
   disposeEffectMesh,
+  disposeLampGroundLightMesh,
   fireworkInstancesPerBurst,
   writeFireworkInstances,
-  writeLampGlowInstances,
+  writeLampLightInstances,
   writeRippleInstances,
   writeSkyLanternInstances,
   writeWindowGlowInstances,
   type EffectMesh,
 } from "./effectMeshes";
 import { SCENE_OBJECT_NAMES } from "../sceneObjectNames";
+import { BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { LOY_KRATHONG_HOUSE_SMOKE_ORIGINS, LOY_KRATHONG_TREE_LEAF_ANCHORS } from "@/components/models/loyKrathong";
 import { TREE_LEAF_PATH_STRIDE } from "./sceneEffectAnchors";
 
@@ -146,29 +150,117 @@ describe("lamp glow mesh", () => {
     expect(() => createLampGlowMesh(0, lampHead.geometry)).toThrow(RangeError);
   });
 
-  it("sits at the lamp head, scaled with the bounce", () => {
+  it("sits at the lamp head with no bounce (MFW-75: the lamp switches on, it does not bounce)", () => {
     const e = createLampGlowMesh(2, lampHead.geometry);
+    const ground = createLampGroundLightMesh(2, BLOB_SHADOW_TIER_GEOMETRY.LOW);
     const pool = createObjectPoolManager(caps).glow;
     const scratch = createEffectFrameScratch();
     pool.acquire(0).state.lampIndex = 2;
-    expect(writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, scratch)).toBe(1);
+    writeLampLightInstances(e, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs / 2, false, scratch);
     const l = lamps[2];
     const { p, s } = decompose(e.mesh, 0);
     expect(p.x).toBeCloseTo(l.position.x, 5);
     expect(p.y).toBeCloseTo(l.position.y + lampHead.yOffset * l.scale, 5);
     expect(p.z).toBeCloseTo(l.position.z, 5);
-    expect(s.x).toBeCloseTo(l.scale * LAMP_GLOW_LOOK.shellScale * writeBounceAt(LAMP_GLOW_LOOK.attackMs, false, createBounceFrame()).scale, 5);
+    expect(s.x).toBeCloseTo(l.scale * LAMP_GLOW_LOOK.shellScale, 5);
+    expect(writeBounceAt(LAMP_GLOW_LOOK.attackMs / 2, false, createBounceFrame()).scale).not.toBeCloseTo(1, 5); // a bounce would show
+  });
+});
 
-    writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, true, scratch);
-    expect(decompose(e.mesh, 0).s.x).toBeCloseTo(l.scale * LAMP_GLOW_LOOK.shellScale, 5);
+describe("lamp ground light (MFW-75)", () => {
+  const lampHead = RIVER_ENVIRONMENT_PARTS.lampHead;
+  const lamps = LOY_KRATHONG_RIVER_LAYOUT.lamps;
+  const G = LAMP_GROUND_LIGHT_LOOK;
+  const setup = () => ({
+    head: createLampGlowMesh(2, lampHead.geometry),
+    ground: createLampGroundLightMesh(2, BLOB_SHADOW_TIER_GEOMETRY.LOW),
+    pool: createObjectPoolManager(caps).glow,
+    scratch: createEffectFrameScratch(),
   });
 
-  it("releases an unknown lamp index", () => {
-    const e = createLampGlowMesh(2, lampHead.geometry);
-    const pool = createObjectPoolManager(caps).glow;
+  it("LM1: a named, idle, NormalBlending vertex-alpha fan whose rim fades to alpha 0", () => {
+    const mesh = createLampGroundLightMesh(4, BLOB_SHADOW_TIER_GEOMETRY.LOW);
+    expect(mesh.name).toBe("scene-lamp-ground-lights");
+    expect(mesh.name).toBe(SCENE_OBJECT_NAMES.lampGroundLights);
+    expect(mesh.instanceMatrix.count).toBe(4);
+    expect(mesh.count).toBe(0);
+    expect(mesh.visible).toBe(false);
+    const material = mesh.material as MeshBasicMaterial;
+    expect(material.blending).toBe(NormalBlending);
+    expect(material.vertexColors).toBe(true);
+    expect(material.opacity).toBe(G.opacity);
+    const color = mesh.geometry.getAttribute("color");
+    expect(color.itemSize).toBe(4);
+    const { segments } = BLOB_SHADOW_TIER_GEOMETRY.LOW;
+    for (let i = color.count - segments; i < color.count; i++) expect(color.getW(i), `rim vertex ${i}`).toBe(0);
+    expect(color.getW(0)).toBe(1); // the centre is the brightest
+    expect(() => createLampGroundLightMesh(0, BLOB_SHADOW_TIER_GEOMETRY.LOW)).toThrow(RangeError);
+  });
+
+  it("LM2: a lamp lit for ≥ attackMs — full ground patch at the lamp foot, head at full colour, nothing ramping", () => {
+    const { head, ground, pool, scratch } = setup();
+    pool.acquire(0).state.lampIndex = 2;
+    expect(writeLampLightInstances(head, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, scratch)).toBe(0);
+    const l = lamps[2];
+    const { p, s } = decompose(ground, 0);
+    expect(p.x).toBeCloseTo(l.position.x, 5);
+    expect(p.y).toBeCloseTo(l.position.y + G.liftY, 5);
+    expect(p.z).toBeCloseTo(l.position.z, 5);
+    expect(s.x).toBeCloseTo(G.radius * l.scale, 5);
+    expect(s.y).toBeCloseTo(1, 5);
+    expect(s.z).toBeCloseTo(G.radius * l.scale, 5);
+    const c = new Color();
+    head.mesh.getColorAt(0, c);
+    const want = new Color(LAMP_GLOW_LOOK.color).multiplyScalar(LAMP_GLOW_LOOK.peakIntensity);
+    for (const ch of ["r", "g", "b"] as const) expect(c[ch]).toBeCloseTo(want[ch], 5);
+    expect([head.mesh.count, ground.count, head.mesh.visible, ground.visible]).toEqual([1, 1, true, true]);
+  });
+
+  it("LM3: at age 0 the lamp is ramping (1); under reduced motion it is at full radius at once (0)", () => {
+    const { head, ground, pool, scratch } = setup();
+    pool.acquire(0).state.lampIndex = 1;
+    expect(writeLampLightInstances(head, ground, pool, lamps, lampHead, 0, false, scratch)).toBe(1);
+    expect(writeLampLightInstances(head, ground, pool, lamps, lampHead, 0, true, scratch)).toBe(0);
+    expect(decompose(ground, 0).s.x).toBeCloseTo(G.radius * lamps[1].scale, 5);
+  });
+
+  it("LM4: an unknown lamp index is released and drawn nowhere; stretch 1 draws at lamp + T", () => {
+    const { head, ground, pool, scratch } = setup();
     pool.acquire(0).state.lampIndex = 99;
-    expect(writeLampGlowInstances(e, pool, lamps, lampHead, 10, false, createEffectFrameScratch())).toBe(0);
+    writeLampLightInstances(head, ground, pool, lamps, lampHead, 10, false, scratch);
     expect(pool.activeCount).toBe(0);
+    expect([head.mesh.count, ground.count, head.mesh.visible, ground.visible]).toEqual([0, 0, false, false]);
+    const frame = getLoyKrathongEndlessRiverFrame();
+    const st = pool.acquire(0).state;
+    st.lampIndex = 3;
+    st.stretchIndex = 1;
+    writeLampLightInstances(head, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, scratch, frame);
+    const p = decompose(ground, 0).p;
+    expect(p.x).toBeCloseTo(lamps[3].position.x + frame.periodX, 5);
+    expect(p.z).toBeCloseTo(lamps[3].position.z + frame.periodZ, 5);
+  });
+
+  it("LM5: 100 frames keep the scratch frame and both instance buffers (no allocation per frame)", () => {
+    const { head, ground, pool, scratch } = setup();
+    pool.acquire(0).state.lampIndex = 0;
+    pool.acquire(0).state.lampIndex = 4;
+    const frameRef = scratch.lampLight;
+    const headArray = head.mesh.instanceMatrix.array;
+    const groundArray = ground.instanceMatrix.array;
+    for (let t = 0; t < 100; t++) writeLampLightInstances(head, ground, pool, lamps, lampHead, t * 16, t % 2 === 0, scratch);
+    expect(scratch.lampLight).toBe(frameRef);
+    expect(head.mesh.instanceMatrix.array).toBe(headArray);
+    expect(ground.instanceMatrix.array).toBe(groundArray);
+    expect(ground.count).toBe(2);
+  });
+
+  it("disposeLampGroundLightMesh disposes geometry, material and mesh", () => {
+    const mesh = createLampGroundLightMesh(2, BLOB_SHADOW_TIER_GEOMETRY.HIGH);
+    const g = vi.spyOn(mesh.geometry, "dispose");
+    const m = vi.spyOn(mesh.material as Material, "dispose");
+    const i = vi.spyOn(mesh, "dispose");
+    disposeLampGroundLightMesh(mesh);
+    expect([g.mock.calls.length, m.mock.calls.length, i.mock.calls.length]).toEqual([1, 1, 1]);
   });
 });
 
@@ -349,7 +441,9 @@ describe("MFW-58 stretch offsets of the glow writers", () => {
     const b = pool.acquire(0).state;
     b.lampIndex = 2;
     b.stretchIndex = -3;
-    expect(writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame)).toBe(2);
+    const ground = createLampGroundLightMesh(3, BLOB_SHADOW_TIER_GEOMETRY.LOW);
+    writeLampLightInstances(e, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame);
+    expect(e.mesh.count).toBe(2);
     const l = lamps[2];
     const p0 = decompose(e.mesh, 0).p;
     const p1 = decompose(e.mesh, 1).p;
@@ -358,10 +452,11 @@ describe("MFW-58 stretch offsets of the glow writers", () => {
     expect(p1.x).toBeCloseTo(l.position.x - 3 * frame.periodX, 5);
     expect(p1.z).toBeCloseTo(l.position.z - 3 * frame.periodZ, 5);
     // No frame: every stretch draws at offset 0 (the MFW-60 behaviour).
-    writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch());
+    writeLampLightInstances(e, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch());
     expect(decompose(e.mesh, 0).p.x).toBeCloseTo(l.position.x, 5);
     b.stretchIndex = 0.5; // a bad stretch is released
-    expect(writeLampGlowInstances(e, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame)).toBe(1);
+    writeLampLightInstances(e, ground, pool, lamps, lampHead, LAMP_GLOW_LOOK.attackMs, false, createEffectFrameScratch(), frame);
+    expect([e.mesh.count, ground.count, pool.activeCount]).toEqual([1, 1, 1]);
   });
 
   it("window glows of stretch s are the stretch-0 matrices pre-translated by s·T", () => {

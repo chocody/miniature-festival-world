@@ -8,7 +8,9 @@ import {
   E2E_CHIMNEY_SMOKE_NAME,
   E2E_DRAG_START_DISTANCE_PX,
   E2E_FIREWORK_NAME,
+  E2E_LAMP_GROUND_LIGHT_NAME,
   E2E_PINNED_TIER_URL,
+  E2E_SKY_LANTERN_NAME,
   E2E_WINDOW_GLOW_NAME,
   installSceneProbe,
   listRingAndHaloMeshes,
@@ -24,6 +26,8 @@ import {
  * tap lights its windows, a drag fires nothing, no reaction adds a shader program and nothing draws a ring or a halo. Every target
  * is located through the scene probe (never a fixed screen point) and every check polls a DOM attribute.
  * MFW-72 (backlog 11.6): the house tap also puffs chimney smoke (no new program, no ring or halo); under reduced motion it does not.
+ * MFW-75 (backlog 14.2): a sky tap launches a firework OR a sky lantern at random. The scene probe seeds the choice (SKY_LAUNCH_SEED),
+ * so the first sky tap of a page is a firework and the second a sky lantern; a lamp tap lights the lamp (head + ground light).
  */
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
@@ -67,6 +71,41 @@ const count = async (page: Page) => Number(await scene(page).getAttribute("data-
 const PAN_DRAG_PX = 20 * E2E_DRAG_START_DISTANCE_PX;
 const PAN_DRAG_STEPS = 8;
 
+/** Taps on a located bare-land point that a walking villager may have reached in the meantime (its hop draws nothing). */
+const SKY_TAP_ATTEMPTS = 3;
+
+/**
+ * MFW-75: the second sky tap of the page (seeded) releases a sky lantern from the land point. A walking villager can step onto the
+ * located point before the tap lands; that tap hops the villager and spends no draw, so the helper locates the land again. Returns
+ * the gimmick count after the lantern.
+ */
+async function secondSkyTapReleasesLantern(page: Page, countBefore: number): Promise<number> {
+  let n = countBefore;
+  for (let attempt = 0; attempt < SKY_TAP_ATTEMPTS; attempt++) {
+    await waitForCameraRest(page);
+    const sky = await locateStableTarget(page, "sky");
+    await page.touchscreen.tap(sky.x, sky.y);
+    n += 1;
+    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n));
+    const last = await scene(page).getAttribute("data-last-gimmick");
+    if (last === "villager-hop") continue; // a walking villager took the tap; it spends no sky draw
+    expect(last).toBe("sky-lantern"); // seed 8: the second sky draw is a lantern, so anything else is a regression
+    await expect.poll(() => sceneObjectVisible(page, E2E_SKY_LANTERN_NAME)).toBe(true);
+    return n;
+  }
+  throw new Error(`no sky lantern after ${SKY_TAP_ATTEMPTS} land taps`);
+}
+
+/** MFW-75: a lamp tap lights the lamp (head glow and the ground light). */
+async function lampTapLightsLamp(page: Page, expectedCount: number) {
+  await waitForCameraRest(page);
+  const lamp = await locateStableTarget(page, "lamp");
+  await page.touchscreen.tap(lamp.x, lamp.y);
+  await expect(scene(page)).toHaveAttribute("data-last-gimmick", "lamp-glow");
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(expectedCount));
+  await expect.poll(() => sceneObjectVisible(page, E2E_LAMP_GROUND_LIGHT_NAME)).toBe(true);
+}
+
 /** A mouse drag that starts on bare land and pans the world down (the camera travels; MFW-57), then waits for the camera. */
 async function dragFromLand(page: Page) {
   const from = await locateStableTarget(page, "sky");
@@ -78,6 +117,7 @@ async function dragFromLand(page: Page) {
 }
 
 test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a drag fires nothing", async ({ page }) => {
+  test.slow(); // MFW-75: two sky taps, a drag, a house and a water tap, each after a camera rest (SwiftShader)
   const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
   await nextFrames(page);
@@ -90,16 +130,17 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
   await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
   await expect.poll(() => sceneObjectVisible(page, E2E_FIREWORK_NAME)).toBe(true); // drawn now (the mesh exists from mount)
   await expect(scene(page)).not.toHaveAttribute("data-selected-target", "lamp"); // a prop tap selects nothing
+  const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75
 
   // A drag that starts on bare land pans the camera and fires no reaction (MFW-57 / MFW-59 tap-drag separation). It pans the
   // village (which sits under the top overlay at the pier framing on 360 × 640) into view.
   await dragFromLand(page);
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n));
 
   const house = await locateStableTarget(page, "house");
   await page.touchscreen.tap(house.x, house.y);
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "house-lights");
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n + 1));
   await expect.poll(() => sceneObjectVisible(page, E2E_WINDOW_GLOW_NAME)).toBe(true);
   // MFW-72: the smoke puff is drawn too; the program and ring / halo checks below cover it.
   await expect.poll(() => sceneObjectVisible(page, E2E_CHIMNEY_SMOKE_NAME)).toBe(true);
@@ -108,12 +149,12 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
   const water = await locateStableTarget(page, "water");
   await page.touchscreen.tap(water.x, water.y);
   await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");
-  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 3)); // the drag added nothing
+  await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n + 2)); // the drag added nothing
 
   await nextFrames(page);
   const programsAfter = await readProgramCount(page);
   expect(programsAfter).not.toBeNull();
-  // The reactions reuse the ripple / lamp-glow program. (HIGH also compiles the shadow-map programs, so the absolute LOW-tier budget
+  // The reactions reuse the ripple / lamp-glow program (MFW-75: the sky lantern too). (HIGH also compiles the shadow-map programs, so the absolute LOW-tier budget
   // E2E_MAX_SHADER_PROGRAMS is checked in S3.)
   expect(programsAfter).toBe(programsBefore);
   await expect.poll(() => listRingAndHaloMeshes(page)).toEqual([]);
@@ -123,18 +164,21 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
 
 test.describe("reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
-  test("S2 HIGH: a sky tap and a house tap still react (static variants)", async ({ page }) => {
+  test("S2 HIGH: a sky tap, a lamp tap and a house tap still react (static variants)", async ({ page }) => {
+    test.slow(); // MFW-75: two sky taps, a lamp tap, a drag and a house tap, each after a camera rest (SwiftShader)
     const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL);
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     const base = await count(page);
     const sky = await locateStableTarget(page, "sky");
     await page.touchscreen.tap(sky.x, sky.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
+    const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75: the static lantern
+    await lampTapLightsLamp(page, n + 1); // MFW-75: the light switches on instantly
     await dragFromLand(page);
     const house = await locateStableTarget(page, "house");
     await page.touchscreen.tap(house.x, house.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "house-lights");
-    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 2));
+    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n + 2));
     // MFW-72: the instant state is the window light-up; no smoke particles under reduced motion.
     await expect.poll(() => sceneObjectVisible(page, E2E_WINDOW_GLOW_NAME)).toBe(true);
     await nextFrames(page);
@@ -146,7 +190,7 @@ test.describe("reduced motion", () => {
 
 test.describe("LOW", () => {
   test.use({ viewport: { width: 390, height: 844 } });
-  test("S3 LOW: a sky tap launches the cheap firework", async ({ page }) => {
+  test("S3 LOW: a sky tap launches the cheap firework, then a sky lantern; a lamp tap lights the lamp", async ({ page }) => {
     const errors = await openWorld(page, 2, 2, "/");
     await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
     await nextFrames(page);
@@ -156,9 +200,11 @@ test.describe("LOW", () => {
     await page.touchscreen.tap(sky.x, sky.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
     await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
+    const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75
+    await lampTapLightsLamp(page, n + 1); // MFW-75
     await nextFrames(page);
     const programsAfter = await readProgramCount(page);
-    expect(programsAfter).toBe(programsBefore); // the firework adds no shader program
+    expect(programsAfter).toBe(programsBefore); // the firework, the lantern and the lamp light add no shader program
     expect(programsAfter!).toBeLessThanOrEqual(E2E_MAX_SHADER_PROGRAMS);
     expect(errors.pageErrors).toEqual([]);
     expect(errors.consoleErrors).toEqual([]);

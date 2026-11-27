@@ -4,11 +4,13 @@ import { GIMMICK_BOUNCE, KRATHONG_MARK_CUE, LAMP_GLOW_LOOK, RIPPLE_LOOK } from "
 import {
   createBounceFrame,
   createLampGlowFrame,
+  createLampLightFrame,
   createMarkCueState,
   createRippleFrame,
   trackMarkCue,
   writeBounceAt,
   writeLampGlowFrameAt,
+  writeLampLightFrameAt,
   writeMarkCueAt,
   writeRippleFrameAt,
 } from "./gimmickCurves";
@@ -145,5 +147,37 @@ describe("mark cue (MFW-67)", () => {
     expect(state).toEqual({ markedId: "b", startedAtMs: 600 });
     trackMarkCue(state, null, 700);
     expect(state.markedId).toBeNull();
+  });
+});
+
+describe("writeLampLightFrameAt (MFW-75)", () => {
+  const { attackMs, peakIntensity: peak, durationMs } = LAMP_GLOW_LOOK;
+  it("GC1: not reduced — dark at age 0, half-way through the attack at attackMs / 2", () => {
+    const a = writeLampLightFrameAt(0, false, createLampLightFrame());
+    expect(a).toEqual({ intensity: 0, groundScale: 0, animating: true });
+    const b = writeLampLightFrameAt(attackMs / 2, false, createLampLightFrame());
+    expect(b.intensity).toBeCloseTo(peak / 2, 12);
+    expect(b.groundScale).toBeCloseTo(0.75, 12);
+    expect(b.animating).toBe(true);
+  });
+  it("GC2: full strength from attackMs on and never expires", () => {
+    for (const age of [attackMs, attackMs + 1, 10 * durationMs]) {
+      expect(writeLampLightFrameAt(age, false, createLampLightFrame()), String(age)).toEqual({
+        intensity: peak,
+        groundScale: 1,
+        animating: false,
+      });
+    }
+  });
+  it("GC3: reduced motion — full strength at age 0, never animating (instant)", () => {
+    expect(writeLampLightFrameAt(0, true, createLampLightFrame())).toEqual({ intensity: peak, groundScale: 1, animating: false });
+  });
+  it("GC4: negative and NaN ages are age 0; returns out", () => {
+    const zero = writeLampLightFrameAt(0, false, createLampLightFrame());
+    for (const age of [-5, Number.NaN]) {
+      const out = createLampLightFrame();
+      expect(writeLampLightFrameAt(age, false, out)).toBe(out);
+      expect(out).toEqual(zero);
+    }
   });
 });

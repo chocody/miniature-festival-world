@@ -39,7 +39,7 @@ import { findInspectedCreation } from "@/components/ui/inspectedCreation";
 import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { createObjectPoolManager, type NudgeSource } from "@/core/effects";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
-import { LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
+import { BLOB_SHADOW_TIER_GEOMETRY, LIGHT_PRESETS, type LightPresetId } from "@/config/look.config";
 import {
   applyCameraRigPose,
   applyPanDrag,
@@ -217,6 +217,8 @@ interface ToyNightSceneProps {
   /** MFW-72: CHIMNEY_SMOKE_PUFFS_PER_TAP[tier] and FALLING_LEAVES_PER_TAP[tier] (primitives keep the memo effective). */
   smokePuffs: number;
   leavesPerFall: number;
+  /** MFW-75: BLOB_SHADOW_TIER_GEOMETRY[tier], the fan of the lamp ground light (a frozen per-tier object: stable identity). */
+  lampGroundFan: Readonly<{ segments: number; rings: number }>;
   /** MFW-60: a prop / land tap (WORLD_EXPLORE only; absent = no prop proxies and no land / pier handlers). Stable callback. */
   onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex: number) => void;
 }
@@ -258,6 +260,7 @@ const ToyNightScene = memo(function ToyNightScene({
   fireworkSparks,
   smokePuffs,
   leavesPerFall,
+  lampGroundFan,
   onPropTapped,
 }: ToyNightSceneProps) {
   const onKrathongSelected = useCallback(() => onTargetSelected("krathong"), [onTargetSelected]);
@@ -341,6 +344,7 @@ const ToyNightScene = memo(function ToyNightScene({
           smokePuffs={smokePuffs}
           treeLeafAnchors={LOY_KRATHONG_TREE_LEAF_ANCHORS}
           leavesPerFall={leavesPerFall}
+          lampGroundFan={lampGroundFan}
           frame={ENDLESS}
         />
       </group>
@@ -576,7 +580,7 @@ export function SceneViewport({
     setSelectedTarget("lamp");
     setFlightTarget("lamp");
     setFlyRequestId((requestId) => requestId + 1);
-    const gimmick = effectsRef.current?.react("lamp", index, null, stretchIndex) ?? null; // registry (MFW-60): glow + sky lantern
+    const gimmick = effectsRef.current?.react("lamp", index, null, stretchIndex) ?? null; // registry (MFW-60; MFW-75: light on)
     if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
@@ -961,6 +965,7 @@ export function SceneViewport({
             fireworkSparks={FIREWORK_SPARKS_PER_BURST[qualityTier]}
             smokePuffs={CHIMNEY_SMOKE_PUFFS_PER_TAP[qualityTier]}
             leavesPerFall={FALLING_LEAVES_PER_TAP[qualityTier]}
+            lampGroundFan={BLOB_SHADOW_TIER_GEOMETRY[qualityTier]}
             onPropTapped={mode === "WORLD_EXPLORE" ? onPropTapped : undefined}
           />
           <CameraRig
