@@ -2,13 +2,14 @@
 
 import type { RefObject } from "react";
 import type { FestivalEventId } from "@/config/events";
-import { CUSTOMIZER_COPY, KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
+import { KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
 import { KRATHONG_DESIGN_IDS, krathongDesignThumbnailUrl } from "@/config/krathongDesigns.config";
 import { DEFAULT_KRATHONG_APPEARANCE, krathongDesignForAppearance, type KrathongChoice } from "@/core/customization";
 import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
+import { useEventCopy } from "./EventCopyContext";
 
 export interface CustomizerPanelProps {
   eventId: FestivalEventId | null;
@@ -46,6 +47,7 @@ function ViewButton({ label, glyph, onPress }: { label: string; glyph: string; o
  * rotate/zoom buttons, "ถัดไป".
  */
 export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerPanelProps) {
+  const COPY = useEventCopy().customizer;
   const stored = useBuilderStore((s) => s.appearance);
   const chooseKrathong = useBuilderStore((s) => s.chooseKrathong);
   const chosenDesign = krathongDesignForAppearance(stored ?? DEFAULT_KRATHONG_APPEARANCE);
@@ -57,13 +59,13 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
 
   return (
     <section
-      aria-label={CUSTOMIZER_COPY.panelLabel}
+      aria-label={COPY.panelLabel}
       data-testid="customizer-panel"
       className={`${STAGE_LAYOUT_CLASSES.floatBar} touch-manipulation`}
     >
-      {viewControlRef && <p className={UI_CLASSES.caption}>{CUSTOMIZER_COPY.gestureHint}</p>}
+      {viewControlRef && <p className={UI_CLASSES.caption}>{COPY.gestureHint}</p>}
       {eventId === "loy_krathong" && (
-        <div role="group" aria-label={CUSTOMIZER_COPY.designGroupLabel} className="flex justify-center gap-2">
+        <div role="group" aria-label={COPY.designGroupLabel} className="flex justify-center gap-2">
           {KRATHONG_DESIGN_IDS.map((id) => {
             const pressed = chosenDesign === id;
             return (
@@ -88,11 +90,11 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
       )}
       <div className="flex items-center gap-2">
         {viewControlRef && (
-          <div role="group" aria-label={CUSTOMIZER_COPY.viewGroupLabel} className="flex gap-1">
-            <ViewButton label={CUSTOMIZER_COPY.rotateLeft} glyph="⟲" onPress={() => viewControlRef.current?.rotate(-1)} />
-            <ViewButton label={CUSTOMIZER_COPY.rotateRight} glyph="⟳" onPress={() => viewControlRef.current?.rotate(1)} />
-            <ViewButton label={CUSTOMIZER_COPY.zoomIn} glyph="+" onPress={() => viewControlRef.current?.zoom(1)} />
-            <ViewButton label={CUSTOMIZER_COPY.zoomOut} glyph="−" onPress={() => viewControlRef.current?.zoom(-1)} />
+          <div role="group" aria-label={COPY.viewGroupLabel} className="flex gap-1">
+            <ViewButton label={COPY.rotateLeft} glyph="⟲" onPress={() => viewControlRef.current?.rotate(-1)} />
+            <ViewButton label={COPY.rotateRight} glyph="⟳" onPress={() => viewControlRef.current?.rotate(1)} />
+            <ViewButton label={COPY.zoomIn} glyph="+" onPress={() => viewControlRef.current?.zoom(1)} />
+            <ViewButton label={COPY.zoomOut} glyph="−" onPress={() => viewControlRef.current?.zoom(-1)} />
           </div>
         )}
         <button
@@ -101,7 +103,7 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
           onClick={onDone}
           className={`${UI_CLASSES.primaryButton} ml-auto transition-colors motion-reduce:transition-none`}
         >
-          {CUSTOMIZER_COPY.done}
+          {COPY.done}
         </button>
       </div>
     </section>

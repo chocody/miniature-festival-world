@@ -602,6 +602,7 @@ Review: reviewer <…> · qa <…> · <auditors>
 - Merge with a red, pending, missing or different-sha `ci` check; merge without the pinned sha
   (`pr-merge --sha`).
 - Pass `--owner-approved` to `pr-merge` (it is the owner's override; the loop never uses it).
+- Move the release branch: run `gh-rest.mjs release-ff` without `--check`, or push `release` (production deploys are the owner's, docs/runbooks/release.md).
 - Merge a ticket labelled `privacy`, `db` or `migration` (or touching `supabase/**`) — it waits for the owner.
 - Skip, loosen, delete or `.only` tests, or weaken CI/lint/type config to get green.
 - Read, print, copy, edit or commit `.env*` files or the Jira token.

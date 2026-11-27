@@ -149,7 +149,7 @@ describe("river placement strategy", () => {
   });
 
   it("registry", () => {
-    expect(getCreationPlacementStrategy("christmas")).toBeNull();
+    expect(getCreationPlacementStrategy("new_year")).toBeNull();
     expect(getCreationPlacementStrategy("loy_krathong")).toBe(getCreationPlacementStrategy("loy_krathong"));
   });
 

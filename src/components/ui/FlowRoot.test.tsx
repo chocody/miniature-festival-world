@@ -17,6 +17,7 @@ import { WORLD_VIEW_ROTATE_BUTTON_COPY } from "@/config/interaction.config";
 import { FLOW_STEP_COPY } from "@/config/ui.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
+import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
 
 const zones = vi.hoisted(() => ({
   enterWorld: vi.fn(async () => "loaded"),
@@ -548,5 +549,28 @@ describe("minimal UI (MFW-55)", () => {
       expect(document.body.textContent).not.toMatch(RAW_STATE_ID);
     });
     expect(seen).toHaveLength(4);
+  });
+
+  it("FR1 (MFW-91): the christmas entry never says กระทง, สายน้ำ, คุ้งน้ำ or ลอย in the first three steps", () => {
+    const FORBIDDEN = ["กระทง", "สายน้ำ", "คุ้งน้ำ", "ลอย"];
+    const assertClean = () => {
+      const attrs = Array.from(document.querySelectorAll("[aria-label],[placeholder],[title]")).flatMap((el) =>
+        ["aria-label", "placeholder", "title"].flatMap((a) => el.getAttribute(a) ?? []),
+      );
+      const all = [document.body.textContent ?? "", ...attrs].join("\n");
+      for (const w of FORBIDDEN) expect(all, w).not.toContain(w);
+    };
+    const { container } = render(<FlowRoot eventId="christmas" />);
+    expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+    expect(screen.getByRole("region", { name: CHRISTMAS_COPY.customizer.panelLabel })).toBeInTheDocument();
+    assertClean();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(stateOf(container)).toBe("WRITE_WISH");
+    assertClean();
+    fireEvent.change(screen.getByRole("textbox", { name: CHRISTMAS_COPY.wish.textLabel }), { target: { value: "ขอให้ทุกคนมีความสุข" } });
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    expect(stateOf(container)).toBe("RITUAL_RELEASE");
+    expect(screen.getByRole("button", { name: CHRISTMAS_COPY.ritual.releaseButton })).toBeInTheDocument();
+    assertClean();
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
-import { FLOW_STEP_COPY } from "@/config/ui.config";
 import type { FlowState } from "@/core/flow";
+import { useEventCopy } from "./EventCopyContext";
 import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
 
 export interface FlowStepPlaceholderProps {
@@ -12,7 +12,7 @@ export interface FlowStepPlaceholderProps {
 
 /** Stand-in for flow steps whose real UI arrives in later tickets. Shows the step's Thai title and hint (MFW-55). */
 export function FlowStepPlaceholder({ step, nextLabel = "ถัดไป", onNext }: FlowStepPlaceholderProps) {
-  const copy = FLOW_STEP_COPY[step];
+  const copy = useEventCopy().flowSteps[step];
   return (
     <section className="flex w-full flex-col items-start gap-1">
       <h2 className={UI_CLASSES.title}>{copy.title}</h2>

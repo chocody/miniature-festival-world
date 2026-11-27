@@ -1,6 +1,7 @@
-# Owner-supplied models (krathong MFW-65 / MFW-76, house MFW-66)
+# Owner-supplied models (krathong MFW-65 / MFW-76, house MFW-66, ornaments MFW-101)
 
-Sections 1–9: the krathong designs (MFW-65 / MFW-76, backlog 13.1 / 13.7). Section 10: the riverside house (MFW-66, backlog 13.2).
+Sections 1–9: the krathong designs (MFW-65 / MFW-76, backlog 13.1 / 13.7). Section 10: the riverside house (MFW-66, backlog 13.2). Section 11: the
+design picker (MFW-78). Section 12: the Christmas ornaments (MFW-101, backlog 16.15).
 
 The krathong is drawn from owner-supplied 3D models instead of the procedural parts. Each model is decimated **once,
 offline** into three levels of detail and coloured by a committed, deterministic Node script with pastel vertex colours by
@@ -397,3 +398,162 @@ model (`HOUSE_SHELL_TIERS` in `src/config/performance.config.ts`: HIGH / MEDIUM 
   HIGH), no new program (the one design-body material). The first use of a design fetches its river LOD file. Per-LOD body
   triangles stay within the unchanged guards (§9: worst full banana 5 588, medium banana 1 056, low marigold 880).
 
+## 12. Christmas ornaments (MFW-101, backlog 16.15)
+
+The first three owner-made Christmas ornaments go through the same pipeline as the krathong designs: decimated once offline,
+coloured by a committed deterministic script, three LODs, behind a design-source registry. Nothing is mounted in the app
+yet (`featureFlags.christmas` stays false); 16.18 (tree) and 16.20 (customizer) use these pieces.
+
+### 12a. Sources
+
+Owner-made with Hunyuan3D, 2026-11-27: one-piece models (one mesh, POSITION only, about 20 000 triangles, bounds ≈ ±1) and
+colour reference screenshots. The originals and the reference images are **not committed**; `model-3.glb`…`model-7.glb`
+belong to 16.38 (bell, stocking, gift, snowman, gift pile).
+
+| Owner file | Design id | sha256 of the owner file | Colour reference | Colours (sRGB) |
+|---|---|---|---|---|
+| `model-0.glb` | `ball_01` | `f78d78be501ea0148b7c7e630b56d0d9e2dbdb65e8505e1f85cbbbf3cceba9ac` | `ref-01.41.46.png` | body cream `#E0D4C4`, cap and ring tan `#CAB8A0` |
+| `model-1.glb` | `star_01` | `b8259e9ab3e8e65a156854c909714cfb06398fd177ec625ee8c31ee1261ec954` | `ref-01.41.57.png` | mustard `#D1B271` |
+| `model-2.glb` | `bow_01` | `dd08feca523aa4871408db072b2fc42b47c4227951bc03353f6c69625358a5e6` | `ref-01.42.03.png` | terracotta `#CE927E` |
+
+Palette and pairing are DRAFT; the owner reviews them after merge (the reference ring looks slightly lighter than the cap,
+≈ `#DFD2C1`; one tan is used for both, as the AC says "tan cap/ring").
+
+### 12b. Licence
+
+See [NOTICE.md](../../NOTICE.md) §8. The Hunyuan3D terms are **unverified** and an owner gate before 20 Dec.
+
+### 12c. Decimation (offline, once)
+
+Tool: glTF-Transform CLI **v4.5.1** (`@gltf-transform/cli`), installed outside the repo (not a dependency in
+`package.json`). Per design (`<n>` = 0 / 1 / 2, `<id>` = ball_01 / star_01 / bow_01), from a scratch folder that holds the
+owner file:
+
+```sh
+gltf-transform weld model-<n>.glb <id>.weld.glb
+gltf-transform simplify <id>.weld.glb assets/christmas/decimated/<id>.full.glb   --ratio 0.2   --error 0.02
+gltf-transform simplify <id>.weld.glb assets/christmas/decimated/<id>.medium.glb --ratio 0.02  --error 0.02
+gltf-transform simplify <id>.weld.glb assets/christmas/decimated/<id>.low.glb    --ratio 0.005 --error 0.05
+```
+
+Low needs error 0.05: at 0.02 the simplifier stops at 114–310 triangles. No ratio had to be stepped down. The pipeline adds
+no triangles, so the public triangles equal the source triangles.
+
+| Design | LOD | Ratio | Error | Triangles (guard) | Source bytes | Public bytes |
+|---|---|---|---|---|---|---|
+| `ball_01` | full | 0.2 | 0.02 | 4 000 (≤ 4 000) | 48 904 | 82 936 |
+| `ball_01` | medium | 0.02 | 0.02 | 400 (≤ 400) | 5 700 | 12 384 |
+| `ball_01` | low | 0.005 | 0.05 | 100 (≤ 100) | 2 092 | 4 752 |
+| `star_01` | full | 0.2 | 0.02 | 4 000 (≤ 4 000) | 48 932 | 81 564 |
+| `star_01` | medium | 0.02 | 0.02 | 400 (≤ 400) | 5 720 | 9 276 |
+| `star_01` | low | 0.005 | 0.05 | 100 (≤ 100) | 2 120 | 4 332 |
+| `bow_01` | full | 0.2 | 0.02 | 3 998 (≤ 4 000) | 48 712 | 123 500 |
+| `bow_01` | medium | 0.02 | 0.02 | 398 (≤ 400) | 5 628 | 18 392 |
+| `bow_01` | low | 0.005 | 0.05 | 100 (≤ 100) | 2 036 | 7 132 |
+| **Total** | | | | | **169 844** (≤ 655 360) | **344 268** (≤ 1 572 864) |
+
+Largest single file: `bow_01.full.glb`, 123 500 bytes (≤ 262 144).
+
+### 12d. Colouring script
+
+```sh
+node scripts/christmas-models.mjs                     # write public/models/christmas/<id>.<lod>.glb (9 files)
+node scripts/christmas-models.mjs --design ball_01    # one design
+node scripts/christmas-models.mjs --check             # write nothing; exit 1 when a committed output differs
+```
+
+Exit codes: 0 ok · 1 differs (`--check`) · 2 usage error or missing decimated source.
+
+Files: `scripts/christmas-models.mjs` (CLI), `scripts/christmas-models-lib.mjs` (`buildOrnamentLod`,
+`boundsCentreTransform`, `normaliseToBoundingRadius`), `scripts/christmas-models.designs.mjs` (data:
+`CHRISTMAS_MODEL_DESIGNS`, `MODEL_RADIUS`, `ORNAMENT_CREASE_DEG` = the krathong `CREASE_DEG`, DRAFT).
+
+Shared with the krathong pack (`scripts/krathong-models-lib.mjs`, `scripts/model-pack-cli.mjs`):
+
+- `colourAndWeld({ positions, indices, creaseDeg, faceRgb })`: crease normals, per-face vertex colour and corner
+  de-duplication (first-seen order, alpha 255), moved verbatim out of `buildDesignLod`.
+- `writeGlb(input, { generator?, extras? })`: `generator` defaults to `mfw scripts/krathong-models.mjs`; `extras`
+  undefined writes `{ krathongFlames }` (the krathong behaviour), `null` omits `meshes[0].extras`, an object is written
+  as-is.
+- `runModelPackCli({ name, script, designs, lods, sourceDir, publicDir, build })`: the CLI both packs run.
+
+The refactor keeps every krathong output **byte-identical**: `node scripts/krathong-models.mjs --check` exits 0, and KA7 /
+KA9 and CS6 guard it.
+
+Pipeline (`buildOrnamentLod`): read the decimated source → classify each face by its centroid in source coordinates (first
+matching rule wins) → normalise (below) → crease normals → vertex colours → write the GLB with the hook anchor.
+
+### 12e. Region rules
+
+Source coordinates; the first match wins; the last rule is `any`. Colours: the median of the lit half of a pixel box on the
+reference image (the MFW-76 method).
+
+| Design | Rules (in order) |
+|---|---|
+| `ball_01` | 1. `cap` `#CAB8A0`, band y 0.35 … 2, r 0 … 2 (the cap is a column r ≈ 0.27, y 0.35–0.56, the ring sits above it; ref box 215,60–265,80). 2. `body` `#E0D4C4`, any (ref box 180,110–280,200). |
+| `star_01` | 1. `body` `#D1B271`, any (ref box 190,90–300,180). |
+| `bow_01` | 1. `body` `#CE927E`, any (ref box 150,70–330,130). |
+
+The ball cap threshold stays at the lead's `yMin` 0.35: the DAY hero shot shows a tan cap and ring and a cream sphere with
+no bleed either way.
+
+### 12f. GLB contract
+
+As §5, with these differences:
+
+- `asset.generator = "mfw scripts/christmas-models.mjs"`.
+- Optional `meshes[0].extras.ornamentHook: [x, y, z]` (model-local, 4 decimals): the hanging point at the top of the bbox
+  centre axis, `[0, max y, 0]`. All three designs write it; props (16.38) will write none. No `krathongFlames`.
+- Model-local frame: the bbox centre is the origin and the bounding radius about it is `ORNAMENT_MODEL_RADIUS` = 1
+  (normalised per LOD). +Y = hook / up, +Z = the outward face. No rotation is applied: the sources already have +Y up and
+  are mirror-symmetric in z.
+
+Parser: `parseOrnamentDesignGlb` (`src/core/customization/ornamentDesignGlb.ts`) on the shared core `parseDesignGlbCore`
+(`designGlb.ts`, also used by `parseKrathongDesignGlb`, which still requires its flames). Violations throw
+`OrnamentGlbError`; a missing `ornamentHook` gives `hook: null`, a malformed one fails.
+
+### 12g. Runtime
+
+- **Registry.** `ORNAMENT_DESIGN_SOURCES` (`src/config/ornamentModels.config.ts`) maps `ball_01`, `star_01`, `bow_01` to
+  `{ kind: "glb", fallbackColor }` (fallback = the design's main, last-rule colour). L17 adds a `procedural` kind. A design
+  without a source (bell, stocking, gift until 16.38) never fetches and shows the fallback sphere in the default design's
+  tint.
+- **Loader.** `src/components/models/christmas/ornamentDesignLoader.ts`: its own instance of the generic
+  `createDesignGlbLoader` (`src/components/models/designGlbLoader.ts`, also behind the krathong loader). One fetch per URL
+  per session, no retry, never logs; its status is independent of `data-krathong-models`.
+- **Per canvas.** `createOrnamentAssets` / `OrnamentAssetsProvider`: one geometry per loaded (design, LOD), one shared
+  vertex-colour material (`ORNAMENT_DESIGN_BODY_MATERIAL` = the krathong design-body spec), all disposed with the canvas.
+  `useOrnamentDesign` requests a file only once the device profiler has decided the tier (`profiled`).
+- **Fallback.** One `SphereGeometry(1, 8, 6)` per canvas (80 triangles, ≤ the low guard) and one matte material per
+  distinct tint (the same program as any matte standard material). It renders while a design loads and after a failure.
+  It is larger than the ball body (≈ 0.79), so the model "settles" on load (DRAFT).
+- **Hero.** `OrnamentModel` draws a 1-instance `InstancedMesh` (no shadows, no frame callback), so it shares the program
+  with the 16.18 instanced tree. Named `ornament-design-body` / `ornament-fallback`; `userData.ornamentDesign` = design.
+- **No app mount** until 16.18 / 16.20.
+
+### 12h. Budgets and size
+
+- Triangle guards `ORNAMENT_MAX_TRIANGLES_BY_LOD`: full 4 000 (customizer hero), medium 400 (tree on HIGH / MEDIUM), low 100
+  (tree on LOW). DRAFT (plan L16 v3). Measured: §12c.
+- `CHRISTMAS_MODEL_ASSET_BUDGET`: each file ≤ 256 KiB, public total ≤ 1.5 MiB, source total ≤ 640 KiB. Measured: public
+  344 268 bytes, sources 169 844 bytes, largest file 123 500 bytes.
+- World size: `ORNAMENT_WORLD_RADIUS` = `TREE_ORNAMENT_HIT_RADIUS` = 0.3 (DRAFT, owner art call from the 16.18
+  screenshots), so `ORNAMENT_WORLD_SCALE` = 0.3. CA9 checks that every design and the fallback sphere stay ≤ half the
+  minimum slot spacing of a 3-band tree (≈ 0.613 / 2 = 0.3065 at the time of writing; not pinned).
+- Tests: `tests/unit/christmas-model-assets.test.ts` (CA1–CA9), `tests/unit/christmas-models-script.test.ts` (CS1–CS6).
+
+### 12i. Thumbnails and screenshots
+
+`node scripts/christmas-model-shots.mjs` (Playwright Chromium already installed for e2e, honours `PW_CHROMIUM_PATH`,
+SwiftShader; no server and no new dependency: a fake origin served by `page.route` with three from `node_modules`):
+
+- Hero renders `docs/design/screenshots/mfw-101/<id>-hero-{day,night}.png`, 390 × 844, of `<id>.full.glb` with a
+  `MeshStandardMaterial` (white, vertex colours, roughness 1, metalness 0), camera fov 30° at (0, 0, 18) looking at the
+  origin, and copies of the Loy `LIGHT_PRESETS` DAY / NIGHT (background, hemisphere, ambient, key) and `LOOK_RENDERER`
+  (Neutral tone mapping). OT4 pins the copies to the app config.
+- Thumbnails `public/ui/ornament-designs/<id>.png`, 112 × 112, cropped from the DAY hero render (square x 95, y 322,
+  200 px) with the shared `writeThumbnails` of `scripts/krathong-thumbnails.mjs`.
+
+**Deviation:** the AC asks for customize-view screenshots, but Christmas cannot be opened in the app until 16.3 / 16.20
+and Christmas light presets arrive in 16.16. These are harness renders under the Loy presets; the real customize-view shots
+(DAY and NIGHT) are retaken in 16.20.

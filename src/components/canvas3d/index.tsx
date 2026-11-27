@@ -35,7 +35,7 @@ import { OverlaySlot } from "@/components/ui/StageLayout";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
-import { SCENE_TAP_HINT_COPY, type SceneTargetKind } from "@/config/gimmicks.config";
+import { type SceneTargetKind } from "@/config/gimmicks.config";
 import { findInspectedCreation, inspectTapOutcome } from "@/components/ui/inspectedCreation";
 import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { createObjectPoolManager, type NudgeSource } from "@/core/effects";
@@ -1038,7 +1038,7 @@ export function SceneViewport({
       )}
       {tapHint.visible && (
         <OverlaySlot slot="hint">
-          <SceneTapHint text={SCENE_TAP_HINT_COPY.scene3d} reducedMotion={reducedMotion} />
+          <SceneTapHint reducedMotion={reducedMotion} />
         </OverlaySlot>
       )}
       <span className="sr-only" aria-live="polite">

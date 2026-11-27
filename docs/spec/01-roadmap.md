@@ -13,10 +13,11 @@
 | 7 | Mid-Autumn (ไหว้พระจันทร์) | 15 ก.ย. 2027 | PlanarZoneCoord (จัดโคมไฟกระต่ายชมจันทร์) | Expansion แนะนำ |
 | 8 | Halloween (ฮาโลวีน) | 31 ต.ค. 2027 | PlanarZoneCoord (แกะสลักฟักทองวางหน้าหมู่บ้าน) | Expansion แนะนำ |
 
-> **Launch plan — owner decision, 2026-11-23 (added after spec v3.0):**
+> **Launch plan — owner decision, 2026-11-23 (added after spec v3.0; updated 2026-11-27, MFW-87):**
 > - ลอยกระทง 24 พ.ย. 2026 = **ทดสอบส่วนตัว (private test) เท่านั้น** ไม่เปิดสาธารณะ
-> - เปิดสาธารณะครั้งแรก = **Christmas** (วันที่ / ขอบเขต / ที่ทดสอบ: รอคำตอบใน `open-questions.md` ข้อ 14–20, Jira MFW-36)
-> - Phase 1 ยังเป็น Loy Krathong (engine กลางสร้างผ่านลอยกระทง); Christmas ยังเป็น config stub จนกว่าจะมี story ใน `docs/backlog.json`
+> - เปิดสาธารณะครั้งแรก = **Christmas** 20–26 ธ.ค. 2026 (`open-questions.md` ข้อ 14; ตารางด้านบนยังเป็นวันที่เดิมของ spec v3.0)
+> - Phase 1 ยังเป็น Loy Krathong (engine กลางสร้างผ่านลอยกระทง); Christmas กำลังสร้างตาม epic L16 ใน `docs/backlog.json` (แผน `docs/plans/L16-christmas.md`; คำตัดสินของ owner 2026-11-27: `open-questions.md` ข้อ 48–76)
+> - ต้นคริสต์มาสส่วนรวมต้นเดียวที่สูงขึ้นเรื่อยๆ (zone n = ชั้น n, tierId นับจากยอด), ของประดับ 6 แบบจากโมเดลของ owner, ใช้ Supabase project เดิมโดยแยกข้อมูล test / live ด้วยคอลัมน์ `data_scope`; owner ทดสอบคนเดียว
 
 ## 1.1 รายละเอียด Feature, Ritual และ Gimmick ของแต่ละเทศกาลใน Roadmap
 

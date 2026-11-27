@@ -32,6 +32,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     "@/core/world/growingWorldScaler",
     "@/services/api/zonePagination",
     "@/store/useWorldStore",
+    "./EventCopyContext", // MFW-91: per-event copy (strings only)
     "./uiClasses", // MFW-55: class-string constants only (no imports)
   ],
 };

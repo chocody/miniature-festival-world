@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { ZONE_NAV_COPY } from "@/components/ui/ZoneNavigator";
+import { ZONE_NAV_COPY } from "@/config/zoneNav.config";
 import * as literals from "../e2e/fixtures/endlessRiver";
 
 describe("endless-river e2e literals (MFW-58)", () => {

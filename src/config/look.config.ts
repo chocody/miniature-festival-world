@@ -137,6 +137,8 @@ export const HUD_GLYPH_COLORS = Object.freeze({
   // MFW-85: the sky launch switch glyphs (firework burst, sky lantern). DRAFT.
   firework: Object.freeze({ burst: LOOK_PALETTE.flowerCoral, spark: LOOK_PALETTE.lanternGlow }),
   skyLantern: Object.freeze({ body: LOOK_PALETTE.lanternGlow, stroke: LOOK_PALETTE.doorWood, flame: LOOK_PALETTE.flameCore }),
+  // MFW-91: Find My row icon for Christmas. DRAFT art.
+  ornament: Object.freeze({ body: LOOK_PALETTE.flowerCoral, cap: LOOK_PALETTE.flowerYellow, hook: LOOK_PALETTE.doorWood }),
 });
 
 export type LookToneMappingId = "NEUTRAL" | "ACES_FILMIC" | "AGX";

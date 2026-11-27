@@ -29,25 +29,43 @@ export function thumbnailSourcePath(id) {
   return join(THUMBNAIL_SOURCE_DIR, `after-${id}-customize-day.png`);
 }
 
+/**
+ * Crops `crop` (source px) out of each source shot and writes an `outPx` square PNG per id to `<outDir>/<id>.png`.
+ * Paths are relative to the repo root. `page` is a Playwright page (DPR 1).
+ * @param {import("@playwright/test").Page} page
+ * @param {{ ids: readonly string[], sourcePath: (id: string) => string, sourceWidthPx: number,
+ *   crop: { x: number, y: number, size: number }, outPx: number, outDir: string }} options
+ */
+export async function writeThumbnails(page, { ids, sourcePath, sourceWidthPx, crop, outPx, outDir }) {
+  const scale = outPx / crop.size;
+  mkdirSync(join(ROOT, outDir), { recursive: true });
+  for (const id of ids) {
+    const data = readFileSync(join(ROOT, sourcePath(id))).toString("base64");
+    await page.setContent(
+      `<html><body style="margin:0"><div style="width:${outPx}px;height:${outPx}px;overflow:hidden">` +
+        `<img src="data:image/png;base64,${data}" style="display:block;width:${sourceWidthPx * scale}px;` +
+        `margin-left:${-crop.x * scale}px;margin-top:${-crop.y * scale}px"></div></body></html>`,
+    );
+    await page.locator("img").evaluate((img) => (img.complete ? undefined : new Promise((r) => img.addEventListener("load", r))));
+    const out = join(ROOT, outDir, `${id}.png`);
+    await page.screenshot({ type: "png", path: out, clip: { x: 0, y: 0, width: outPx, height: outPx } });
+    process.stdout.write(`${join(outDir, `${id}.png`)}\n`);
+  }
+}
+
 async function main() {
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM_PATH || undefined });
   try {
     const page = await browser.newPage({ viewport: { width: THUMBNAIL_OUT_PX, height: THUMBNAIL_OUT_PX }, deviceScaleFactor: 1 });
-    const scale = THUMBNAIL_OUT_PX / THUMBNAIL_CROP.size;
-    mkdirSync(join(ROOT, THUMBNAIL_OUT_DIR), { recursive: true });
-    for (const id of THUMBNAIL_DESIGN_IDS) {
-      const data = readFileSync(join(ROOT, thumbnailSourcePath(id))).toString("base64");
-      await page.setContent(
-        `<html><body style="margin:0"><div style="width:${THUMBNAIL_OUT_PX}px;height:${THUMBNAIL_OUT_PX}px;overflow:hidden">` +
-          `<img src="data:image/png;base64,${data}" style="display:block;width:${SOURCE_WIDTH_PX * scale}px;` +
-          `margin-left:${-THUMBNAIL_CROP.x * scale}px;margin-top:${-THUMBNAIL_CROP.y * scale}px"></div></body></html>`,
-      );
-      await page.locator("img").evaluate((img) => (img.complete ? undefined : new Promise((r) => img.addEventListener("load", r))));
-      const out = join(ROOT, THUMBNAIL_OUT_DIR, `${id}.png`);
-      await page.screenshot({ type: "png", path: out, clip: { x: 0, y: 0, width: THUMBNAIL_OUT_PX, height: THUMBNAIL_OUT_PX } });
-      process.stdout.write(`${join(THUMBNAIL_OUT_DIR, `${id}.png`)}\n`);
-    }
+    await writeThumbnails(page, {
+      ids: THUMBNAIL_DESIGN_IDS,
+      sourcePath: thumbnailSourcePath,
+      sourceWidthPx: SOURCE_WIDTH_PX,
+      crop: THUMBNAIL_CROP,
+      outPx: THUMBNAIL_OUT_PX,
+      outDir: THUMBNAIL_OUT_DIR,
+    });
   } finally {
     await browser.close();
   }

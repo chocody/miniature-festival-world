@@ -10,6 +10,9 @@ export const REPO_OWNER = "chocody";
 export const GH_ACCOUNT = "chocody";
 export const GH_PROXY_PLACEHOLDER = "proxy-injected";
 export const CI_CHECK_NAME = "ci";
+/** The Vercel production branch from 19 Dec 2026; moves only by fast-forward to a main sha whose ci passed. */
+export const RELEASE_BRANCH = "release";
+export const MAIN_BRANCH = "main";
 export const LOG_TAIL_LINES = 200;
 export const LOG_MAX_CHARS = 20000;
 
@@ -266,7 +269,7 @@ export function mergeVerdict({ after, sha }) {
  */
 export function createGitHub({ run, repo = REPO_SLUG }) {
   /**
-   * @param {"GET" | "POST" | "PUT" | "DELETE"} method
+   * @param {"GET" | "POST" | "PUT" | "PATCH" | "DELETE"} method
    * @param {string} path
    * @param {string[]} [fields] `-f k=v` / `-F k=v` pairs, flattened
    * @param {{ raw?: boolean }} [opts] raw: return stdout unparsed (job logs are text)
@@ -514,5 +517,85 @@ export function createGitHub({ run, repo = REPO_SLUG }) {
     return { rerun: true, runId: ids.runId, previousCheckRunId: run.id };
   }
 
-  return { repoInfo, prCreate, prGet, prComment, ticketPrs: ticketPrsOf, branchPrs, prMerge, mergeRefusal, ciInfo, ciRerun };
+  /**
+   * Owner-only: fast-forward `release` (the Vercel production branch from 19 Dec) to a main sha whose ci passed.
+   * Refuses unless ci succeeded on `sha`, `sha` is on main and the move is a fast-forward. Never forces.
+   * The write is never retried; the follow-up GET decides whether release moved.
+   * @param {string} sha
+   * @param {{ ownerApproved?: boolean, check?: boolean }} [opts]
+   */
+  function releaseFastForward(sha, opts = {}) {
+    if (!isSha(sha)) throw new GhEnvError("release-ff needs --sha <40 hex chars>");
+    /** @type {{ moved: boolean, unchanged: boolean, created: boolean, checked: boolean, from: string | null, to: string, checkRunId: number | null, aheadBy: number | null, commits: { sha: string, subject: string }[], reason: string | null, writeError: { status: number | null, message: string } | null }} */
+    const result = {
+      moved: false,
+      unchanged: false,
+      created: false,
+      checked: false,
+      from: null,
+      to: sha,
+      checkRunId: null,
+      aheadBy: null,
+      commits: [],
+      reason: null,
+      writeError: null,
+    };
+    /** @param {string} reason */
+    const refuse = (reason) => ({ ...result, reason });
+    if (!opts.ownerApproved && !opts.check) {
+      return refuse("owner-approved required: release-ff moves production; the owner passes --owner-approved");
+    }
+    const ciJson = api("GET", `repos/${repo}/commits/${sha}/check-runs?check_name=ci&filter=latest&per_page=100`);
+    const ci = selectCiRun(ciJson);
+    if (ci.count !== 1 || !ci.run) return refuse(`expected one ci check-run on ${sha}, found ${ci.count}`);
+    result.checkRunId = ci.run.id;
+    // Only the GitHub Actions ci run counts: another app could publish a check named ci (selectCiRun stays unchanged).
+    const rawRun = (Array.isArray(ciJson?.check_runs) ? ciJson.check_runs : []).find((/** @type {any} */ r) => r?.name === CI_CHECK_NAME);
+    if (rawRun?.app?.slug !== "github-actions") {
+      return refuse(`the ci check-run on ${sha} is from app ${rawRun?.app?.slug ?? "unknown"}, not github-actions`);
+    }
+    if (ci.run.status !== "completed" || ci.run.conclusion !== "success") {
+      return refuse(`ci on ${sha} is ${ci.run.status} / ${ci.run.conclusion ?? "no conclusion"}, not completed / success`);
+    }
+    const onMain = api("GET", `repos/${repo}/compare/${sha}...${MAIN_BRANCH}?per_page=1`);
+    if (onMain?.status !== "ahead" && onMain?.status !== "identical") {
+      return refuse(`${sha} is not on ${MAIN_BRANCH} (compare status ${onMain?.status ?? "unknown"})`);
+    }
+    /** @type {string | null} */
+    let from = null;
+    try {
+      from = String(api("GET", `repos/${repo}/git/ref/heads/${RELEASE_BRANCH}`)?.object?.sha ?? "") || null;
+    } catch (err) {
+      if (!(err instanceof GhApiError) || err.status !== 404) throw err;
+    }
+    result.from = from;
+    if (from === sha) return { ...result, unchanged: true };
+    if (from !== null) {
+      const cmp = api("GET", `repos/${repo}/compare/${from}...${sha}?per_page=100`);
+      result.aheadBy = typeof cmp?.ahead_by === "number" ? cmp.ahead_by : null;
+      result.commits = (Array.isArray(cmp?.commits) ? cmp.commits : []).map((/** @type {any} */ c) => ({
+        sha: String(c?.sha ?? ""),
+        subject: String(c?.commit?.message ?? "").split("\n")[0],
+      }));
+      if (cmp?.status !== "ahead") {
+        return refuse(`not a fast-forward: ${RELEASE_BRANCH} ${from} to ${sha} is ${cmp?.status ?? "unknown"}`);
+      }
+    }
+    if (opts.check) return { ...result, checked: true };
+    try {
+      if (from !== null) {
+        api("PATCH", `repos/${repo}/git/refs/heads/${RELEASE_BRANCH}`, ["-f", `sha=${sha}`, "-F", "force=false"]);
+      } else {
+        api("POST", `repos/${repo}/git/refs`, ["-f", `ref=refs/heads/${RELEASE_BRANCH}`, "-f", `sha=${sha}`]);
+      }
+    } catch (err) {
+      if (!(err instanceof GhApiError)) throw err;
+      result.writeError = { status: err.status, message: err.message };
+    }
+    const at = api("GET", `repos/${repo}/git/ref/heads/${RELEASE_BRANCH}`)?.object?.sha ?? null;
+    if (at === sha) return { ...result, moved: true, created: from === null };
+    return refuse(`${RELEASE_BRANCH} is at ${at ?? "unknown"}, expected ${sha}`);
+  }
+
+  return { repoInfo, prCreate, prGet, prComment, ticketPrs: ticketPrsOf, branchPrs, prMerge, mergeRefusal, ciInfo, ciRerun, releaseFastForward };
 }

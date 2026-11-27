@@ -41,6 +41,20 @@ describe("project agents (.claude/agents)", () => {
 });
 
 describe("loop skills", () => {
+  it("LS1 never moves the release branch", () => {
+    const ticket = read(".claude/skills/loop-ticket/SKILL.md");
+    expect(ticket.slice(ticket.lastIndexOf("## Never"))).toContain("release-ff");
+    for (const rel of [".claude/skills/loop-ticket/SKILL.md", ".claude/skills/loop-epic/SKILL.md"]) {
+      const text = read(rel);
+      const lines = text.split("\n");
+      const lastHeading = Math.max(lines.lastIndexOf("## Never"), lines.lastIndexOf("## Rules"));
+      lines.forEach((line, i) => {
+        if (line.includes("release-ff")) expect(i).toBeGreaterThan(lastHeading);
+      });
+      expect(text).not.toMatch(/git push[^\n]*\brelease\b/);
+    }
+  });
+
   const ticket = read(".claude/skills/loop-ticket/SKILL.md");
   const epic = read(".claude/skills/loop-epic/SKILL.md");
   const waitCi = read("scripts/wait-ci.sh");

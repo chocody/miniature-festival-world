@@ -1,5 +1,8 @@
+import { useEventCopy } from "./EventCopyContext";
+
 /** Pill telling first-time visitors the scene can be tapped; positioned by the `hint` overlay slot (MFW-54). Never takes a tap itself. */
-export function SceneTapHint({ text, reducedMotion }: { readonly text: string; readonly reducedMotion: boolean }) {
+export function SceneTapHint({ reducedMotion }: { readonly reducedMotion: boolean }) {
+  const text = useEventCopy().sceneTapHint;
   return (
     <p
       data-testid="scene-tap-hint"

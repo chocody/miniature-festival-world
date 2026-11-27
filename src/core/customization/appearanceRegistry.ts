@@ -1,17 +1,20 @@
 import type { FestivalEventId } from "@/config/events/types";
 import { DEFAULT_KRATHONG_APPEARANCE, parseKrathongAppearance } from "./krathongAppearance";
 import { DEFAULT_ORNAMENT_APPEARANCE, parseOrnamentAppearance } from "./ornamentAppearance";
+import { DEFAULT_STAR_APPEARANCE, parseStarAppearance } from "./starAppearance";
 import type { AppearanceParseResult, EventAppearance, KrathongAppearance } from "./types";
 
 type AppearanceParser = (input: unknown) => AppearanceParseResult<EventAppearance>;
 const APPEARANCE_PARSERS: ReadonlyMap<FestivalEventId, AppearanceParser> = new Map<FestivalEventId, AppearanceParser>([
   ["loy_krathong", parseKrathongAppearance],
   ["christmas", parseOrnamentAppearance],
+  ["new_year", parseStarAppearance],
 ]);
 
 const DEFAULT_APPEARANCES: ReadonlyMap<FestivalEventId, EventAppearance> = new Map<FestivalEventId, EventAppearance>([
   ["loy_krathong", DEFAULT_KRATHONG_APPEARANCE],
   ["christmas", DEFAULT_ORNAMENT_APPEARANCE],
+  ["new_year", DEFAULT_STAR_APPEARANCE],
 ]);
 
 /** Server write-path gate for creations_public.appearance, keyed by event. Never throws. */
@@ -26,7 +29,10 @@ export function defaultEventAppearance(eventId: FestivalEventId): EventAppearanc
   return DEFAULT_APPEARANCES.get(eventId) ?? null;
 }
 
-/** The union has no tag ({design} is the exact ornament key set): a krathong appearance has an own `base`. */
+/**
+ * No tag in the union. A krathong appearance always has an own `base`. Ornament and star are exactly `{design}` (their
+ * parsers reject `base`), so they never do. Ornament vs star is not decided by shape: use the event id.
+ */
 export function isKrathongAppearance(a: EventAppearance): a is KrathongAppearance {
   return Object.prototype.hasOwnProperty.call(a, "base");
 }
