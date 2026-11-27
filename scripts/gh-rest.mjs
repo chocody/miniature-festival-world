@@ -25,7 +25,7 @@
 //                                          --owner-approved (owner override).
 //   pr-land <pr> --sha <40-hex> [--risk] [--ignore <check-run-id>]   wait for ci on exactly <sha> (scripts/wait-ci.sh), then pr-merge only on
 //                                          "GATE: PASS sha=<sha>"; keeps every pr-merge refusal and checks them first
-//   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations and the job log tail
+//   ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations, the run's jobs and the failing job log tail
 //   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
 //
 // Mode: MFW_GH_MODE=cloud|local, else cloud when CLAUDE_CODE_REMOTE is set, else local.
@@ -75,7 +75,7 @@ const USAGE = `Usage: node scripts/gh-rest.mjs <command>
                                          db/migration labels and --risk; --owner-approved is the owner's override
   pr-land <pr> --sha <40-hex> [--risk] [--ignore <id>]   wait for ci on <sha> (--ignore: the failed check-run id after
                                          a ci-rerun), then pr-merge only on "GATE: PASS sha=<sha>"
-  ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations and the job log tail
+  ci-info <sha> [--ignore <check-run-id>]   ci check-run, annotations, the run's jobs and the failing job log tail
   ci-rerun <sha>                         re-run the failed jobs of the ci workflow run (may be refused)
 
 Mode: MFW_GH_MODE=cloud|local, else cloud when CLAUDE_CODE_REMOTE is set, else local.

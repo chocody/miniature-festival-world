@@ -13,7 +13,7 @@ a fresh session each day) as well as on the owner's laptop. This page is the set
   HTTPS calls go through `HTTPS_PROXY`, and checks `GET /rest/api/3/myself` before every command.
 - **GitHub**: `node scripts/gh-rest.mjs` (REST via `gh api` only; the proxy authenticates `gh` and git). GraphQL
   is blocked in cloud sessions, so `gh pr …`, `gh repo view` and similar commands are never used.
-- **CI**: GitHub Actions, unchanged (`.github/workflows/ci.yml`, job `ci`). The merge gate is described in
+- **CI**: GitHub Actions, `.github/workflows/ci.yml` runs three jobs (`checks`, `e2e` in two shards, `ci`); the gate is the `ci` check-run. The merge gate is described in
   `docs/ci.md`.
 
 ## The mfw-loop environment

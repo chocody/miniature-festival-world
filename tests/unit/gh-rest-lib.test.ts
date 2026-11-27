@@ -279,6 +279,62 @@ describe("createGitHub", () => {
     expect(info2.annotationsError).toContain("403");
   });
 
+  describe("ci info across the jobs of the run", () => {
+    const checkRuns = ok({
+      check_runs: [{ id: 5, name: "ci", status: "completed", conclusion: "failure", html_url: "https://github.com/o/r/actions/runs/9/job/55" }],
+    });
+    const job = (name: string, id: number, conclusion: string, steps: unknown[] = []) => ({ name, id, status: "completed", conclusion, steps });
+
+    it("tails the log of the failing shard, not the aggregator", () => {
+      const jobs = ok({
+        jobs: [
+          job("checks", 51, "success"),
+          job("e2e (1/2)", 52, "success"),
+          job("e2e (2/2)", 53, "failure", [{ name: "Run e2e", conclusion: "failure" }]),
+          job("ci", 55, "failure"),
+        ],
+      });
+      const { run, calls } = fakeRun([checkRuns, ok([]), ok("ci agg"), jobs, ok("shard line 1\nshard line 2")]);
+      const info = createGitHub({ run }).ciInfo(SHA);
+      expect(info.jobs.map((j: { name: string; conclusion: string | null }) => [j.name, j.conclusion])).toEqual([
+        ["checks", "success"],
+        ["e2e (1/2)", "success"],
+        ["e2e (2/2)", "failure"],
+        ["ci", "failure"],
+      ]);
+      expect(info.jobs[2].failedStep).toBe("Run e2e");
+      expect(info.failingJob).toEqual({ name: "e2e (2/2)", id: 53, logsTail: "shard line 1\nshard line 2", logsError: null });
+      expect(info.logsTail).toBe("ci agg");
+      expect(calls[3].join(" ")).toContain("actions/runs/9/jobs");
+      expect(calls[4].join(" ")).toContain("actions/jobs/53/logs");
+    });
+
+    it("has no failing job when everything succeeded", () => {
+      const jobs = ok({ jobs: [job("checks", 51, "success"), job("ci", 55, "success")] });
+      const { run, calls } = fakeRun([checkRuns, ok([]), ok("x"), jobs]);
+      const info = createGitHub({ run }).ciInfo(SHA);
+      expect(info.failingJob).toBeNull();
+      expect(info.jobsError).toBeNull();
+      expect(calls).toHaveLength(4);
+    });
+
+    it("reports a log fetch error on the failing job without throwing", () => {
+      const jobs = ok({ jobs: [job("checks", 51, "failure"), job("ci", 55, "failure")] });
+      const { run } = fakeRun([checkRuns, ok([]), ok("x"), jobs, fail(404, "gone")]);
+      const info = createGitHub({ run }).ciInfo(SHA);
+      expect(info.failingJob).toMatchObject({ name: "checks", id: 51, logsTail: null });
+      expect(info.failingJob?.logsError).toContain("404");
+    });
+
+    it("reports a jobs listing error without throwing", () => {
+      const { run } = fakeRun([checkRuns, ok([]), ok("x"), fail(403, "forbidden")]);
+      const info = createGitHub({ run }).ciInfo(SHA);
+      expect(info.jobs).toEqual([]);
+      expect(info.jobsError).toContain("403");
+      expect(info.failingJob).toBeNull();
+    });
+  });
+
   it("re-runs failed jobs and propagates refusals", () => {
     const checkRuns = ok({ check_runs: [{ id: 5, name: "ci", status: "completed", conclusion: "cancelled", html_url: "https://github.com/o/r/actions/runs/123/job/55" }] });
     const { run, calls } = fakeRun([checkRuns, ok("")]);
