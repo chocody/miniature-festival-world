@@ -8,6 +8,7 @@ import { publicCreationsToRiverItems } from "@/core/world";
 import { toClientPublicCreation } from "@/services/api/zoneClient";
 import * as copy from "../e2e/fixtures/wishCopy";
 import { E2E_SECOND_CREATION_ID, makeSwitchZoneItem } from "../e2e/fixtures/wishSwitchRoutes";
+import { e2eAppearanceWithDesign } from "../e2e/fixtures/krathongModels";
 import { E2E_CREATION_ID } from "../e2e/fixtures/ritualRoutes";
 
 describe("wish switch e2e fixtures (MFW-63)", () => {
@@ -42,5 +43,17 @@ describe("wish switch e2e fixtures (MFW-63)", () => {
     expect(closed!.publicWishText).toBeNull();
     expect(closed!.displayName).toBeNull();
     expect(E2E_SECOND_CREATION_ID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("WF1 (MFW-81): an own item with a design passes the client validator; without one it stays pre-14.4", () => {
+    const now = Date.now();
+    const wish = { open: false, text: "x", name: null };
+    const item = makeSwitchZoneItem(E2E_CREATION_ID, now, wish, e2eAppearanceWithDesign("naga_01"));
+    const parsed = toClientPublicCreation(item, "loy_krathong", 1);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.appearance.design).toBe("naga_01");
+    const legacy = toClientPublicCreation(makeSwitchZoneItem(E2E_CREATION_ID, now, wish), "loy_krathong", 1);
+    expect(legacy).not.toBeNull();
+    expect("design" in legacy!.appearance).toBe(false);
   });
 });

@@ -14,7 +14,6 @@ const FILES = [
   "src/components/ui/inspectedCreation.ts",
   "src/components/ui/WishBubble.tsx",
   "src/components/ui/WishReportControl.tsx",
-  "src/components/ui/krathongAppearanceSummary.ts",
   "src/services/api/reportClient.ts",
   "src/config/inspect.config.ts",
 ];
@@ -35,7 +34,7 @@ describe("inspect popup boundary", () => {
     expect(source).not.toMatch(CUSTOMIZATION_VALUE_IMPORT);
   });
   it("the ui helpers import the customization types only from the types file", () => {
-    for (const f of ["src/components/ui/inspectedCreation.ts", "src/components/ui/krathongAppearanceSummary.ts"]) {
+    for (const f of ["src/components/ui/inspectedCreation.ts"]) {
       expect(read(f)).toMatch(/import type \{[^}]*\} from "@\/core\/customization\/types"/);
     }
   });

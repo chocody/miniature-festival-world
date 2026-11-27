@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
 import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
+import { krathongDesignThumbnailUrl } from "@/config/krathongDesigns.config";
+import { krathongDesignForAppearance } from "@/core/customization/krathongDesign";
 import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
 import { getReportSession, type ReportSession } from "@/services/api/reportClient";
 import type { InspectedCreation } from "./inspectedCreation";
-import { describeKrathongAppearance } from "./krathongAppearanceSummary";
 import { UI_CLASSES, UI_GLYPHS } from "./uiClasses";
 import { WishReportControl } from "./WishReportControl";
 
@@ -20,14 +22,15 @@ export interface InspectPopupProps {
 
 /**
  * Card for a tapped river krathong. An open wish shows name (or "ไม่ระบุชื่อ") + wish + Report; a closed wish shows only the
- * krathong's appearance (owner decision 29, MFW-63). No id or time is ever shown.
+ * chosen design's thumbnail (owner decision 29, MFW-63; MFW-81: no part list, a krathong without a design shows the default).
+ * No id or time is ever shown.
  */
 export function InspectPopup({ creation, onClose, reportSession, ownerSection }: InspectPopupProps) {
   const session = reportSession ?? getReportSession();
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const copy = INSPECT_POPUP_COPY;
-  const rows = describeKrathongAppearance(creation.appearance);
+  const design = krathongDesignForAppearance(creation.appearance);
   const isOpen = creation.publicWishText !== null;
 
   useEffect(() => {
@@ -54,24 +57,14 @@ export function InspectPopup({ creation, onClose, reportSession, ownerSection }:
           <span aria-hidden="true">{UI_GLYPHS.close}</span>
         </button>
       </div>
-      <h3 className={`mt-3 ${UI_CLASSES.subheading}`}>{copy.appearanceHeading}</h3>
-      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        {rows.map((row) => (
-          <div key={row.key} className="contents">
-            <dt className="text-ink-muted">{row.label}</dt>
-            <dd>
-              {row.swatch && (
-                <span
-                  aria-hidden="true"
-                  className={`inline-block h-3 w-3 align-middle ${UI_CLASSES.swatch}`}
-                  style={{ backgroundColor: row.swatch }}
-                />
-              )}{" "}
-              {row.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <span
+        role="img"
+        aria-label={KRATHONG_DESIGN_LABELS[design]}
+        data-testid="inspect-design"
+        data-design-id={design}
+        className="mt-3 block size-12 rounded-field bg-cover bg-center"
+        style={{ backgroundImage: `url(${krathongDesignThumbnailUrl(design)})` }}
+      />
       {isOpen && (
         <>
           <p className="mt-3" data-testid="inspect-display-name">

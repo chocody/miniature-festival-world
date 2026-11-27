@@ -1,16 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_CREATION_ID, E2E_OWNER_TOKEN_STORAGE_KEY } from "./fixtures/ritualRoutes";
 import {
-  INSPECT_DIALOG_TITLE,
   OWNER_STAYED_PRIVATE,
   PHONE_REASON,
   REPORT_LABEL,
   WISH_SWITCH_LABEL,
 } from "./fixtures/wishCopy";
 import { routeWishSwitchWorld } from "./fixtures/wishSwitchRoutes";
-import { waitForActiveEvent } from "./helpers/activeEvent";
-import { E2E_PINNED_TIER_URL, installSceneProbe, locateKrathongById, waitForCameraRest } from "./helpers/sceneProbe";
-import { completeWishStep, type WishStepOptions } from "./helpers/wishStep";
+import { lowTier, openFirstCreationPopup, walkToWorld } from "./helpers/ownKrathongPopup";
+import { E2E_PINNED_TIER_URL, installSceneProbe } from "./helpers/sceneProbe";
 
 // MFW-63 (backlog 12.2) × MFW-74: the owner's "เปิดให้ทุกคนเห็น" switch lives in the inspect popup of the user's own krathong (3D);
 // the Find My picker only brings a krathong into view.
@@ -18,47 +16,7 @@ test.use({ hasTouch: true });
 
 const OPEN_WISH = "ขอให้ทุกคนมีความสุข e2e switch";
 const NAME = "น้องมะลิ";
-const FIND_MY_BUTTON = "ค้นหาของฉัน";
-const VIEWPORT = '[aria-label="Toy-like night river preview"]';
 const root = (page: Page) => page.locator("[data-flow-state]");
-const entries = (page: Page) => page.locator('[data-testid="my-creations-list"] li');
-const INSPECT_DIALOG = (page: Page) => page.getByRole("dialog", { name: INSPECT_DIALOG_TITLE });
-
-/**
- * Own krathong popup: the just-released krathong is drawn by the ritual until a reload, so reload, release a second krathong (two entries:
- * Find My opens the picker), choose the older row (the first creation), wait for the camera and tap it.
- */
-async function openFirstCreationPopup(page: Page) {
-  await page.reload();
-  await walkToWorld(page);
-  await page.getByRole("button", { name: FIND_MY_BUTTON }).click();
-  await expect(entries(page)).toHaveCount(2);
-  await entries(page).nth(1).locator("button").first().click();
-  await expect(page.locator(VIEWPORT)).toHaveAttribute("data-find-my", "following");
-  await expect(page.locator('[data-testid="my-creations-list"]')).toHaveCount(0); // choosing a row closes the picker
-  await waitForCameraRest(page);
-  const at = await locateKrathongById(page, E2E_CREATION_ID);
-  await page.touchscreen.tap(at.x, at.y);
-  const dialog = INSPECT_DIALOG(page);
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-/** LOW tier (same weak-device signal as device-profiler.spec.ts): a real 3D canvas that is cheap enough under SwiftShader on a loaded runner. */
-async function lowTier(page: Page) {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "deviceMemory", { get: () => 2, configurable: true });
-    Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 2, configurable: true });
-  });
-}
-
-async function walkToWorld(page: Page, text?: string, options: WishStepOptions = {}) {
-  await waitForActiveEvent(page);
-  await page.getByRole("button", { name: "ถัดไป" }).click();
-  await completeWishStep(page, text, options);
-  await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
-}
 
 /** Every page error and every request URL, checked at the end of each test. */
 function watch(page: Page) {
