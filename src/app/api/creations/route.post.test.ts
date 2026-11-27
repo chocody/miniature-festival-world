@@ -6,7 +6,7 @@ const PRIVATE_NAMES = [
   "owner_token", "ownerToken", "owner_token_hash", "ownerTokenHash", "private_wish_text", "privateWishText",
   "privateWish", "private_wish_key_id", "report_count", "reportCount", "moderation_status", "moderationStatus",
 ];
-const ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PRIVATE_WISH_KEY", "PRIVATE_WISH_KEY_ID", "VERCEL_ENV"];
+const ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PRIVATE_WISH_KEY", "PRIVATE_WISH_KEY_ID", "VERCEL_ENV", "MFW_ACTIVE_EVENT_OVERRIDE"];
 
 beforeEach(() => {
   vi.resetModules();
