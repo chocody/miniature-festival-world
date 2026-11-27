@@ -1086,6 +1086,24 @@
           "blockedBy": [
             "14.1"
           ]
+        },
+        {
+          "id": "14.7",
+          "summary": "Own-krathong popup shows the chosen design instead of the old part list",
+          "goal": "Owner (2026-11-27): after 14.4 the user chooses a whole design, so the own-krathong popup should no longer list base / leaves / flowers / candle that the user never chose (split from 14.4 as a separate later card).",
+          "ac": [
+            "Tapping your own krathong opens the popup showing the chosen design (its thumbnail, no part list); krathongs saved before 14.4 show the default design; the owner switch and private reveal keep working unchanged; no private text or token reaches any public path (invariant C)",
+            "Unit tests and e2e cover the popup for a krathong with a design and for a pre-14.4 krathong; before / after screenshots at phone size, DAY and NIGHT"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui",
+            "privacy"
+          ],
+          "blockedBy": [
+            "14.4",
+            "14.6"
+          ]
         }
       ]
     },
