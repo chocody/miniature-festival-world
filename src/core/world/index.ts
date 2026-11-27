@@ -5,6 +5,7 @@ export * from "./riversidePaths";
 export * from "./villagers";
 export * from "./ambientLife";
 export * from "./waterHighlights";
+export * from "./waterWaves";
 export * from "./bobbing";
 export * from "./riverLanes";
 export * from "./riverFlow";

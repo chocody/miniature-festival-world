@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { DynamicDrawUsage } from "three";
 import { BoxGeometry, Color, ConeGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial } from "three";
 import { buildRibbonGeometryData, createRiverChannel } from "@/core/world";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { createBlobShadowGeometry } from "./blobShadowMeshes";
-import { createBankGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry, createStaticMeshGeometry } from "./geometry";
+import { createBankGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry, createStaticMeshGeometry, createWaterSurfaceGeometry } from "./geometry";
 import { staticMeshGeometry, type StaticPartMesh } from "@/config/scene.config";
 import { Box3, Triangle, Vector3 } from "three";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
@@ -221,5 +222,18 @@ describe("static mesh parts (MFW-66, the owner house model)", () => {
     const base = { color: "#ffffff", roughness: 1, metalness: 0, flatShading: false } as const;
     expect(createMatteMaterial({ ...base, vertexColors: true }).vertexColors).toBe(true);
     expect(createMatteMaterial(base).vertexColors).toBe(false);
+  });
+});
+
+describe("createWaterSurfaceGeometry (MFW-79)", () => {
+  it("WG1: position + a dynamic up normal only (no new program variant), 288 triangles", () => {
+    const g = createWaterSurfaceGeometry(LOY_KRATHONG_RIVER_LAYOUT.water);
+    expect(Object.keys(g.attributes)).toEqual(["position", "normal"]);
+    const normal = g.getAttribute("normal");
+    expect("usage" in normal && normal.usage).toBe(DynamicDrawUsage);
+    for (let i = 0; i < normal.count; i++) expect([normal.getX(i), normal.getY(i), normal.getZ(i)]).toEqual([0, 1, 0]);
+    expect(countTriangles(g)).toBe(2 * 48 * 3);
+    expect(countTriangles(g)).toBe(288);
+    g.dispose();
   });
 });

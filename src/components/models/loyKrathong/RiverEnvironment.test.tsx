@@ -102,9 +102,10 @@ describe("RiverEnvironment", () => {
     expect(container.querySelectorAll('mesh[name^="scene-leaf"]')).toHaveLength(0);
   });
 
-  it("registers frame work only for the two swaying foliage meshes (MFW-70)", () => {
+  // MFW-79: the water surface registers one frame callback for its swells (it returns early when still).
+  it("registers frame work only for the two swaying foliage meshes (MFW-70) and the water swells (MFW-79)", () => {
     render(<RiverEnvironment {...makeProps()} />);
-    expect(useFrameSpy).toHaveBeenCalledTimes(2);
+    expect(useFrameSpy).toHaveBeenCalledTimes(3);
   });
 
   it("renders the same tree with reduced motion on", () => {
@@ -290,15 +291,16 @@ describe("RiverEnvironment", () => {
       expect(onPropTapped).toHaveBeenCalledTimes(2);
     });
 
-    it("RE4: without onPropTapped there are no handlers on ground, banks or pier, and useFrame is still called twice", () => {
+    // MFW-79: useFrame = foliage 2 + water swells 1.
+    it("RE4: without onPropTapped there are no handlers on ground, banks or pier, and useFrame is still called three times", () => {
       const { container } = render(<RiverEnvironment {...makeProps()} />);
       for (const name of [...land, SCENE_OBJECT_NAMES.pierDeck, SCENE_OBJECT_NAMES.pierPiles]) {
         expect(reactProps(container.querySelector(`[name="${name}"]`)!).onClick, name).toBeUndefined();
       }
-      expect(useFrameSpy).toHaveBeenCalledTimes(2);
+      expect(useFrameSpy).toHaveBeenCalledTimes(3);
       useFrameSpy.mockClear();
       render(<RiverEnvironment {...makeProps({ onPropTapped: vi.fn() })} />);
-      expect(useFrameSpy).toHaveBeenCalledTimes(2);
+      expect(useFrameSpy).toHaveBeenCalledTimes(3);
     });
 
     it("RE5: rockMeshRef and pierDeckRef receive the meshes", () => {

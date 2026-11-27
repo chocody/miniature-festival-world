@@ -12,6 +12,7 @@ import type {
   TreePlacement,
   TreeShapeDefinition,
   TreeShapeId,
+  WaterWaveSpec,
 } from "@/core/world";
 import { CANDLE_COLOR_PALETTE, LEAF_COLOR_PALETTE } from "@/config/events/loyKrathong.config";
 import { KRATHONG_DESIGN_BODY_MATERIAL } from "@/config/krathongDesigns.config";
@@ -128,6 +129,34 @@ export const RIVER_WATER_HIGHLIGHTS = Object.freeze({
   shore: Object.freeze({ bandWidth: 0.35 }), // water width from each channel edge inward, alpha 1 at the edge → 0
   glint: Object.freeze({ radiusAlong: 0.32, radiusAcross: 0.05, edgeInset: 0.04, edgeSpread: 0.1, speedScale: 1.5, lifeMs: 4_000 }),
   ripple: Object.freeze({ radius: 0.42, pulseAmplitude: 0.12, periodMs: 2_400, innerRatio: 0.72, peakRatio: 0.86, segments: 8 }),
+});
+
+/** Lead tuning allowance (MFW-79): one common factor in [0.75, 1.5] on every tilt; 1.5 because at 1 the swells barely showed. */
+const RIVER_WATER_WAVE_TILT_FACTOR = 1.5;
+/**
+ * MFW-79 water with more depth: two broad swell trains written into the water's vertex normals (writeWaterWaveNormals).
+ * DRAFT (MFW-79, owner review from the PR screenshots). Wavelengths ≈ 4.0 / 3.0 world units along the flow. Lead tilts
+ * 0.18 / 0.06 and 0.1 / 0.08 (max ≈ 17°) × RIVER_WATER_WAVE_TILT_FACTOR = 0.27 / 0.09 and 0.15 / 0.12 (max ≈ 25°); look doc §21.
+ */
+export const RIVER_WATER_WAVES: WaterWaveSpec = Object.freeze({
+  trains: Object.freeze([
+    Object.freeze({
+      alongCycles: 6,
+      acrossPerUnit: 0.12,
+      phase: 0,
+      speedScale: 1,
+      tiltAlong: 0.18 * RIVER_WATER_WAVE_TILT_FACTOR,
+      tiltAcross: 0.06 * RIVER_WATER_WAVE_TILT_FACTOR,
+    }),
+    Object.freeze({
+      alongCycles: 8,
+      acrossPerUnit: -0.15,
+      phase: 0.37,
+      speedScale: 1.4,
+      tiltAlong: 0.1 * RIVER_WATER_WAVE_TILT_FACTOR,
+      tiltAcross: 0.08 * RIVER_WATER_WAVE_TILT_FACTOR,
+    }),
+  ]),
 });
 
 // ---- Foliage (MFW-70) ----
@@ -448,6 +477,9 @@ export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
   bankWidth: 5, // DRAFT (MFW-49; was 4)
   waterUnderlap: 0.3,
   ribbonSegments: 48, // 64 → 48: the lead's fourth ordered cut for the SwiftShader CI frame budget (MFW-49 dev)
+  // Technical (lead, MFW-79): 4 vertices across the water so the swells can run diagonally and vary across the river
+  // (+192 triangles per stretch); banks and ground keep 2.
+  waterColumns: 4,
   bankProfile: RIVER_BANK_PROFILE,
   ground: RIVER_GROUND,
   houses: [

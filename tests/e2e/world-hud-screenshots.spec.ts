@@ -12,17 +12,21 @@ const SIZES = [
   { name: "phone", width: 390, height: 844 },
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
+/** MFW-79: `E2E_SCREENSHOT_DEVICE=high` captures the HIGH tier; the default keeps the earlier 4 / 4 device. */
+const DEFAULT_DEVICE = { memory: 4, cores: 4 } as const;
+const HIGH_DEVICE = { memory: 8, cores: 8 } as const;
+const DEVICE = process.env.E2E_SCREENSHOT_DEVICE === "high" ? HIGH_DEVICE : DEFAULT_DEVICE;
 
 test.use({ timezoneId: "Asia/Bangkok" });
 
 async function walkToWorld(page: Page, preset: "DAY" | "NIGHT") {
   await page.addInitScript(
-    ([key, value]) => {
+    ([key, value, memory, cores]) => {
       localStorage.setItem(key, value);
-      Object.defineProperty(navigator, "deviceMemory", { get: () => 4, configurable: true });
-      Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 4, configurable: true });
+      Object.defineProperty(navigator, "deviceMemory", { get: () => memory, configurable: true });
+      Object.defineProperty(navigator, "hardwareConcurrency", { get: () => cores, configurable: true });
     },
-    [LIGHT_PRESET_STORAGE_KEY, preset] as const,
+    [LIGHT_PRESET_STORAGE_KEY, preset, DEVICE.memory, DEVICE.cores] as const,
   );
   await page.route((url) => url.pathname === "/api/zones", (route) => route.fulfill({ json: { eventId: E2E_EVENT_ID, zoneCount: 1 } }));
   await page.route(

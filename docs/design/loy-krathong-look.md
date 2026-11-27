@@ -345,6 +345,7 @@ Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, p
   ripple radius.
 - Glints never call `invalidate()`: they move whenever the scene already renders continuously (the shared world, where
   krathongs drift) and stay still in CUSTOMIZE / RITUAL (no extra rendering on idle views).
+- MFW-79: swells on the water's vertex normals, see §21.
 
 ### 11.6 Budget and numbers
 
@@ -1145,3 +1146,75 @@ windows are lit at NIGHT in the full and the lite shells.
 - The budget raise to 23 600 / 22 950 / 14 700.
 - The village still covers progress ≈ 0.13–0.71 of each stretch; the rest stays bare banks while travelling (as at BASE).
 - No new prop kind (fences, gardens, rice barns would cost +1 draw call each).
+
+## 21. Water with more depth (MFW-79, backlog 14.5)
+
+Owner review 3 (2026-11-26): "ทำให้คลื่นน้ำดูมีมิติขึ้นอีกนิด". The river gets soft, broad swells that shade the water and drift
+downstream with the krathongs; still clay-toy pastel, not realistic water.
+
+### 21.1 Approach
+
+- The water mesh keeps `meshStandardMaterial {...TOY_MATTE_MATERIALS.water}` (roughness 1): no new material, no normal map,
+  no custom shader, so **no new shader program on any tier** (normals are not part of the program key).
+- Only its **vertex normals** change: `writeWaterWaveNormals` (`src/core/world/waterWaves.ts`) writes a two-train swell field
+  into the normal buffer (`createWaterSurfaceGeometry`, dynamic usage). The key and hemisphere lights turn the light-facing
+  slopes into soft bands that move with the flow; the existing bank glints stay the sparkle.
+- Positions stay flat (y = 0 at `waterSurfaceY`): taps, krathong float height and the overlays at `liftY` are unchanged.
+- The water ribbon has 4 vertices across (`LOY_KRATHONG_RIVER_ENVIRONMENT.waterColumns`, technical) so crests can run
+  diagonally; rows stay `ribbonSegments` 48. The field is a function of stretch-local position with integer `alongCycles`, so
+  every stretch copy computes the same field and the seams are continuous.
+
+### 21.2 Values (DRAFT, owner review from the PR screenshots)
+
+`RIVER_WATER_WAVES` (`src/config/events/loyKrathong.river.config.ts`):
+
+| Train | alongCycles | acrossPerUnit | phase | speedScale | tiltAlong | tiltAcross |
+|---|---|---|---|---|---|---|
+| 0 | 6 | 0.12 | 0 | 1 | 0.27 | 0.09 |
+| 1 | 8 | −0.15 | 0.37 | 1.4 | 0.15 | 0.12 |
+
+Wavelengths ≈ 4.0 / 3.0 world units along the flow. Speed = `RIVER_DRIFT_SPEED_FACTOR × speedScale` (train 0 at the
+krathongs' speed, train 1 a little faster, so the pattern changes shape instead of sliding as a rigid image).
+
+**Tuning factor 1.5** (lead allowance: one common factor in [0.75, 1.5] on all four tilts). With the lead's tilts
+(0.18 / 0.06, 0.1 / 0.08; max ≈ 17°) the HIGH desktop DAY screenshot showed the swells only barely (water luminance std
+3.2 at BASE → 4.8, 0–255 scale); with × 1.5 (max ≈ 25°) they read as soft diagonal bands (std → 6.0). No other value
+changed; `acrossPerUnit` is unchanged (no quad-diagonal creases visible on a 2× contrast-stretched crop).
+
+### 21.3 Per tier
+
+| Tier / setting | Swells |
+|---|---|
+| HIGH, MEDIUM (`WATER_EFFECT_TIERS.waveMotion` true) | drift with the flow, written on every frame the scene already renders (no `invalidate()`); culled stretch copies skip |
+| LOW (`waveMotion` false) | static shading, written once at t = 0 (no per-frame upload) |
+| Reduced motion (any tier) | still water, written once at t = 0 |
+
+### 21.4 Budget
+
+Water triangles per stretch 96 → 288 (+192). Environment main pass measured 23 352 / 22 776 / 13 740 (HIGH / MEDIUM /
+LOW; was 23 160 / 22 584 / 13 548) against the unchanged budgets 23 600 / 22 950 / 14 700. Draw calls unchanged
+(19 / 19 / 18). No new program: LOW `programs` 7 in the perf audit (≤ `E2E_MAX_SHADER_PROGRAMS` 8; `environmentPrograms.test.ts` unchanged).
+
+### 21.5 Screenshots
+
+`docs/design/screenshots/mfw-79/` — default world framing after the release flight, BASE (`before-*`) and MFW-79 (`after-*`):
+
+| View | Tier | Files |
+|---|---|---|
+| 390 × 844, 1440 × 900, DAY / NIGHT (e2e `world-hud-screenshots.spec.ts` X1: 4 GB, 4 cores) | LOW | `{before,after}-{phone,desktop}-{day,night}.png` |
+| The same views at 8 GB, 8 cores (`E2E_SCREENSHOT_DEVICE=high`) | HIGH | `{before,after}-high-{phone,desktop}-{day,night}.png` |
+
+The swells are subtle by design ("อีกนิด"): soft diagonal light and shade bands across the river. They read best at HIGH desktop
+NIGHT and DAY; on the phone views (a smaller river area) and on LOW (frozen at t = 0) they are fainter. HIGH screenshots catch
+the swells at whatever time the frame was taken, so the band positions differ from run to run.
+
+### 21.6 DRAFT / open for the owner
+
+- Q1 — swell look (`RIVER_WATER_WAVES`, tuning factor 1.5): default as shipped; options: stronger or finer ripples (more
+  rows → a triangle budget raise), or weaker.
+- Q2 — LOW: default static swell shading (the MFW-49 LOW policy); option: moving on LOW too (a normal-buffer upload every
+  frame on the weakest devices).
+- Q3 — more moving highlights across the middle of the river: default none new (the light-facing swells plus the existing bank
+  glints); option: mid-channel glints (≈ 48 triangles each on HIGH, a budget raise).
+- Q4 — NIGHT: the moon key light is weaker than the DAY sun, so the swells are fainter at NIGHT mainly on LOW (static, LOW phone NIGHT reads nearly flat), while HIGH NIGHT reads clearly; default accept;
+  option: a NIGHT-specific tilt (a preset-aware spec).

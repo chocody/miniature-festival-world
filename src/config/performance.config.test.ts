@@ -129,10 +129,12 @@ describe("performance.config (owner numbers, open question #5)", () => {
 
 describe("water effects and environment budgets (lead decision, MFW-49)", () => {
   const ORDER = ["HIGH", "MEDIUM", "LOW"] as const;
-  it("LOW is the cheap water variant: no glints, no ripples", () => {
-    expect(WATER_EFFECT_TIERS.LOW).toEqual({ glintCount: 0, krathongRipples: false });
+  it("LOW is the cheap water variant: no glints, no ripples, static swells (MFW-79)", () => {
+    expect(WATER_EFFECT_TIERS.LOW).toEqual({ glintCount: 0, krathongRipples: false, waveMotion: false });
     expect(WATER_EFFECT_TIERS.HIGH.krathongRipples).toBe(true);
     expect(WATER_EFFECT_TIERS.MEDIUM.krathongRipples).toBe(true);
+    expect(WATER_EFFECT_TIERS.HIGH.waveMotion).toBe(true);
+    expect(WATER_EFFECT_TIERS.MEDIUM.waveMotion).toBe(true);
   });
   it("counts and budgets never grow from HIGH to LOW", () => {
     for (let i = 1; i < ORDER.length; i++) {

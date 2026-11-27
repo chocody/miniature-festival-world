@@ -183,6 +183,7 @@ export const RiverStretch = memo(function RiverStretch({
           nudges={slotNudges}
           rockMeshRef={rockMeshRef}
           pierDeckRef={pierDeckRef}
+          now={riverNow}
         />
         {onProp && <PropTapProxies targets={LOY_KRATHONG_PROP_TAP_TARGETS} onPropTapped={onProp} />}
         <PropNudges

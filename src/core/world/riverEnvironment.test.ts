@@ -374,3 +374,94 @@ describe("ribbon rows and ground strips (MFW-58)", () => {
     expect(() => buildGroundStripsData(lkChannel, frame, inner, def.ground.outerAcross, 1)).toThrow(RangeError);
   });
 });
+
+describe("ribbon columns (MFW-79)", () => {
+  /** The pre-MFW-79 ribbon builder, verbatim: two vertices per row (the bit-identity reference). */
+  function legacyRibbonRows(from: number, to: number, segments: number, fromRow: number, toRow: number) {
+    const rows = toRow - fromRow;
+    const vertexCount = (rows + 1) * 2;
+    const positions = new Float32Array(vertexCount * 3);
+    const indices = new Uint32Array(rows * 6);
+    for (let r = 0; r <= rows; r++) {
+      const { centerline: c, right } = riverFrameAt(lkChannel, (fromRow + r) / segments);
+      const o = r * 6;
+      positions[o] = c.x + right.x * from;
+      positions[o + 2] = c.z + right.z * from;
+      positions[o + 3] = c.x + right.x * to;
+      positions[o + 5] = c.z + right.z * to;
+    }
+    for (let i = 0; i < rows; i++) {
+      const a = 2 * i;
+      indices.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6);
+    }
+    return { positions, indices, vertexCount };
+  }
+  const lkChannel = createRiverChannel(LOY_KRATHONG_RIVER_ENVIRONMENT.channel);
+  const xzCross = (d: { positions: Float32Array; indices: Uint32Array }, t: number) => {
+    const [a, b, c] = [d.indices[t * 3], d.indices[t * 3 + 1], d.indices[t * 3 + 2]];
+    const ax = d.positions[a * 3];
+    const az = d.positions[a * 3 + 2];
+    const ux = d.positions[b * 3] - ax;
+    const uz = d.positions[b * 3 + 2] - az;
+    const vx = d.positions[c * 3] - ax;
+    const vz = d.positions[c * 3 + 2] - az;
+    return ux * vz - uz * vx;
+  };
+
+  it("RC1: columns 2 is bit-identical to the default call and to the pre-MFW-79 ribbon (positions and indices)", () => {
+    expect(buildRibbonGeometryData(channel, -1, 1, 4, 2)).toEqual(buildRibbonGeometryData(channel, -1, 1, 4));
+    expect(buildRibbonRowsGeometryData(channel, -1, 1, 4, 1, 3, 2)).toEqual(buildRibbonRowsGeometryData(channel, -1, 1, 4, 1, 3));
+    for (const [from, to, segments, fromRow, toRow] of [
+      [-2.7, 2.7, 48, 0, 48],
+      [-0.3, 1.9, 48, 1, 3],
+      [-1, 1, 4, 0, 4],
+    ] as const) {
+      const legacy = legacyRibbonRows(from, to, segments, fromRow, toRow);
+      const now = buildRibbonRowsGeometryData(lkChannel, from, to, segments, fromRow, toRow);
+      expect(now.vertexCount).toBe(legacy.vertexCount);
+      expect(Array.from(now.positions)).toEqual(Array.from(legacy.positions));
+      expect(Array.from(now.indices)).toEqual(Array.from(legacy.indices));
+    }
+  });
+
+  it("RC2: columns 4, segments 4 → 20 vertices, 72 indices, evenly spread across, every face up like the 2-column ribbon", () => {
+    const d = buildRibbonGeometryData(channel, -1, 1, 4, 4);
+    expect(d.vertexCount).toBe(20);
+    expect(d.indices.length).toBe(72);
+    for (let r = 0; r <= 4; r++) {
+      const { centerline: c, right } = riverFrameAt(channel, r / 4);
+      for (let k = 0; k < 4; k++) {
+        const lateral = -1 + (2 * k) / 3;
+        const o = (r * 4 + k) * 3;
+        expect(d.positions[o]).toBeCloseTo(c.x + right.x * lateral, 6);
+        expect(d.positions[o + 1]).toBe(0);
+        expect(d.positions[o + 2]).toBeCloseTo(c.z + right.z * lateral, 6);
+      }
+    }
+    const reference = Math.sign(xzCross(buildRibbonGeometryData(channel, -1, 1, 4, 2), 0));
+    expect(reference).not.toBe(0);
+    for (let t = 0; t < d.indices.length / 3; t++) expect(Math.sign(xzCross(d, t)), `triangle ${t}`).toBe(reference);
+  });
+
+  it("RC3: columns 1, 2.5 and NaN throw RangeError", () => {
+    for (const columns of [1, 2.5, Number.NaN]) {
+      expect(() => buildRibbonGeometryData(channel, -1, 1, 4, columns)).toThrow(RangeError);
+      expect(() => buildRibbonRowsGeometryData(channel, -1, 1, 4, 0, 4, columns)).toThrow(RangeError);
+    }
+  });
+
+  it("RC4: resolveRiverEnvironment resolves waterColumns (default 2) for the water ribbon only", () => {
+    const { waterColumns: shipped, ...base } = LOY_KRATHONG_RIVER_ENVIRONMENT;
+    expect(shipped).toBe(4);
+    const segments = base.ribbonSegments;
+    const plain = resolveRiverEnvironment(base);
+    expect(plain.waterColumns).toBe(2);
+    expect(plain.water.vertexCount).toBe((segments + 1) * 2);
+    const four = resolveRiverEnvironment({ ...base, waterColumns: 4 });
+    expect(four.waterColumns).toBe(4);
+    expect(four.water.vertexCount).toBe((segments + 1) * 4);
+    expect(four.banks).toEqual(plain.banks);
+    expect(four.ground).toEqual(plain.ground);
+    expect(() => resolveRiverEnvironment({ ...base, waterColumns: 1 })).toThrow(RangeError);
+  });
+});

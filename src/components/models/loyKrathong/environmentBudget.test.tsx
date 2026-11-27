@@ -9,6 +9,7 @@ import {
   createBankGeometry,
   createInstancedPartGeometry,
   createRibbonGeometry,
+  createWaterSurfaceGeometry,
 } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { ShoreHighlights, WaterGlints } from "@/components/canvas3d/WaterHighlights";
@@ -67,7 +68,7 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
     add(list.length, tris(createInstancedPartGeometry(p.geometry, p.material.flatShading)));
   const parts = RIVER_ENVIRONMENT_PARTS;
   const fan = () => tris(createBlobShadowGeometry({ ...BLOB_SHADOW_TIER_GEOMETRY[tier], falloffExponent: BLOB_SHADOW_LOOK.falloffExponent }));
-  add(1, tris(createRibbonGeometry(l.water))); // 1 water
+  add(1, tris(createWaterSurfaceGeometry(l.water))); // 1 water (MFW-79: 4 columns)
   add(1, tris(createBankGeometry(l.banks.left))); // 2 bank left
   add(1, tris(createBankGeometry(l.banks.right))); // 3 bank right
   add(1, tris(createRibbonGeometry(l.ground.strips))); // 4 ground strips (MFW-58; per stretch copy)
@@ -164,6 +165,15 @@ describe("environment render budget per tier (MFW-49 AC5, lead regression guard)
   );
 });
 
+describe("MFW-79 water with more depth", () => {
+  it("EB1: the water ribbon draws 2 · ribbonSegments · (waterColumns − 1) = 288 triangles", () => {
+    expect(layout.waterColumns).toBe(4);
+    const triangles = tris(createWaterSurfaceGeometry(layout.water));
+    expect(triangles).toBe(2 * layout.ribbonSegments * (layout.waterColumns - 1));
+    expect(triangles).toBe(288);
+  });
+});
+
 describe("MFW-77 fuller village", () => {
   it("EB1: 16 houses (8 + 8 roofs), 80 windows, 14 trees, 10 bushes, 6 rocks, 12 lamps, 12 plants, 52 / 38 leaf clumps", () => {
     expect(layout.houses).toHaveLength(16);
@@ -179,11 +189,11 @@ describe("MFW-77 fuller village", () => {
     expect(LOY_KRATHONG_RIVER_FOLIAGE.clumpsLow).toHaveLength(38);
   });
 
-  // MFW-77 measured; update with any prop change.
+  // MFW-77 measured; update with any prop change. MFW-79: +192 water triangles per tier (23 160 / 22 584 / 13 548 before).
   it.each([
-    ["HIGH", { drawCalls: 19, triangles: 23_160 }],
-    ["MEDIUM", { drawCalls: 19, triangles: 22_584 }],
-    ["LOW", { drawCalls: 18, triangles: 13_548 }],
+    ["HIGH", { drawCalls: 19, triangles: 23_352 }],
+    ["MEDIUM", { drawCalls: 19, triangles: 22_776 }],
+    ["LOW", { drawCalls: 18, triangles: 13_740 }],
   ] as const)("EB2: %s draws the pinned draw calls and triangles (LOW with the lite house shell)", (tier, expected) => {
     expect(summarize(layout, tier)).toEqual(expected);
   });

@@ -9,6 +9,7 @@ import { isTapClick, tapPointInParentSpace } from "@/components/canvas3d/effects
 import { InstancedPart } from "@/components/canvas3d/InstancedPart";
 import { createBankGeometry, createRibbonGeometry } from "@/components/canvas3d/geometry";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
+import { WaterSurface } from "@/components/canvas3d/WaterSurface";
 import {
   PIER_DECK_MATERIAL,
   RIVER_BANK_MATERIAL,
@@ -17,10 +18,10 @@ import {
 } from "@/config/events/loyKrathong.river.config";
 import { LAMP_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO, type SceneTargetKind } from "@/config/gimmicks.config";
 import { VILLAGE_LIGHTS, type LightPresetId } from "@/config/look.config";
-import { TOY_MATTE_MATERIALS } from "@/config/scene.config";
 import type { WorldXZ } from "@/core/coordinates";
 import type { NudgeSource } from "@/core/effects";
 import type { BankGeometryData, RibbonGeometryData, RiverEnvironmentLayout } from "@/core/world";
+import { getLoyKrathongEndlessRiverFrame } from "@/core/world/endlessRiver";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import {
   LOY_KRATHONG_RIVER_FOLIAGE,
@@ -30,6 +31,9 @@ import {
   lampTapProxyPlacement,
 } from "./riverLayout";
 import { RiversideFoliage } from "./RiversideFoliage";
+
+/** The stretch frame the water swells are computed in (MFW-79; the same field on every stretch copy). */
+const WATER_FRAME = getLoyKrathongEndlessRiverFrame();
 
 export interface RiverEnvironmentProps {
   readonly layout: RiverEnvironmentLayout;
@@ -54,6 +58,8 @@ export interface RiverEnvironmentProps {
   /** MFW-60: receive the rock InstancedMesh and the pier deck mesh (PropNudges bounces them). */
   readonly rockMeshRef?: RefObject<InstancedMesh | null>;
   readonly pierDeckRef?: RefObject<Mesh | null>;
+  /** MFW-79: drives the water swells; absent = still water. */
+  readonly now?: () => number;
 }
 
 function useRibbonGeometry(data: RibbonGeometryData) {
@@ -72,11 +78,12 @@ function useBankGeometry(data: BankGeometryData) {
  * Low-poly riverside diorama (one stretch of the endless river, MFW-58): water, rounded banks on ground strips, a village (MFW-66: the owner house model — a vertex-coloured shell, its roof in two
  * colours by roof kind, and window glasses), foliage
  * (leaf-clump trees, bushes and reeds, MFW-70), rocks, lamps and a pier. No lights: windows and lanterns glow by emissive per
- * light preset. Only the foliage moves: it sways on HIGH and MEDIUM, and only on frames that are already rendered.
+ * light preset. Only the foliage and the water move: the foliage sways and the water swells drift with the flow (MFW-79,
+ * WaterSurface) on HIGH and MEDIUM, and only on frames that are already rendered; LOW and reduced motion keep the water still.
  */
 export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { layout, shadows, waterRef, lampFocusRef, selectedLampIndex, onWaterSelected, onLampSelected, lightPreset } = props;
-  const { lampHeadMeshRef, onPropTapped, nudges = null, rockMeshRef, pierDeckRef } = props;
+  const { lampHeadMeshRef, onPropTapped, nudges = null, rockMeshRef, pierDeckRef, now } = props;
   const tier = useDeviceStore((s) => s.qualityTier);
   // Rule 5 (look doc §16): land = "sky" unless a proxy further along the ray takes the tap. Rule 3: the pier defers only to proxies.
   const onLandClick = onPropTapped
@@ -93,7 +100,6 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         onPropTapped("pier", 0, null);
       }
     : undefined;
-  const water = useRibbonGeometry(layout.water);
   const bankLeft = useBankGeometry(layout.banks.left);
   const bankRight = useBankGeometry(layout.banks.right);
   const ground = useRibbonGeometry(layout.ground.strips); // MFW-58: the stretch's ground strips (faces up, local xz)
@@ -110,20 +116,19 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
   const { pier } = layout;
   return (
     <>
-      <mesh
-        ref={waterRef}
-        name={SCENE_OBJECT_NAMES.water}
-        geometry={water}
-        position={[0, layout.waterSurfaceY, 0]}
-        receiveShadow={shadows}
+      <WaterSurface
+        data={layout.water}
+        surfaceY={layout.waterSurfaceY}
+        frame={WATER_FRAME}
+        shadows={shadows}
+        waterRef={waterRef}
+        now={now}
         onClick={(event) => {
           if (hasTapProxyHit(event.intersections)) return; // the proxy under the water takes this tap (MFW-59)
           event.stopPropagation();
           onWaterSelected(tapPointInParentSpace(event));
         }}
-      >
-        <meshStandardMaterial {...TOY_MATTE_MATERIALS.water} />
-      </mesh>
+      />
       {/* Bank heights are absolute (the profile), so the bank meshes sit at y = 0. */}
       <mesh name={SCENE_OBJECT_NAMES.bankLeft} geometry={bankLeft} receiveShadow={shadows} onClick={onLandClick}>
         <meshStandardMaterial {...RIVER_BANK_MATERIAL} />
