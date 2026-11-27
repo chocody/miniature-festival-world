@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CREATE_NOW_MS,
   defaultAppearanceJson,
@@ -14,6 +14,19 @@ import { handleCreateCreation, type CreateCreationDeps } from "./createCreation"
 import { getCreationPlacementStrategy } from "./creationPlacement";
 import { createInMemoryCreationRepository } from "./inMemoryCreationRepository";
 import type { PublicCreation } from "./creationTypes";
+
+// new_year has no retention end date until 17.2 (MFW-127); test seam for the MFW-131 allowlist only
+// — remove when 17.2 lands. Every other event (christmas, loy_krathong) keeps the real config.
+vi.mock("@/services/api/retention", async (importActual) => {
+  const actual = await importActual<typeof import("@/services/api/retention")>();
+  return {
+    ...actual,
+    computeCreationExpiresAt: (...args: Parameters<typeof actual.computeCreationExpiresAt>) =>
+      args[0] === "new_year"
+        ? new Date("2099-01-01T00:00:00.000Z")
+        : actual.computeCreationExpiresAt(...args),
+  };
+});
 
 async function setup() {
   const repo = createInMemoryCreationRepository({ now: () => CREATE_NOW_MS });
