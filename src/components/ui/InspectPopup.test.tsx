@@ -1,12 +1,14 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CUSTOMIZER_COPY, KRATHONG_DESIGN_LABELS } from "@/config/customizer.config";
 import { INSPECT_POPUP_COPY as COPY } from "@/config/inspect.config";
+import { KRATHONG_DEFAULT_DESIGN, krathongDesignThumbnailUrl } from "@/config/krathongDesigns.config";
 import { OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { DISPLAY_NAME_FALLBACK } from "@/config/wish.config";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
 import type { ReportSession, ReportSubmitOutcome } from "@/services/api/reportClient";
 import { InspectPopup } from "./InspectPopup";
-import { describeKrathongAppearance } from "./krathongAppearanceSummary";
+import type { InspectedCreation } from "./inspectedCreation";
 
 afterEach(cleanup);
 
@@ -35,10 +37,7 @@ describe("InspectPopup", () => {
     expect(screen.getByTestId("inspect-display-name")).toHaveTextContent(`${COPY.fromLabel} ${NAME}`);
     expect(dialog).toHaveTextContent(COPY.wishHeading);
     expect(btn(COPY.report)).toBeInTheDocument();
-    for (const row of describeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE)) {
-      expect(dialog).toHaveTextContent(row.label);
-      expect(dialog).toHaveTextContent(row.value);
-    }
+    expect(screen.getByRole("img", { name: KRATHONG_DESIGN_LABELS.banana_leaf_01 })).toBeInTheDocument();
     expect(dialog).toHaveTextContent("ขอให้ครอบครัวมีความสุข");
     expect(document.activeElement).toBe(dialog);
     expect(container.textContent).not.toContain(ID);
@@ -57,10 +56,7 @@ describe("InspectPopup", () => {
     const { session, submit } = fakeSession();
     render(<InspectPopup creation={creation(null)} onClose={vi.fn()} reportSession={session} />);
     const dialog = screen.getByRole("dialog", { name: COPY.dialogTitle });
-    for (const row of describeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE)) {
-      expect(dialog).toHaveTextContent(row.label);
-      expect(dialog).toHaveTextContent(row.value);
-    }
+    expect(screen.getByRole("img", { name: KRATHONG_DESIGN_LABELS.banana_leaf_01 })).toBeInTheDocument();
     expect(dialog).not.toHaveTextContent(COPY.wishHeading);
     expect(dialog).not.toHaveTextContent(DISPLAY_NAME_FALLBACK);
     expect(dialog).not.toHaveTextContent(COPY.fromLabel);
@@ -175,9 +171,57 @@ describe("InspectPopup owner section (MFW-31)", () => {
     expect(slot.compareDocumentPosition(btn(COPY.report)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("renders the owner section for a closed wish after the appearance", () => {
+  it("IP4: renders the owner section for a closed wish after the thumbnail", () => {
     const { session } = fakeSession();
     render(<InspectPopup creation={creation(null)} onClose={vi.fn()} reportSession={session} ownerSection={<p>owner-slot</p>} />);
-    expect(screen.getByRole("dialog")).toContainElement(screen.getByText("owner-slot"));
+    const slot = screen.getByText("owner-slot");
+    expect(screen.getByRole("dialog")).toContainElement(slot);
+    const thumbnail = screen.getByTestId("inspect-design");
+    expect(thumbnail.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("InspectPopup design thumbnail (MFW-81)", () => {
+  const withAppearance = (appearance: InspectedCreation["appearance"], wish: string | null = null) => ({ ...creation(wish), appearance });
+
+  it("IP1: a krathong with a design shows its thumbnail", () => {
+    const { session } = fakeSession();
+    render(<InspectPopup creation={withAppearance({ ...DEFAULT_KRATHONG_APPEARANCE, design: "naga_01" })} onClose={vi.fn()} reportSession={session} />);
+    const thumb = screen.getByTestId("inspect-design");
+    expect(thumb).toHaveAttribute("data-design-id", "naga_01");
+    expect(thumb).toHaveAttribute("role", "img");
+    expect(screen.getByRole("img", { name: KRATHONG_DESIGN_LABELS.naga_01 })).toBe(thumb);
+    expect(thumb.style.backgroundImage).toContain(krathongDesignThumbnailUrl("naga_01"));
+  });
+
+  it("IP2: a pre-14.4 krathong (no design) shows the default design", () => {
+    const { session } = fakeSession();
+    const { design: _design, ...legacy } = DEFAULT_KRATHONG_APPEARANCE;
+    void _design;
+    expect("design" in legacy).toBe(false);
+    render(<InspectPopup creation={withAppearance(legacy as InspectedCreation["appearance"])} onClose={vi.fn()} reportSession={session} />);
+    const thumb = screen.getByTestId("inspect-design");
+    expect(thumb).toHaveAttribute("data-design-id", KRATHONG_DEFAULT_DESIGN);
+    expect(screen.getByRole("img", { name: KRATHONG_DESIGN_LABELS[KRATHONG_DEFAULT_DESIGN] })).toBe(thumb);
+  });
+
+  it.each([null, "ขอให้สมหวัง"])("IP3: no part list and no visible design name (wish %s)", (wish) => {
+    const { session } = fakeSession();
+    const { container } = render(
+      <InspectPopup creation={withAppearance({ ...DEFAULT_KRATHONG_APPEARANCE, design: "naga_01" }, wish)} onClose={vi.fn()} reportSession={session} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: COPY.dialogTitle });
+    expect(container.querySelector("dl")).toBeNull();
+    for (const label of [
+      CUSTOMIZER_COPY.baseGroupLabel,
+      CUSTOMIZER_COPY.foldGroupLabel,
+      CUSTOMIZER_COPY.leafColorGroupLabel,
+      CUSTOMIZER_COPY.flowerGroupLabel,
+      CUSTOMIZER_COPY.candleColorGroupLabel,
+      KRATHONG_DESIGN_LABELS.naga_01,
+    ]) {
+      expect(dialog.textContent).not.toContain(label);
+    }
+    expect(container.querySelectorAll('[data-testid="inspect-design"]')).toHaveLength(1);
   });
 });

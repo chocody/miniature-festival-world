@@ -18,6 +18,8 @@ export const E2E_DESIGN_LABELS = {
   naga_01: "กระทงพญานาค",
 } as const;
 export type E2EDesignId = keyof typeof E2E_DESIGN_LABELS;
+/** = KRATHONG_DEFAULT_DESIGN. */
+export const E2E_DEFAULT_DESIGN: E2EDesignId = "banana_leaf_01";
 /** = KRATHONG_DESIGN_USERDATA_KEY (userData key of the hero design body). */
 export const E2E_DESIGN_USERDATA_KEY = "krathongDesign";
 /** River batch mesh of each design body (= riverBatchMeshPrefix + krathongInstanceBucketIndex(`design:<id>`, "designBody")). */

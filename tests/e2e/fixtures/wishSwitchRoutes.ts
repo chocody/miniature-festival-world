@@ -37,9 +37,11 @@ export function makeSwitchZoneItem(
   id: string,
   createdAtMs: number,
   wish: { open: boolean; text: string; name: string | null },
+  appearance?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     ...makeZoneItem(ZONE_ID, OWN_ITEM_INDEX),
+    ...(appearance === undefined ? {} : { appearance }),
     id,
     createdAt: new Date(createdAtMs).toISOString(),
     publicWishText: wish.open ? wish.text : null,
@@ -48,7 +50,10 @@ export function makeSwitchZoneItem(
 }
 
 /** Stateful fake of /api/zones, /api/creations (GET + POST) and /api/wish-visibility. The state survives page.reload(). */
-export async function routeWishSwitchWorld(page: Page): Promise<WishSwitchWorld> {
+export async function routeWishSwitchWorld(
+  page: Page,
+  options?: { readonly ownAppearance?: Record<string, unknown> },
+): Promise<WishSwitchWorld> {
   const creates: CapturedCreate[] = [];
   const switches: CapturedSwitch[] = [];
   const state = new Map<string, CreatedState>();
@@ -64,7 +69,7 @@ export async function routeWishSwitchWorld(page: Page): Promise<WishSwitchWorld>
       const request = route.request();
       if (request.method() === "GET") {
         const body = makeZoneBody(ZONE_ID, ZONE_FILLER_COUNT);
-        for (const [id, s] of state) body.items.push(makeSwitchZoneItem(id, s.createdAtMs, s));
+        for (const [id, s] of state) body.items.push(makeSwitchZoneItem(id, s.createdAtMs, s, options?.ownAppearance));
         return route.fulfill({ headers: { "cache-control": "no-store" }, json: body });
       }
       const body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;

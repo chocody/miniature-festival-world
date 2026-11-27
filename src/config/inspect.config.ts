@@ -4,7 +4,6 @@
  */
 export const INSPECT_POPUP_COPY = Object.freeze({
   dialogTitle: "กระทงในสายน้ำ",
-  appearanceHeading: "รูปลักษณ์",
   wishHeading: "คำอธิษฐาน",
   fromLabel: "จาก",
   close: "ปิด",
@@ -16,9 +15,6 @@ export const INSPECT_POPUP_COPY = Object.freeze({
   reportReceived: "ได้รับรายงานแล้ว ขอบคุณที่แจ้งให้ทราบ",
   reportFailed: "ส่งรายงานไม่สำเร็จ",
   reportRetry: "ลองอีกครั้ง",
-  unknownPart: "—",
-  flowerListSeparator: " · ",
-  flowerCountPrefix: "×",
 });
 
 /** A report request that takes longer than this counts as failed (the user can retry). Lead decision, MFW-28. */
