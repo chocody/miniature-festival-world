@@ -2,7 +2,7 @@ import type { FestivalEventId } from "@/config/events/types";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import { parsePersistableCoord } from "@/core/coordinates/validateCoord"; // three-free
 import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
-import { parseEventAppearance, type KrathongAppearance } from "@/core/customization";
+import { parseEventAppearance, isKrathongAppearance, type KrathongAppearance } from "@/core/customization";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import type { RiverRenderSource } from "./riverFlow";
 
@@ -34,7 +34,7 @@ export function publicCreationsToRiverItems(
     const coord: SplinePathCoord = parsed.coord;
     if (!Number.isFinite(createdAtMs)) continue;
     const appearance = parseEventAppearance(query.eventId, c.appearance);
-    if (!appearance.ok) continue;
+    if (!appearance.ok || !isKrathongAppearance(appearance.appearance)) continue;
     seen.add(c.id);
     out.push(
       Object.freeze({
