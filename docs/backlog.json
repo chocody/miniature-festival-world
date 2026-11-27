@@ -1168,6 +1168,525 @@
       ]
     },
     {
+      "id": "L16",
+      "summary": "Loop 16 — Christmas: Decorate a Growing Tree",
+      "description": "Owner request 2026-11-27: build the Christmas festival for the public launch 20–26 Dec 2026 (Asia/Bangkok). Core = the original spec: choose an ornament (ball / star / bow; procedural placeholders until the owner supplies models), write a wish, orbit one shared Christmas tree for everyone, see a ghost preview and tap to hang (NormalizedCylindricalCoord); the one tree keeps growing taller (zone n = band n, ≤ 80 per band, streamed); Find My, HUD, wish bubble and own popup reused; a snowy village built from the existing parts; abuse protection before launch; gimmicks after launch. Plan: docs/plans/L16-christmas.md.",
+      "labels": [
+        "loop-16",
+        "christmas",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "16.1",
+          "summary": "Record the owner's Christmas decisions (2026-11-27) in the spec",
+          "goal": "The spec, open questions, CLAUDE.md and roadmap say Christmas is being built as one growing tree.",
+          "ac": [
+            "docs/spec/open-questions.md gets rows for the owner's 2026-11-27 decisions (core = hang ornaments on one shared tree that keeps growing; zone n = band n; tierId = global tier index from the top; server-only event override outside production; abuse protection before launch; designs only ball/star/bow as placeholders; snowy village reusing existing parts) plus the plan's DRAFT defaults D3–D14 and R1–R9 as open rows with their defaults; row 15's 2D fallback is marked superseded; row 37 (wrap) noted as not applying to the tree",
+            "CLAUDE.md 'Christmas stays a stub' text and docs/spec/01-roadmap.md launch note are updated; spec/doc lint tests pass"
+          ],
+          "labels": [
+            "christmas",
+            "docs"
+          ]
+        },
+        {
+          "id": "16.2",
+          "summary": "Server-only override of the active event on non-production deployments",
+          "goal": "Staging and e2e can open Christmas before 20 Dec; production cannot (owner, 2026-11-27).",
+          "ac": [
+            "src/services/api/activeEvent.ts reads a server-only env var per request, ignored when VERCEL_ENV is production, never NEXT_PUBLIC / query / cookie / header; unknown or disabled ids fail closed; precedence env (non-production) > code constant > date; the christmas feature flag is enabled",
+            "tests/unit/active-event-boundary.test.ts is rewritten for the new rule (production ignores the env, the name is not NEXT_PUBLIC_, the client bundle never reads it) and activeEvent tests cover precedence"
+          ],
+          "labels": [
+            "christmas",
+            "infra",
+            "privacy"
+          ]
+        },
+        {
+          "id": "16.3",
+          "summary": "Playwright christmas project",
+          "goal": "Christmas e2e runs beside the Loy suite.",
+          "ac": [
+            "playwright.config.ts runs a second next start on its own port with the override and testMatch christmas-*.spec.ts; christmas e2e helpers and fixtures (including a 12-band directory fixture) are added with literals pinned by a unit test; a smoke e2e sees data-active-event=\"christmas\"; the Loy suite is unchanged",
+            "docs/ci.md puts the Christmas project in its own CI shard and records the measured CI time"
+          ],
+          "labels": [
+            "christmas",
+            "infra"
+          ],
+          "blockedBy": [
+            "16.2"
+          ]
+        },
+        {
+          "id": "16.4",
+          "summary": "Staging environment and private-test runbook (owner-assisted)",
+          "goal": "Open question 17: a second Supabase project behind a protected staging deployment so Christmas can be tested on a real DB.",
+          "ac": [
+            "docs/runbooks/staging.md covers the second Supabase project with migrations in order, branch-scoped server-only env (PR previews still have no DB), the private-wish and report keys, the event override, Vercel deployment protection and an anon-key denial checklist",
+            "The owner confirms staging opens Christmas and POST /api/creations writes to the DB; the result is recorded in docs/follow-ups.md"
+          ],
+          "labels": [
+            "christmas",
+            "infra",
+            "db"
+          ]
+        },
+        {
+          "id": "16.5",
+          "summary": "Per-event UI copy",
+          "goal": "Every visible string comes from the active event, so Christmas never says กระทง / สายน้ำ / คุ้งน้ำ.",
+          "ac": [
+            "A per-event copy table replaces direct copy imports in FlowRoot, CustomizerPanel, RitualReleasePanel, WishModal, InspectPopup, MyCreationsDrawer (per-event icon), OwnerWishSection, SceneTapHint and ZoneNavigator (incl. vertical labels); Loy strings stay byte-identical and existing tests pass",
+            "Christmas copy is DRAFT Thai for the owner to approve; a unit test asserts no Christmas string contains กระทง, สายน้ำ, คุ้งน้ำ or ลอย"
+          ],
+          "labels": [
+            "christmas",
+            "ui"
+          ]
+        },
+        {
+          "id": "16.6",
+          "summary": "Ornament appearance and server allowlist",
+          "goal": "The server accepts only catalogue ornament designs for Christmas.",
+          "ac": [
+            "An ornament design catalogue (ball, star, bow; default) and parseOrnamentAppearance with the exact key set {design}, registered for christmas in the appearance registry; EventAppearance becomes a union",
+            "The builder store chooses a design per event with a per-event default (Loy unchanged); tests cover parser cases and the server rejecting a krathong appearance for christmas and the reverse"
+          ],
+          "labels": [
+            "christmas",
+            "privacy"
+          ]
+        },
+        {
+          "id": "16.7",
+          "summary": "Growing-tree model: bands, tiers and slot lattice",
+          "goal": "One deterministic, three-free model of the one growing tree shared by server and client (zone n = band n; tierId = global tier index from the top).",
+          "ac": [
+            "src/core/world/growingTree.ts + christmas tree config (crown and skirt band templates, DRAFT numbers) export band/tier mapping, tier shape independent of the band count, tier geometry for N bands, slot lattice per band, capacity, snapping, nearest free slot in tree space, a max band count and a lattice fingerprint; tests: capacity ≤ 80 for every band, coord → world(N) → coord round-trip for several N (invariant B), world(c, N+1) − world(c, N) = (0, bandHeight, 0) exactly",
+            "A DRAFT Christmas camera framing and a pure projection test prove every neighbouring slot pair at the default framing on 390×844 and 360×640 is ≥ MIN_TOUCH_TARGET_PX apart and hit radius ≥ MIN_TOUCH_TARGET_PX/2; no three import"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "perf",
+            "dev-opus"
+          ]
+        },
+        {
+          "id": "16.8",
+          "summary": "Cylindrical inverse and surface normal",
+          "goal": "World hit → cylindrical coord and the surface normal for the ghost and ornament orientation.",
+          "ac": [
+            "CylindricalCoord.ts gains worldToCylindricalCoord (angle wrap, h clamped, null off the surface) and cylindricalSurfaceNormal (unit frustum normal); no three import",
+            "Round-trip tests within a stated tolerance over random tiers, normal perpendicular to both surface tangents, edge cases (0/360°, h = 0/1, zero top radius)"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "dev-opus"
+          ]
+        },
+        {
+          "id": "16.9",
+          "summary": "Rate limit on creating and reporting before launch",
+          "goal": "Owner (2026-11-27): anyone may hang any number of ornaments, but with a rate limit (owner suggested about 3 per minute).",
+          "ac": [
+            "POST /api/creations and /api/reports are rate-limited per device and per IP with DRAFT limits (owner suggestion: 3 hangs per minute per device; proposed extra layers: 10 per minute per IP and 30 per day per device, to confirm); mechanism: Vercel Firewall rules if the plan supports them (runbook + staging check returns 429), else a new migration with RLS enabled and deny policies for anon/authenticated and a migration test (invariant D)",
+            "The clients map 429 to a calm DRAFT Thai message and the ritual stays retryable; unit and mocked e2e tests"
+          ],
+          "labels": [
+            "christmas",
+            "privacy",
+            "infra"
+          ]
+        },
+        {
+          "id": "16.10",
+          "summary": "Report dedupe per reporter",
+          "goal": "One reporter cannot hide a wish alone; three distinct reporters still hide it (MFW-13 rule).",
+          "ac": [
+            "A new migration (old migrations untouched): a reports table keyed by (creation_id, reporter_hash) with RLS enabled, restrictive deny policies for anon/authenticated and revoke all; a v2 report function that counts and hides only when a new row was inserted; reporter_hash = HMAC of the client IP with a server-only key, the raw IP is never stored, logged or returned",
+            "Migration test and handler tests: the same reporter three times counts once; three distinct reporters hide the wish; privacy-auditor; owner-merge"
+          ],
+          "labels": [
+            "christmas",
+            "privacy",
+            "db",
+            "migration"
+          ]
+        },
+        {
+          "id": "16.11",
+          "summary": "Tree placement on the server write path",
+          "goal": "POST /api/creations stores a Christmas ornament in the right band and free slot.",
+          "ac": [
+            "A tree placement strategy registered for christmas: only CYLINDRICAL_SURFACE within the max tier; band = first band below capacity (hidden rows counted) else a new band; nearest free slot to the candidate; the guarded insert with the band's occupant ids (no SQL change); Christmas retention end date set",
+            "Route and strategy tests: exact free slot → 201 same coord; taken slot → nearest free slot; full band → next band; off-lattice candidate snapped; spline coord or tier past max → 400; last-slot race → one wins, the other lands in the next band; PII wish → 422 (G); no private keys in responses (C); privacy-auditor"
+          ],
+          "labels": [
+            "christmas",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.6",
+            "16.7"
+          ]
+        },
+        {
+          "id": "16.12",
+          "summary": "Generalise the release pipeline and ritual for hanging",
+          "goal": "One release service and one ritual machine for both events; Loy unchanged.",
+          "ac": [
+            "Ritual types become unions (river spot | tree slot, persistable coord, TAP_ON_TREE hint); the release service takes a per-event adapter (the Loy adapter is today's code); the client's 201 check validates any persistable coord of the event's mode and keeps the private-key scan; every Loy ritual unit and e2e test passes unchanged",
+            "Christmas adapter tests: the body carries the ornament appearance and only the CYLINDRICAL coord keys (A); a server move is detected; a moderation block → revise wish; private text cleared after save"
+          ],
+          "labels": [
+            "christmas",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.6",
+            "16.7"
+          ]
+        },
+        {
+          "id": "16.13",
+          "summary": "Linear band streaming in the zone pagination",
+          "goal": "Bands of the tree stream like river stretches, without wrap-around.",
+          "ac": [
+            "The zone pagination gets a linear topology (default ring keeps Loy unchanged): band = zone id, window [b−R, b+R] within [1, zoneCount], no wrap, jumps clamp at the ends, a directory refresh that raises zoneCount never moves the current band",
+            "Unit tests for the window, dropping far bands (invariant E), clamping and refresh; every existing pagination, endless-river and Find My test passes unchanged"
+          ],
+          "labels": [
+            "christmas",
+            "perf"
+          ]
+        },
+        {
+          "id": "16.14",
+          "summary": "Christmas scene shell and tree renderer",
+          "goal": "Christmas opens its own lazy-loaded 3D scene with the placeholder clay tree.",
+          "ac": [
+            "FlowRoot lazy-loads a Christmas scene viewport (the river chunk is not fetched, e2e network check), reusing the shared render settings, lighting and input separator; the tree (trunk, crown tiers, one instanced mesh for all skirt tiers, star) is built from the growing-tree model; only bands in view plus a margin are mounted; a plain snow ground",
+            "Disposal test on unmount; a Christmas environment budget in performance.config.ts with a test that draw calls do not depend on the band count; screenshots at 390×844 and 1440×900 for 1, 3 and 12 bands (owner art checkpoint for the tree shape and numbers)"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.3",
+            "16.7"
+          ]
+        },
+        {
+          "id": "16.15",
+          "summary": "Placeholder ornament models and the GLB swap contract",
+          "goal": "Ball, star and bow in the clay-toy look now; swappable for the owner's models later by config.",
+          "ac": [
+            "Procedural vertex-coloured ball, star and bow in the existing design-body contract with three LODs, hook at +Y and outward axis +Z, triangle guards per LOD; thumbnails generated as in MFW-78",
+            "A design source registry (procedural | glb); the GLB parser makes anchors optional and a fixture GLB loads through the same path; docs/design/models.md documents the ornament contract for the owner"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.6"
+          ]
+        },
+        {
+          "id": "16.16",
+          "summary": "Winter look: palette, day and night, snowy plaza ground",
+          "goal": "The Christmas scene reads as a soft snowy winter village.",
+          "ac": [
+            "A Christmas look config with DAY and NIGHT presets, a round snowy plaza with a ring path and the snow material; no new shader program on LOW",
+            "Screenshots DAY and NIGHT × HIGH and LOW, phone and desktop"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "art"
+          ],
+          "blockedBy": [
+            "16.14"
+          ]
+        },
+        {
+          "id": "16.17",
+          "summary": "Orbit and vertical-travel camera around the tree",
+          "goal": "Visitors turn around the tree and travel up and down its height.",
+          "ac": [
+            "A pure tree camera rig: horizontal drag orbits with wrap, vertical drag travels along the trunk (newest band with the plaza up to the star), pinch and wheel zoom clamped, coasting with an instant reduced-motion variant, the rotate button steps the yaw; the band under the focus (with hysteresis) drives the pagination; the focus is kept as depth from the star so growth does not move the view; camera locking is per event",
+            "Unit tests for bounds, wrap, hysteresis and reduced motion; e2e on the 12-band fixture: a horizontal drag orbits, a vertical drag changes the current band and only nearby bands are fetched"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "interaction",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.13",
+            "16.14"
+          ]
+        },
+        {
+          "id": "16.18",
+          "summary": "Ornaments on the tree, instanced per streamed band",
+          "goal": "Every public ornament of the loaded bands hangs at its stored coord.",
+          "ac": [
+            "Streamed zone items become instanced batches per design; position and orientation are derived every render from coord + band count with locked world scale; per-quality-tier LOD with no shadows on LOW; batches of a band leaving the window are disposed; budget test ≤ 80 per band and a fixed maximum in total",
+            "Perf e2e on LOW in SwiftShader on the 12-band fixture (newest band and after travelling up) stays above the low-FPS threshold; screenshots of a full band DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.13",
+            "16.14",
+            "16.15"
+          ]
+        },
+        {
+          "id": "16.19",
+          "summary": "Winter village around the plaza",
+          "goal": "The existing houses, trees, lamps and villagers, snowed in around the tree.",
+          "ac": [
+            "A ring layout around the plaza reusing the house shell with a snowy roof, foliage parts as snowy pine clumps, lamps and silhouette villagers, all instanced (villagers may be 0 on LOW)",
+            "Budget test per quality tier and screenshots DAY and NIGHT, phone and desktop (owner art checkpoint)"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "art",
+            "perf",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.16"
+          ]
+        },
+        {
+          "id": "16.20",
+          "summary": "Customizer: choose an ornament design",
+          "goal": "The same floating thumbnail row as the krathong picker, for ornaments.",
+          "ac": [
+            "The customizer lists the active event's designs from the registry; the chosen ornament shows as the hero in the customize view and rotate/zoom work",
+            "Unit and e2e tests: choosing the star stores {design: star}; touch targets ≥ 44 px at 360×640, 390×844 and 1440×900; screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "ui",
+            "3d"
+          ],
+          "blockedBy": [
+            "16.5",
+            "16.6",
+            "16.14",
+            "16.15"
+          ]
+        },
+        {
+          "id": "16.21",
+          "summary": "Hang mode: open band, ghost and tap to hang",
+          "goal": "The one small ritual: see where it will hang, tap to hang it.",
+          "ac": [
+            "The open band is the lowest loaded band with a visible free slot, else an empty new band appears and the tree rises; while hanging the camera stays on the open band and orbits freely; the ghost sits on the free slot nearest the view centre (hover on desktop) facing out of the surface; a tap on the tree resolves to the nearest free slot in the 3D layer only and hangs there; the hang button hangs at the ghost",
+            "E2E hangs once via the button and once via a tap; the POST coord has exactly mode/tierId/angleDeg/heightRatio with tierId in the open band; the flow reaches the shared world; screenshots of the ghost DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "interaction",
+            "dev-opus"
+          ],
+          "blockedBy": [
+            "16.8",
+            "16.12",
+            "16.17",
+            "16.18"
+          ]
+        },
+        {
+          "id": "16.22",
+          "summary": "Hang flight, sparkle, settle and server moves",
+          "goal": "Hanging feels magical; server corrections are visible and calm.",
+          "ac": [
+            "The ornament flies to its slot, a pooled sparkle plays (new effect kind with per-tier caps) and it swings briefly to settle; reduced motion is instant with no swing or sparkle motion",
+            "A server move inside the band bumps the ornament to its final slot; a move to a new band grows the tree and the camera follows; e2e with mocked responses for both; a test proves no new effect object per tap"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "interaction",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.21"
+          ]
+        },
+        {
+          "id": "16.23",
+          "summary": "Growth when the band count rises",
+          "goal": "The tree rises smoothly when a new band opens, without losing the viewer's place.",
+          "ac": [
+            "When the band count rises the tree rises by one band height with a spring (instant under reduced motion); stored coords never change; a viewer at the newest band moves to the new newest band, anyone else keeps their depth relative to the tree",
+            "Unit tests for the offset and camera rule; e2e where the fixture directory grows from 3 to 4 bands, with screenshots before and after"
+          ],
+          "labels": [
+            "christmas",
+            "3d"
+          ],
+          "blockedBy": [
+            "16.17",
+            "16.18"
+          ]
+        },
+        {
+          "id": "16.24",
+          "summary": "Vertical band navigator and height gauge",
+          "goal": "Visitors move up and down the tall tree and see where they are.",
+          "ac": [
+            "ZoneNavigator gets a vertical variant for the linear topology (▲ toward the star, ▼ toward the newest band, disabled at the ends, hidden with one band) driving the camera travel; a slim gauge shows the position on the tree and marks this device's ornaments by band (no coords)",
+            "E2E, touch targets ≥ 44 px and screenshots on phone and desktop"
+          ],
+          "labels": [
+            "christmas",
+            "ui",
+            "interaction"
+          ],
+          "blockedBy": [
+            "16.5",
+            "16.13",
+            "16.17"
+          ]
+        },
+        {
+          "id": "16.25",
+          "summary": "Find My on the tall tree",
+          "goal": "Find My travels to your ornament's band and orbits to it.",
+          "ac": [
+            "Find My (per-event icon and copy) loads the band, travels vertically and orbits the shorter way to the ornament, which gets the existing bounce and mark (no rings); reduced motion is an instant cut; day/night and rotate still work",
+            "E2E on the 12-band fixture: from the newest band, an ornament in band 2 ends up in view and tappable; screenshots on phone and desktop"
+          ],
+          "labels": [
+            "christmas",
+            "ui",
+            "interaction"
+          ],
+          "blockedBy": [
+            "16.17",
+            "16.18"
+          ]
+        },
+        {
+          "id": "16.26",
+          "summary": "Wish bubble and own popup for ornaments",
+          "goal": "MFW-80 and MFW-81 work on the tree.",
+          "ac": [
+            "Tapping another person's ornament shows the fading public bubble anchored at its derived position; tapping your own opens the popup with the design thumbnail, the owner switch and the private reveal",
+            "Tests prove no private text or token in the bubble or the public store (C); e2e and screenshots DAY and NIGHT"
+          ],
+          "labels": [
+            "christmas",
+            "ui",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.18"
+          ]
+        },
+        {
+          "id": "16.27",
+          "summary": "Visit the tree without hanging",
+          "goal": "Returning visitors can look at the tree and find their ornament without hanging another.",
+          "ac": [
+            "A secondary 'ดูต้นไม้' action in the customize bar goes to the shared world without creating anything (state-machine test); Loy unchanged",
+            "E2E: reload → ดูต้นไม้ → Find My → the ornament is in view"
+          ],
+          "labels": [
+            "christmas",
+            "ui"
+          ],
+          "blockedBy": [
+            "16.25"
+          ]
+        },
+        {
+          "id": "16.28",
+          "summary": "Village taps and falling snow (optional, may ship after launch)",
+          "goal": "Reuse the existing tap reactions in the plaza and add gentle falling snow.",
+          "ac": [
+            "House, pine, lamp and empty-ground taps reuse the existing reactions on the plaza anchors (SceneEffects frame optional)",
+            "Falling snow reuses the ambient motes: static under reduced motion, none on LOW; e2e taps"
+          ],
+          "labels": [
+            "christmas",
+            "3d",
+            "interaction",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.19"
+          ]
+        },
+        {
+          "id": "16.29",
+          "summary": "Private test on staging and device pass",
+          "goal": "Real testers and devices before launch (open question 20).",
+          "ac": [
+            "A checklist on iOS Safari and Android across all quality tiers: FPS at the newest band and after travelling up, tap accuracy on a full band, a two-device race for the last slot, a 429 from the rate limit, one device reporting three times hides nothing; results in docs/follow-ups.md and fixes as new cards"
+          ],
+          "labels": [
+            "christmas",
+            "infra",
+            "perf"
+          ],
+          "blockedBy": [
+            "16.4",
+            "16.9",
+            "16.10",
+            "16.22",
+            "16.23",
+            "16.24",
+            "16.25",
+            "16.26",
+            "16.27"
+          ]
+        },
+        {
+          "id": "16.30",
+          "summary": "Launch switch, private-test data wipe and lattice freeze",
+          "goal": "Production opens Christmas by date at 20 Dec 00:00 +07 on clean data.",
+          "ac": [
+            "The active-event code constant becomes null; fake-clock tests: 19 Dec 23:59 +07 → the calm screen with Christmas dates, 20 Dec 00:00 → christmas, 27 Dec 00:00 → none",
+            "A one-off owner-run wipe script (not a migration) deletes all private-test data and verifies count 0; production migrations confirmed applied; the slot-lattice fingerprint is frozen; privacy-auditor; owner-merge"
+          ],
+          "labels": [
+            "christmas",
+            "infra",
+            "db",
+            "privacy"
+          ],
+          "blockedBy": [
+            "16.29"
+          ]
+        }
+      ]
+    },
+    {
       "id": "LS",
       "summary": "Festival Config Stubs (Roadmap 2026–2027)",
       "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",
