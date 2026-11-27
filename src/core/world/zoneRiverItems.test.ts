@@ -30,6 +30,14 @@ function creation(i: number, overrides: Record<string, unknown> = {}): PublicCre
 }
 
 describe("publicCreationsToRiverItems", () => {
+  it("skips non-krathong appearances (MFW-92)", () => {
+    expect(
+      publicCreationsToRiverItems([creation(1, { eventId: "christmas", appearance: { design: "ball_01" } })], {
+        eventId: "christmas",
+        zoneId: 2,
+      }),
+    ).toEqual([]);
+  });
   it("maps one valid item to a frozen public-only river item", () => {
     const input = creation(1);
     const out = publicCreationsToRiverItems([input], QUERY);

@@ -2,10 +2,13 @@ import type { FestivalEventId } from "./events";
 
 export type EventFeatureFlags = Readonly<Record<FestivalEventId, boolean>>;
 
-/** Which festivals are built and may become active (MFW-53). Phase 1: only Loy Krathong. */
+/**
+ * Which festivals are built and may become active (MFW-53). Loy Krathong and Christmas (MFW-88);
+ * production still opens only what `ACTIVE_EVENT_OVERRIDE` or the date window allows.
+ */
 export const EVENT_FEATURE_FLAGS: EventFeatureFlags = Object.freeze({
   loy_krathong: true,
-  christmas: false,
+  christmas: true,
   new_year: false,
   chinese_new_year: false,
   valentines: false,

@@ -5,13 +5,15 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const files = [
-  ...["types", "sockets", "krathongAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "krathongInstanceBuckets", "appearanceRegistry", "krathongChoices", "partChangeBounce", "krathongMeshData", "flameFlicker", "krathongDesignGlb", "krathongDesign", "index"].map(
+  ...["types", "sockets", "krathongAppearance", "ornamentAppearance", "starAppearance", "krathongBuilder", "krathongAssetKeys", "krathongAssembler", "krathongInstanceBuckets", "appearanceRegistry", "krathongChoices", "partChangeBounce", "krathongMeshData", "flameFlicker", "krathongDesignGlb", "krathongDesign", "index"].map(
     (name) => `src/core/customization/${name}.ts`,
   ),
   "src/config/events/loyKrathong.config.ts",
   "src/config/krathongModel.config.ts",
   "src/config/customizer.config.ts",
   "src/config/krathongDesigns.config.ts",
+  "src/config/ornamentDesigns.config.ts",
+  "src/config/starDesigns.config.ts",
 ];
 
 describe("server-usable customization modules", () => {

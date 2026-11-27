@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { FESTIVAL_EVENTS, FESTIVAL_EVENT_IDS, type FestivalEventConfig } from "@/config/events";
-import type { EventFeatureFlags } from "@/config/featureFlags.config";
+import { EVENT_FEATURE_FLAGS, type EventFeatureFlags } from "@/config/featureFlags.config";
 import { findNearestWindow, isEventActive, resolveActiveEvent } from "./activeEvent";
 
 const bkk = (s: string) => Date.parse(s);
 const ALL_ON = Object.fromEntries(FESTIVAL_EVENT_IDS.map((id) => [id, true])) as unknown as EventFeatureFlags;
+const LOY_ONLY = { ...EVENT_FEATURE_FLAGS, christmas: false } as EventFeatureFlags;
 const XMAS = bkk("2026-12-22T12:00:00+07:00");
 const XMAS_START = bkk("2026-12-20T00:00:00+07:00");
 const XMAS_END = bkk("2026-12-27T00:00:00+07:00");
@@ -54,7 +55,7 @@ describe("resolveActiveEvent", () => {
   });
 
   it("an in-window festival that is not built is not active", () => {
-    const r = resolveActiveEvent(XMAS);
+    const r = resolveActiveEvent(XMAS, { flags: LOY_ONLY });
     expect(r.kind).toBe("none");
     expect(nearestId(r)).toBe("christmas");
   });
@@ -67,8 +68,12 @@ describe("resolveActiveEvent", () => {
         source: "override",
       });
     }
-    expect(resolveActiveEvent(XMAS, { override: "christmas" }).kind).toBe("none");
+    expect(resolveActiveEvent(XMAS, { override: "christmas", flags: LOY_ONLY }).kind).toBe("none");
     expect(resolveActiveEvent(XMAS, { override: "nope" as never }).kind).toBe("none");
+  });
+
+  it("with the default flags Christmas is active by date in its window", () => {
+    expect(resolveActiveEvent(XMAS)).toEqual({ kind: "active", eventId: "christmas", source: "date" });
   });
 
   it("a non-finite time or no events resolves to none without a nearest festival", () => {

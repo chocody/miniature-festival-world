@@ -6,7 +6,9 @@ const PRIVATE_NAMES = [
   "owner_token", "ownerToken", "owner_token_hash", "ownerTokenHash", "private_wish_text", "privateWishText",
   "privateWish", "private_wish_key_id", "report_count", "reportCount", "moderation_status", "moderationStatus",
 ];
-const ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PRIVATE_WISH_KEY", "PRIVATE_WISH_KEY_ID", "VERCEL_ENV"];
+const S_TOP = { mode: "CYLINDRICAL_SURFACE", tierId: 0, angleDeg: 45, heightRatio: 0.375 };
+const S_TOP_NEXT = { mode: "CYLINDRICAL_SURFACE", tierId: 0, angleDeg: 135, heightRatio: 0.375 };
+const ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PRIVATE_WISH_KEY", "PRIVATE_WISH_KEY_ID", "VERCEL_ENV", "MFW_ACTIVE_EVENT_OVERRIDE"];
 
 beforeEach(() => {
   vi.resetModules();
@@ -52,6 +54,35 @@ describe("POST /api/creations (real route, no Supabase env)", () => {
     const text = await res.text();
     expect((JSON.parse(text) as { creation: { publicWishText: unknown } }).creation.publicWishText).toBeNull();
     for (const name of [...PRIVATE_NAMES, "ephemeral", "ความลับ"]) expect(text).not.toContain(name);
+  });
+
+  it("christmas via the server env override: the ornament lands on its slot and nothing private leaks", async () => {
+    vi.stubEnv("MFW_ACTIVE_EVENT_OVERRIDE", "christmas");
+    const { GET, POST } = await import("./route");
+    const first = await POST(
+      makeCreateRequest(
+        makeCreateBody({ eventId: "christmas", appearance: { design: "ball_01" }, coord: S_TOP, wishVisibility: "private", wishText: "ความลับ" }),
+      ),
+    );
+    expect(first.status).toBe(201);
+    const text = await first.text();
+    const a = (JSON.parse(text) as { creation: { id: string; zoneId: number; coord: unknown } }).creation;
+    expect(a.coord).toEqual(S_TOP);
+    expect(a.zoneId).toBe(1);
+    for (const name of [...PRIVATE_NAMES, "ephemeral", "ความลับ"]) expect(text).not.toContain(name);
+    const second = await POST(
+      makeCreateRequest(makeCreateBody({ eventId: "christmas", appearance: { design: "ball_01" }, coord: S_TOP, wishText: "สุขสันต์" })),
+    );
+    expect(second.status).toBe(201);
+    const b = (await second.json()) as { creation: { id: string; coord: unknown } };
+    expect(b.creation.coord).toEqual(S_TOP_NEXT);
+    const list = await GET(new Request("http://localhost/api/creations?event=christmas&zone=1"));
+    expect(list.status).toBe(200);
+    const items = ((await list.json()) as { items: { id: string }[] }).items.map((i) => i.id);
+    expect(items).toEqual(expect.arrayContaining([a.id, b.creation.id]));
+    const loy = await POST(makeCreateRequest(makeCreateBody()));
+    expect(loy.status).toBe(409);
+    expect(await loy.json()).toEqual({ error: "event_closed" });
   });
 
   it("refuses the in-memory backend on a production deployment", async () => {

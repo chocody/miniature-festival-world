@@ -2,11 +2,22 @@ import { create } from "zustand";
 import {
   applyKrathongChoice,
   DEFAULT_KRATHONG_APPEARANCE,
+  DEFAULT_ORNAMENT_APPEARANCE,
+  DEFAULT_STAR_APPEARANCE,
+  defaultEventAppearance,
   krathongAppearanceEquals,
+  parseOrnamentAppearance,
+  parseStarAppearance,
+  type AppearanceParseResult,
   type EventAppearance,
+  type KrathongAppearance,
   type KrathongChoice,
   type KrathongChoiceResult,
+  type OrnamentAppearance,
+  type StarAppearance,
 } from "@/core/customization";
+import type { KrathongDesignId } from "@/config/krathongDesigns.config";
+import type { FestivalEventId } from "@/config/events/types";
 import type { ModerationReason } from "@/services/moderation";
 import { moderationReasonsFromServerBody, type ComposedWish } from "@/services/api/wishPayload";
 import {
@@ -22,6 +33,11 @@ export interface BuilderActions {
    */
   chooseKrathong: (choice: KrathongChoice) => KrathongChoiceResult;
   /**
+   * Chooses the design of the creation of an event (MFW-92). loy_krathong behaves exactly like chooseKrathong; christmas
+   * stores an ornament design and new_year a star design (null = default); any other event is refused. A refusal or a no-op leaves the same state.
+   */
+  chooseDesign: (eventId: FestivalEventId, design: string) => AppearanceParseResult<EventAppearance>;
+  /**
    * Evaluates the composer draft (name always through the 2.3 guard; wish too when the switch is on). Only when ok: stores
    * the composed wish and the trimmed name (null when empty) and clears server reasons. Otherwise the store is untouched
    * (same state reference). MFW-63.
@@ -36,7 +52,12 @@ export interface BuilderActions {
 
 /** The creation currently being customized (spec §3: useBuilderStore). */
 export interface BuilderState extends BuilderActions {
-  appearance: EventAppearance | null;
+  /** The Loy Krathong appearance (null = DEFAULT_KRATHONG_APPEARANCE). */
+  appearance: KrathongAppearance | null;
+  /** The Christmas ornament appearance (null = DEFAULT_ORNAMENT_APPEARANCE). In memory only (MFW-92). */
+  ornamentAppearance: OrnamentAppearance | null;
+  /** The New Year star appearance (null = DEFAULT_STAR_APPEARANCE). In memory only (MFW-131). */
+  starAppearance: StarAppearance | null;
   /** The composed wish of this creation. In memory only (never persisted); MFW-23 sends it when saving. */
   wish: ComposedWish | null;
   /** The optional display name of this creation (MFW-63). In memory only (never persisted); cleared with `wish` after a save. */
@@ -47,6 +68,8 @@ export interface BuilderState extends BuilderActions {
 
 export const useBuilderStore = create<BuilderState>()((set, get) => ({
   appearance: null,
+  ornamentAppearance: null,
+  starAppearance: null,
   wish: null,
   wishDisplayName: null,
   wishServerReasons: null,
@@ -55,6 +78,24 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     const result = applyKrathongChoice(current, choice);
     if (result.ok && !krathongAppearanceEquals(result.appearance, current)) set({ appearance: result.appearance });
     return result;
+  },
+  chooseDesign: (eventId, design) => {
+    if (eventId === "loy_krathong") return get().chooseKrathong({ part: "design", value: design as KrathongDesignId });
+    if (eventId === "christmas") {
+      const parsed = parseOrnamentAppearance({ design });
+      if (parsed.ok && parsed.appearance.design !== (get().ornamentAppearance ?? DEFAULT_ORNAMENT_APPEARANCE).design) {
+        set({ ornamentAppearance: parsed.appearance });
+      }
+      return parsed;
+    }
+    if (eventId === "new_year") {
+      const parsed = parseStarAppearance({ design });
+      if (parsed.ok && parsed.appearance.design !== (get().starAppearance ?? DEFAULT_STAR_APPEARANCE).design) {
+        set({ starAppearance: parsed.appearance });
+      }
+      return parsed;
+    }
+    return { ok: false, reason: `no appearance schema for event: ${eventId}` };
   },
   submitWish: (draft) => {
     const result = evaluateWishComposer(draft);
@@ -68,3 +109,14 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     return true;
   },
 }));
+
+/** The appearance being built for an event (the event default when none is chosen), or null for an event without a schema. */
+export function selectBuilderAppearance(
+  state: Pick<BuilderState, "appearance" | "ornamentAppearance" | "starAppearance">,
+  eventId: FestivalEventId,
+): EventAppearance | null {
+  if (eventId === "loy_krathong") return state.appearance ?? defaultEventAppearance("loy_krathong");
+  if (eventId === "christmas") return state.ornamentAppearance ?? defaultEventAppearance("christmas");
+  if (eventId === "new_year") return state.starAppearance ?? defaultEventAppearance("new_year");
+  return null;
+}
