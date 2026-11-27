@@ -14,7 +14,12 @@ import { CREASE_DEG, FOOTPRINT } from "./krathong-models.designs.mjs";
  *   | { kind: "sphere", c: number[], radius: number }
  *   | { kind: "any" }} Shape
  * @typedef {{ region: Region, color: string, shape: Shape }} Rule
- * @typedef {{ id: string, sourceFile: string, referenceImage: string, rules: Rule[] }} DesignSpec
+ * @typedef {{ x: number, y: number, z: number, height: number, radius: number }} AddedFlame flame anchor in SOURCE coordinates
+ *   (y = flame base), for a flame the model lacks (MFW-76)
+ * @typedef {{ id: string, sourceFile: string, referenceImage: string, rules: Rule[],
+ *   maxFlames?: { full?: number, medium?: number, low?: number }, addedFlames?: AddedFlame[] }} DesignSpec
+ *   maxFlames: the most flame islands per LOD that are cut out (the tallest win; the rest stay in the body in their rule
+ *   colour); a missing LOD means no limit. addedFlames: anchors appended after the cut ones at every LOD.
  * @typedef {"full" | "medium" | "low"} Lod
  * @typedef {{ positions: Float32Array, normals: Float32Array, colors: Uint8Array, indices: Uint16Array | Uint32Array | number[], flames: number[][] }} GlbInput
  */
@@ -111,12 +116,9 @@ export function readGlbMesh(bytes) {
  * @param {{ radius: number, bottomY: number }} footprint
  * @returns {Float32Array}
  */
-export function normaliseToFootprint(positions, { radius, bottomY }) {
-  const { cx, cz, minY } = boundsOf(positions);
-  let maxR = 0;
-  for (let i = 0; i < positions.length; i += 3) maxR = Math.max(maxR, Math.hypot(positions[i] - cx, positions[i + 2] - cz));
-  if (!(maxR > 0)) throw new Error("mesh has no horizontal extent");
-  const s = radius / maxR;
+export function normaliseToFootprint(positions, footprint) {
+  const { cx, cz, minY, s } = footprintTransform(positions, footprint);
+  const { bottomY } = footprint;
   const out = new Float32Array(positions.length);
   for (let i = 0; i < positions.length; i += 3) {
     out[i] = (positions[i] - cx) * s;
@@ -124,6 +126,20 @@ export function normaliseToFootprint(positions, { radius, bottomY }) {
     out[i + 2] = (positions[i + 2] - cz) * s;
   }
   return out;
+}
+
+/**
+ * The transform normaliseToFootprint applies: bbox centre x / z, lowest y and the scale s = radius / max hypot(x−cx, z−cz).
+ * @param {ArrayLike<number>} positions
+ * @param {{ radius: number, bottomY: number }} footprint
+ * @returns {{ cx: number, cz: number, minY: number, s: number }}
+ */
+export function footprintTransform(positions, { radius }) {
+  const { cx, cz, minY } = boundsOf(positions);
+  let maxR = 0;
+  for (let i = 0; i < positions.length; i += 3) maxR = Math.max(maxR, Math.hypot(positions[i] - cx, positions[i + 2] - cz));
+  if (!(maxR > 0)) throw new Error("mesh has no horizontal extent");
+  return { cx, cz, minY, s: radius / maxR };
 }
 
 /** @param {ArrayLike<number>} positions */
@@ -214,13 +230,18 @@ const edgeKey = (/** @type {number} */ a, /** @type {number} */ b) => (a < b ? `
  * island: [x, y, z, height, radius] (bbox centre x/z, min y, height, max horizontal distance from (x, z); 4 decimals).
  * `capFaceSource[f]` is, for every output face f, the input face whose rule it takes: itself for a kept face, the body face
  * across the boundary edge for a cap face.
+ * With more islands than `maxFlames`, only the `maxFlames` tallest (unrounded max y − min y; a tie goes to the lower island
+ * index) are cut; every other island stays in the body as ordinary kept faces (no cap), in the original face order. No
+ * island at all returns `flames: []` and the input faces unchanged.
  * @param {Float32Array} positions
  * @param {ArrayLike<number>} indices
  * @param {ArrayLike<number>} faceRuleIds
  * @param {Rule[]} rules
+ * @param {number} [maxFlames] Infinity (default) or an integer ≥ 0
  * @returns {{ positions: Float32Array, indices: Uint32Array, capFaceSource: Int32Array, flames: number[][] }}
  */
-export function extractFlames(positions, indices, faceRuleIds, rules) {
+export function extractFlames(positions, indices, faceRuleIds, rules, maxFlames = Infinity) {
+  if (maxFlames !== Infinity && !(Number.isInteger(maxFlames) && maxFlames >= 0)) throw new Error("bad maxFlames");
   const faceCount = indices.length / 3;
   const vertexCount = positions.length / 3;
   const isFlame = (/** @type {number} */ f) => rules[faceRuleIds[f]].region === "flame";
@@ -234,23 +255,40 @@ export function extractFlames(positions, indices, faceRuleIds, rules) {
   /** @type {Map<number, number>} vertex root → island number (ordered by the island's lowest face index) */
   const islandOfRoot = new Map();
   /** @type {number[][]} */
-  const islandFaces = [];
+  const allIslandFaces = [];
   for (let f = 0; f < faceCount; f++) {
     if (!isFlame(f)) continue;
     const root = uf.find(indices[f * 3]);
     let island = islandOfRoot.get(root);
     if (island === undefined) {
-      island = islandFaces.length;
+      island = allIslandFaces.length;
       islandOfRoot.set(root, island);
-      islandFaces.push([]);
+      allIslandFaces.push([]);
     }
-    islandFaces[island].push(f);
+    allIslandFaces[island].push(f);
   }
-  if (islandFaces.length === 0) throw new Error("no flame found");
+  /** @param {number[]} faces @returns {number[]} sorted vertex ids of an island */
+  const islandVerts = (faces) =>
+    [...new Set(faces.flatMap((f) => [indices[f * 3], indices[f * 3 + 1], indices[f * 3 + 2]]))].sort((a, b) => a - b);
+  /** @type {number[][]} the islands that are cut, in island order */
+  let islandFaces = allIslandFaces;
+  if (allIslandFaces.length > maxFlames) {
+    const heights = allIslandFaces.map((faces) => {
+      let minY = Infinity, maxY = -Infinity;
+      for (const v of islandVerts(faces)) {
+        minY = Math.min(minY, positions[v * 3 + 1]);
+        maxY = Math.max(maxY, positions[v * 3 + 1]);
+      }
+      return maxY - minY;
+    });
+    const ranked = allIslandFaces.map((_, i) => i).sort((a, b) => heights[b] - heights[a] || a - b);
+    const cut = new Set(ranked.slice(0, maxFlames));
+    islandFaces = allIslandFaces.filter((_, i) => cut.has(i));
+  }
 
   // Anchors, from the island vertices.
   const flames = islandFaces.map((faces) => {
-    const verts = [...new Set(faces.flatMap((f) => [indices[f * 3], indices[f * 3 + 1], indices[f * 3 + 2]]))].sort((a, b) => a - b);
+    const verts = islandVerts(faces);
     const coords = verts.flatMap((v) => [positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]]);
     const { cx, cz, minY, maxY } = boundsOf(coords);
     let radius = 0;
@@ -503,7 +541,14 @@ export function buildDesignLod(sourceBytes, design, lod) {
   const source = readGlbMesh(sourceBytes);
   const faceRules = classifyFaces(source.positions, source.indices, design.rules);
   const normalised = normaliseToFootprint(source.positions, FOOTPRINT);
-  const cut = extractFlames(normalised, source.indices, faceRules, design.rules);
+  const cut = extractFlames(normalised, source.indices, faceRules, design.rules, design.maxFlames?.[lod] ?? Infinity);
+  const flames = [...cut.flames];
+  if (design.addedFlames !== undefined && design.addedFlames.length > 0) {
+    const { cx, cz, minY, s } = footprintTransform(source.positions, FOOTPRINT);
+    for (const a of design.addedFlames)
+      flames.push([round((a.x - cx) * s), round((a.y - minY) * s + FOOTPRINT.bottomY), round((a.z - cz) * s), round(a.height * s), round(a.radius * s)]);
+  }
+  if (flames.length === 0) throw new Error("no flame found");
   const cornerNormals = computeCreaseNormals(cut.positions, cut.indices, crease);
   const ruleBytes = design.rules.map((rule) => srgbHexToLinearBytes(rule.color));
   const normalBits = new Uint32Array(new Float32Array(cornerNormals).buffer);
@@ -535,6 +580,6 @@ export function buildDesignLod(sourceBytes, design, lod) {
     normals: Float32Array.from(normals),
     colors: Uint8Array.from(colors),
     indices,
-    flames: cut.flames,
+    flames,
   });
 }

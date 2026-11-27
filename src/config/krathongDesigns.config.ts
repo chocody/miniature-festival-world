@@ -2,9 +2,10 @@ import { KRATHONG_MATTE_SURFACE, type KrathongLod } from "./krathongModel.config
 
 /**
  * Owner-supplied krathong designs (MFW-65, backlog 13.1): one-piece GLB models, decimated offline per LOD and coloured by
- * scripts/krathong-models.mjs (docs/design/models.md). Slice 1 ships one design; slice 2 appends the other four.
+ * scripts/krathong-models.mjs (docs/design/models.md). Slice 1 (MFW-65) shipped banana_leaf_01; slice 2 (MFW-76) appended the
+ * other four in the owner's file order (bucket indices of the earlier designs stay stable).
  */
-export const KRATHONG_DESIGN_IDS = Object.freeze(["banana_leaf_01"] as const);
+export const KRATHONG_DESIGN_IDS = Object.freeze(["banana_leaf_01", "lotus_bud_01", "marigold_01", "rose_candles_01", "naga_01"] as const);
 export type KrathongDesignId = (typeof KRATHONG_DESIGN_IDS)[number];
 
 /** Design of every krathong until the customizer picks one (card 14.4). Loop decision (MFW-65), DRAFT. */

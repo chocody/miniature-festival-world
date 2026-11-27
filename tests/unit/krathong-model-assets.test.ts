@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -112,13 +113,32 @@ describe("committed krathong model assets (MFW-65)", () => {
     assets.dispose();
   });
 
-  it("KA5: 1 ≤ flames ≤ KRATHONG_DESIGN_MAX_FLAMES; banana_leaf_01 has exactly one", () => {
+  it("KA5: 1 ≤ flames ≤ KRATHONG_DESIGN_MAX_FLAMES; per-design flame counts (banana_leaf_01 one; MFW-76 designs)", () => {
     for (const [id, lod] of pairs) {
       const flames = parse(id, lod).flames.length;
       expect(flames, `${id}.${lod}`).toBeGreaterThanOrEqual(1);
       expect(flames, `${id}.${lod}`).toBeLessThanOrEqual(KRATHONG_DESIGN_MAX_FLAMES);
     }
     for (const lod of KRATHONG_LODS) expect(parse("banana_leaf_01", lod).flames).toHaveLength(1);
+    // MFW-76
+    for (const lod of KRATHONG_LODS) {
+      expect(parse("lotus_bud_01", lod).flames, `lotus_bud_01.${lod}`).toHaveLength(1);
+      expect(parse("marigold_01", lod).flames, `marigold_01.${lod}`).toHaveLength(1);
+    }
+    for (const [id, lod] of pairs) {
+      const limit = specOf(id).maxFlames?.[lod];
+      if (limit !== undefined) expect(parse(id, lod).flames.length, `${id}.${lod}`).toBeLessThanOrEqual(limit);
+    }
+    const rose = (lod: KrathongLod) => parse("rose_candles_01", lod).flames.length;
+    expect(rose("medium")).toBe(5);
+    expect(rose("low")).toBe(4); // the low decimation keeps 4 flame islands (docs/design/models.md §4)
+    expect(rose("full")).toBeGreaterThanOrEqual(5);
+    expect(rose("full")).toBeLessThanOrEqual(KRATHONG_DESIGN_MAX_FLAMES);
+    const naga = (lod: KrathongLod) => parse("naga_01", lod).flames.length;
+    expect(naga("medium")).toBe(specOf("naga_01").maxFlames?.medium);
+    expect(naga("low")).toBe(naga("medium"));
+    expect(naga("full")).toBeGreaterThanOrEqual(naga("medium"));
+    expect(naga("low")).toBeGreaterThanOrEqual(2);
   });
 
   it("KA6: the script footprint is the config footprint, and every file fits it", () => {
@@ -163,5 +183,12 @@ describe("committed krathong model assets (MFW-65)", () => {
       }
       if (lod === "full") for (const region of ["base", "leaves", "flowers", "candle"]) expect(seen.has(region), `${id} ${region}`).toBe(true);
     }
+  });
+
+  it("KA9: banana_leaf_01 is byte-identical to MFW-65", () => {
+    const sha = (lod: KrathongLod) => createHash("sha256").update(readFileSync(publicFile("banana_leaf_01", lod))).digest("hex");
+    expect(sha("full")).toBe("46da36ac52fba3c26480345c5ce6850e89d9b48339938c9dae7a65a622adc1af");
+    expect(sha("medium")).toBe("4f60af13af53317148ac635f7307912f97f1c1786953ea00ab40af32ff0a0927");
+    expect(sha("low")).toBe("85e8bc2f8eb6a9f4a81e65421e2fff167b476d2c25c416a37c10d0e89881ef2d");
   });
 });

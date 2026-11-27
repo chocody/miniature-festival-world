@@ -6,6 +6,7 @@ import {
   classifyFaces,
   computeCreaseNormals,
   extractFlames,
+  footprintTransform,
   normaliseToFootprint,
   readGlbMesh,
   srgbHexToLinearBytes,
@@ -39,6 +40,20 @@ function candleWithFlame(n = 8, r = 0.5, apexY = 1.5) {
   const bodyFaces = idx.length / 3;
   for (let i = 0; i < n; i++) idx.push(top(i), apex, top(i + 1));
   return { positions: Float32Array.from(p), indices: Uint32Array.from(idx), bodyFaces };
+}
+
+/** Two candles: `candleWithFlame(8, 0.5, apexA)` and a copy shifted to x + 3 with apex `apexB`; candle A's faces come first. */
+function twoCandles(apexA: number, apexB: number) {
+  const a = candleWithFlame(8, 0.5, apexA);
+  const b = candleWithFlame(8, 0.5, apexB);
+  const shifted = Float32Array.from(b.positions, (v, i) => (i % 3 === 0 ? v + 3 : v));
+  const offset = a.positions.length / 3;
+  return {
+    positions: Float32Array.from([...a.positions, ...shifted]),
+    indices: Uint32Array.from([...a.indices, ...Array.from(b.indices, (v) => v + offset)]),
+    bodyFaces: a.bodyFaces,
+    facesPerCandle: a.indices.length / 3,
+  };
 }
 
 const FLAME_RULE: Rule = { region: "flame", color: "#FFD27A", shape: { kind: "column", cx: 0, cz: 0, radius: 10, yMin: 1.0001, yMax: 10 } };
@@ -185,5 +200,90 @@ describe("krathong models script (MFW-65)", () => {
   it("KS8: no flame region → buildDesignLod throws", () => {
     const source = sourceGlb(candleWithFlame());
     expect(() => buildDesignLod(source, { id: "t", sourceFile: "x", referenceImage: "x", rules: [ANY] }, "low")).toThrow(/no flame found/);
+  });
+
+  it("KS9: extractFlames with maxFlames keeps the tallest islands; the rest stay in the body in their rule colour", () => {
+    const rules = [FLAME_RULE, ANY];
+    const cut = (mesh: ReturnType<typeof twoCandles>, maxFlames?: number) =>
+      extractFlames(mesh.positions, mesh.indices, classifyFaces(mesh.positions, mesh.indices, rules), rules, maxFlames);
+    // (a) no limit: both flames, in island order.
+    const two = twoCandles(1.3, 1.5);
+    const all = cut(two);
+    expect(all.flames).toHaveLength(2);
+    expect(all.flames[0][0]).toBeCloseTo(0, 4);
+    expect(all.flames[0][3]).toBeCloseTo(0.3, 4);
+    expect(all.flames[1][0]).toBeCloseTo(3, 4);
+    expect(all.flames[1][3]).toBeCloseTo(0.5, 4);
+    // (b) maxFlames 1: the taller flame (B) wins over island order; A's cone stays, with its own rule.
+    const one = cut(two, 1);
+    expect(one.flames).toHaveLength(1);
+    expect(one.flames[0][0]).toBeCloseTo(3, 4);
+    expect(one.flames[0][3]).toBeCloseTo(0.5, 4);
+    const coneA = Array.from({ length: 8 }, (_, k) => two.bodyFaces + k); // input faces of A's cone
+    const faceRules = classifyFaces(two.positions, two.indices, rules);
+    for (const f of coneA) {
+      const out = Array.from(one.capFaceSource).indexOf(f);
+      expect(out, `cone face ${f}`).toBeGreaterThanOrEqual(0);
+      expect([0, 1, 2].map((k) => one.indices[out * 3 + k])).toEqual([0, 1, 2].map((k) => two.indices[f * 3 + k]));
+      expect(rules[faceRules[one.capFaceSource[out]]].region).toBe("flame");
+    }
+    for (const [, count] of edgeUse(one.indices)) expect(count).toBe(2);
+    // (c) a tie goes to the lower island index.
+    const tie = cut(twoCandles(1.5, 1.5), 1);
+    expect(tie.flames).toHaveLength(1);
+    expect(tie.flames[0][0]).toBeCloseTo(0, 4);
+    // (d) maxFlames 0: nothing is cut.
+    const none = cut(two, 0);
+    expect(none.flames).toEqual([]);
+    expect([...none.indices]).toEqual([...two.indices]);
+    expect([...none.capFaceSource]).toEqual(Array.from({ length: two.indices.length / 3 }, (_, i) => i));
+    // (e) a bad limit throws.
+    expect(() => cut(two, 1.5)).toThrow(/bad maxFlames/);
+    expect(() => cut(two, -1)).toThrow(/bad maxFlames/);
+  });
+
+  it("KS10: buildDesignLod — addedFlames are transformed like the body; maxFlames per LOD", () => {
+    const source = sourceGlb(candleWithFlame(12));
+    const t = footprintTransform(readGlbMesh(source).positions, FOOTPRINT);
+    const added = { x: 0, y: 1, z: 0, height: 0.5, radius: 0.25 };
+    const expected = [(0 - t.cx) * t.s, (1 - t.minY) * t.s + FOOTPRINT.bottomY, (0 - t.cz) * t.s, 0.5 * t.s, 0.25 * t.s];
+    const parse = (bytes: Uint8Array) => parseKrathongDesignGlb(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const asArray = (f: { x: number; y: number; z: number; height: number; radius: number }) => [f.x, f.y, f.z, f.height, f.radius];
+    // (a) no flame rule, one added flame: the anchor is the added one and the cone is still there.
+    const a = parse(buildDesignLod(source, { id: "t", sourceFile: "x", referenceImage: "x", rules: [ANY], addedFlames: [added] }, "full"));
+    expect(a.flames).toHaveLength(1);
+    expected.forEach((v, i) => expect(asArray(a.flames[0])[i]).toBeCloseTo(v, 4));
+    let maxY = -Infinity;
+    for (let i = 1; i < a.positions.length; i += 3) maxY = Math.max(maxY, a.positions[i]);
+    expect(maxY).toBeGreaterThan(expected[1]); // the cone is not cut
+    // (b) maxFlames { low: 0 }: low keeps the flame in its rule colour and has only the added anchor; full cuts first, then adds.
+    const design = { id: "t", sourceFile: "x", referenceImage: "x", rules: [FLAME_RULE, ANY], maxFlames: { low: 0 }, addedFlames: [added] };
+    const low = parse(buildDesignLod(source, design, "low"));
+    expect(low.flames).toHaveLength(1);
+    expected.forEach((v, i) => expect(asArray(low.flames[0])[i]).toBeCloseTo(v, 4));
+    const flameRgb = srgbHexToLinearBytes(FLAME_RULE.color);
+    let hasFlameColour = false;
+    for (let i = 0; i < low.colors.length; i += 4)
+      if (low.colors[i] === flameRgb[0] && low.colors[i + 1] === flameRgb[1] && low.colors[i + 2] === flameRgb[2]) hasFlameColour = true;
+    expect(hasFlameColour).toBe(true);
+    const full = parse(buildDesignLod(source, design, "full"));
+    expect(full.flames).toHaveLength(2);
+    expected.forEach((v, i) => expect(asArray(full.flames[1])[i]).toBeCloseTo(v, 4)); // cut first, then added
+    expect(asArray(full.flames[0])).not.toEqual(asArray(full.flames[1]));
+  });
+
+  it("KS11: footprintTransform is exactly the transform normaliseToFootprint applies", () => {
+    const box = Float32Array.from([-2, 1, -1, 2, 1, -1, 2, 3, 1, -2, 3, 1]);
+    const footprint = { radius: 1, bottomY: -0.18 };
+    const t = footprintTransform(box, footprint);
+    const out = normaliseToFootprint(box, footprint);
+    const mine = new Float32Array(box.length);
+    for (let i = 0; i < box.length; i += 3) {
+      mine[i] = (box[i] - t.cx) * t.s;
+      mine[i + 1] = (box[i + 1] - t.minY) * t.s + footprint.bottomY;
+      mine[i + 2] = (box[i + 2] - t.cz) * t.s;
+    }
+    for (let i = 0; i < box.length; i++) expect(mine[i]).toBe(out[i]);
+    expect(() => footprintTransform(Float32Array.from([0, 0, 0, 0, 1, 0]), footprint)).toThrow(/no horizontal extent/);
   });
 });
