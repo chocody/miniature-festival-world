@@ -1,10 +1,17 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { CANDLE_COLOR_PALETTE, KRATHONG_BASE_IDS, LEAF_FOLD_STYLE_IDS } from "@/config/events/loyKrathong.config";
-import { KRATHONG_DEFAULT_DESIGN } from "@/config/krathongDesigns.config";
+import { KRATHONG_DEFAULT_DESIGN, KRATHONG_DESIGN_IDS } from "@/config/krathongDesigns.config";
 import { KRATHONG_FLAME_MODEL } from "@/config/krathongModel.config";
 import { DEFAULT_KRATHONG_APPEARANCE, parseKrathongAppearance, type KrathongAppearance } from "./index";
 import { designFlameParts, krathongDesignForAppearance, uniqueKrathongDesigns } from "./krathongDesign";
+
+/** A pre-MFW-78 appearance: the same parts without the `design` key. */
+function withoutDesign(a: KrathongAppearance): KrathongAppearance {
+  const { design, ...rest } = a;
+  void design;
+  return rest;
+}
 
 /** H, R, B of the full procedural flame lathe, from its profile. */
 function flameLathe() {
@@ -15,13 +22,19 @@ function flameLathe() {
 }
 
 describe("krathong design mapping (MFW-65)", () => {
-  it("KD1: every appearance maps to the default design and still parses (stored data unchanged)", () => {
-    const appearances: KrathongAppearance[] = [DEFAULT_KRATHONG_APPEARANCE];
+  it("KD1: an appearance without design maps to the default design; with design maps to it (MFW-78)", () => {
+    const legacy: KrathongAppearance[] = [];
     for (const base of KRATHONG_BASE_IDS)
       for (const lotusFold of LEAF_FOLD_STYLE_IDS)
-        appearances.push({ ...DEFAULT_KRATHONG_APPEARANCE, base, lotusFold, candleColor: CANDLE_COLOR_PALETTE[0] });
-    for (const a of appearances) {
+        legacy.push(withoutDesign({ ...DEFAULT_KRATHONG_APPEARANCE, base, lotusFold, candleColor: CANDLE_COLOR_PALETTE[0] }));
+    for (const a of legacy) {
+      expect("design" in a).toBe(false);
       expect(krathongDesignForAppearance(a)).toBe(KRATHONG_DEFAULT_DESIGN);
+      expect(parseKrathongAppearance(a).ok).toBe(true);
+    }
+    for (const design of KRATHONG_DESIGN_IDS) {
+      const a: KrathongAppearance = { ...DEFAULT_KRATHONG_APPEARANCE, design };
+      expect(krathongDesignForAppearance(a)).toBe(design);
       expect(parseKrathongAppearance(a).ok).toBe(true);
     }
   });
@@ -40,10 +53,12 @@ describe("krathong design mapping (MFW-65)", () => {
     part.localPosition.forEach((v, i) => expect(v).toBeCloseTo([0.1, 0.5 - 2 * B, -0.2][i], 10));
   });
 
-  it("KD3: uniqueKrathongDesigns", () => {
-    const a = DEFAULT_KRATHONG_APPEARANCE;
-    const b: KrathongAppearance = { ...a, base: "toy_bread_01" };
-    expect(uniqueKrathongDesigns([a, a, b])).toEqual([KRATHONG_DEFAULT_DESIGN]);
+  it("KD3: uniqueKrathongDesigns (catalogue order)", () => {
+    const legacy = withoutDesign(DEFAULT_KRATHONG_APPEARANCE);
+    const naga: KrathongAppearance = { ...legacy, design: "naga_01" };
+    const lotus: KrathongAppearance = { ...legacy, design: "lotus_bud_01" };
+    expect(uniqueKrathongDesigns([legacy, naga, lotus, legacy])).toEqual(["banana_leaf_01", "lotus_bud_01", "naga_01"]);
+    expect(uniqueKrathongDesigns([legacy, { ...legacy, base: "toy_bread_01" }])).toEqual([KRATHONG_DEFAULT_DESIGN]);
     expect(uniqueKrathongDesigns([])).toEqual([]);
   });
 });

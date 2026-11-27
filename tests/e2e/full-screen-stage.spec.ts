@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { E2E_DESIGN_LABELS } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_STAGE_VIEWPORTS, E2E_WATER_TAP_OFFSET_PX, e2eFramedZoom } from "./fixtures/stageFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
@@ -181,25 +182,22 @@ test.describe("rotation and resize", () => {
   test("phone rotation keeps the camera, the scene and the flow", async ({ page }) => {
     await page.setViewportSize({ width: PHONE.width, height: PHONE.height });
     const errors = await open3D(page);
-    const tab = page.getByRole("tab", { name: "ฐาน", exact: true });
-    await tab.tap();
-    await expect(tab).toHaveAttribute("aria-selected", "true");
-    const bread = page.getByRole("button", { name: "ขนมปัง", exact: true });
-    await bread.tap();
-    await expect(bread).toHaveAttribute("aria-pressed", "true");
+    const naga = page.getByRole("button", { name: E2E_DESIGN_LABELS.naga_01, exact: true }); // MFW-78 design tile
+    await naga.tap();
+    await expect(naga).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "ซูมเข้า", exact: true }).tap();
     await markCanvas(page);
 
     await rotateTo(page, PHONE_LANDSCAPE);
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     await expectCanvasKept(page);
-    await expect(bread).toHaveAttribute("aria-pressed", "true");
+    await expect(naga).toHaveAttribute("aria-pressed", "true");
     await expectPanelPlacement(page.getByRole("region", { name: PANEL }), PHONE_LANDSCAPE);
 
     await rotateTo(page, PHONE);
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     await expectCanvasKept(page);
-    await expect(bread).toHaveAttribute("aria-pressed", "true");
+    await expect(naga).toHaveAttribute("aria-pressed", "true");
     await expectPanelPlacement(page.getByRole("region", { name: PANEL }), PHONE);
 
     await toRitual(page);

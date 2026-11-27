@@ -1,4 +1,5 @@
 import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
+import type { KrathongDesignId } from "@/config/krathongDesigns.config";
 import { canonicalizeKrathongAppearance, parseKrathongAppearance } from "./krathongAppearance";
 import { clearSocket, placeInSocket, type BuilderResult } from "./krathongBuilder";
 import { getKrathongSocket, KRATHONG_SOCKETS } from "./sockets";
@@ -22,7 +23,8 @@ export type KrathongChoice =
   | { readonly part: "lotusFold"; readonly value: LeafFoldStyleId }
   | { readonly part: "leafColor"; readonly value: LeafColor }
   | { readonly part: "candleColor"; readonly value: CandleColor }
-  | { readonly part: "flower"; readonly target: KrathongFlowerTarget; readonly value: FlowerKind | null };
+  | { readonly part: "flower"; readonly target: KrathongFlowerTarget; readonly value: FlowerKind | null }
+  | { readonly part: "design"; readonly value: KrathongDesignId };
 
 export type KrathongChoiceResult =
   | { readonly ok: true; readonly appearance: KrathongAppearance }
@@ -50,6 +52,9 @@ export function applyKrathongChoice(appearance: KrathongAppearance, choice: Krat
       break;
     case "candleColor":
       candidate = { ...appearance, candleColor: choice.value };
+      break;
+    case "design":
+      candidate = { ...appearance, design: choice.value };
       break;
     case "flower": {
       const targets = choice.target === ALL_RIM_SOCKETS ? RIM_SOCKET_IDS : [choice.target];

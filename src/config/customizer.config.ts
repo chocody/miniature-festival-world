@@ -1,18 +1,7 @@
 import type {
   CandleColor, FlowerKind, KrathongBaseId, LeafColor, LeafFoldStyleId,
 } from "@/config/events/loyKrathong.config";
-
-export const CUSTOMIZER_TAB_IDS = ["base", "leaves", "flowers", "candle"] as const;
-export type CustomizerTabId = (typeof CUSTOMIZER_TAB_IDS)[number];
-
-export interface CustomizerTab { readonly id: CustomizerTabId; readonly label: string; }
-/** Bottom-bar tabs in display order (spec §6.4 Task 4.2 "แถบเลือกชิ้นส่วนและสี"). */
-export const CUSTOMIZER_TABS: readonly CustomizerTab[] = Object.freeze([
-  Object.freeze({ id: "base", label: "ฐาน" }),
-  Object.freeze({ id: "leaves", label: "ใบตอง" }),
-  Object.freeze({ id: "flowers", label: "ดอกไม้" }),
-  Object.freeze({ id: "candle", label: "เทียน" }),
-] as const);
+import type { KrathongDesignId } from "@/config/krathongDesigns.config";
 
 /** Part names from spec §6.4 Task 4.1 (ฐานหยวกกล้วย / ฐานกลีบบัว / ฐานขนมปังสไตล์ของเล่น). */
 export const KRATHONG_BASE_LABELS: Readonly<Record<KrathongBaseId, string>> = Object.freeze({
@@ -44,10 +33,22 @@ export const CANDLE_COLOR_LABELS: Readonly<Record<CandleColor, string>> = Object
   "#FF9F6B": "ส้มอ่อน",
 });
 export const NO_FLOWER_LABEL = "ไม่ใส่";
+/**
+ * MFW-78: names of the five owner-supplied designs. PLACEHOLDER copy (spec silent); accessible names only, never shown (the
+ * picker shows thumbnails only).
+ */
+export const KRATHONG_DESIGN_LABELS: Readonly<Record<KrathongDesignId, string>> = Object.freeze({
+  banana_leaf_01: "กระทงใบตอง",
+  lotus_bud_01: "กระทงบัวตูม",
+  marigold_01: "กระทงดาวเรือง",
+  rose_candles_01: "กระทงกุหลาบ",
+  naga_01: "กระทงพญานาค",
+});
 
 export const CUSTOMIZER_COPY = Object.freeze({
   panelLabel: "แต่งกระทง",
-  tabListLabel: "ส่วนประกอบกระทง",
+  /** MFW-78: accessible name of the design picker row (never shown). */
+  designGroupLabel: "แบบกระทง",
   baseGroupLabel: "ฐานกระทง",
   foldGroupLabel: "แบบพับใบตอง",
   leafColorGroupLabel: "สีใบตอง",

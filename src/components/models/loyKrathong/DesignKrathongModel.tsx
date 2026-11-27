@@ -21,7 +21,8 @@ export interface DesignKrathongModelProps {
  */
 export function DesignKrathongModel({ asset, shadows }: DesignKrathongModelProps) {
   const assets = useKrathongAssets();
-  const mesh = useMemo(() => createDesignHeroMesh(asset.geometry, assets.designMaterial), [asset, assets]);
+  // MFW-78: the mesh records asset.design; `asset` covers it in the deps (exhaustive-deps flags asset.design as unnecessary).
+  const mesh = useMemo(() => createDesignHeroMesh(asset.geometry, assets.designMaterial, asset.design), [asset, assets]);
   useEffect(() => () => mesh.dispose(), [mesh]);
   const flames = useMemo(() => designFlameParts(asset.flames), [asset]);
   const flameRefs = useRef<(Mesh | null)[]>([]);

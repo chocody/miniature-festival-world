@@ -17,6 +17,8 @@ export interface KrathongAppearance {
   readonly leafColor: LeafColor;
   readonly flowers: readonly (FlowerKind | null)[];
   readonly candleColor: CandleColor;
+  /** MFW-78: the chosen owner-supplied design. Absent = stored before MFW-78 → KRATHONG_DEFAULT_DESIGN. */
+  readonly design?: KrathongDesignId;
 }
 /** Union of every event's appearance. Only Loy Krathong exists in Phase 1. */
 export type EventAppearance = KrathongAppearance;

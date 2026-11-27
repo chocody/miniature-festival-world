@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { LOY_KRATHONG_RIVER_LANE_ID } from "@/config/events/loyKrathong.river.config";
 import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
-import { DEFAULT_KRATHONG_APPEARANCE, serializeKrathongAppearance } from "@/core/customization";
+import { DEFAULT_KRATHONG_APPEARANCE, krathongDesignForAppearance, serializeKrathongAppearance } from "@/core/customization";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import { publicCreationsToRiverItems } from "./zoneRiverItems";
 
@@ -83,6 +83,24 @@ describe("publicCreationsToRiverItems", () => {
     const dup = [creation(10), creation(10)];
     expect(publicCreationsToRiverItems(dup, QUERY)).toHaveLength(1);
   });
+  it("ZR1 (MFW-78): keeps legacy and designed appearances, drops an unknown design", () => {
+    const { design, ...legacy } = serializeKrathongAppearance(DEFAULT_KRATHONG_APPEARANCE);
+    void design;
+    const out = publicCreationsToRiverItems(
+      [
+        creation(1, { appearance: legacy }),
+        creation(2, { appearance: { ...legacy, design: "naga_01" } }),
+        creation(3, { appearance: { ...legacy, design: "bogus" } }),
+      ],
+      QUERY,
+    );
+    expect(out.map((item) => item.id)).toEqual([uuid(1), uuid(2)]);
+    expect("design" in out[0].appearance).toBe(false);
+    expect(krathongDesignForAppearance(out[0].appearance)).toBe("banana_leaf_01");
+    expect(out[1].appearance.design).toBe("naga_01");
+    expect(krathongDesignForAppearance(out[1].appearance)).toBe("naga_01");
+  });
+
   it("copies the public wish but never expiresAt; empty in, empty out (MFW-28 changed the wish rule)", () => {
     const out = publicCreationsToRiverItems([creation(1)], QUERY);
     expect(JSON.stringify(out)).toContain("secret-ish");

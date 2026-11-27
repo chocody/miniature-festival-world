@@ -1,9 +1,10 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { Profiler } from "react";
-import { BufferGeometry, Vector3 } from "three";
+import { BufferGeometry, MeshStandardMaterial, Vector3 } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RIM_SOCKET_COUNT } from "@/config/events/loyKrathong.config";
-import { KRATHONG_INCENSE_MODEL, KRATHONG_LEAF_COUNT } from "@/config/krathongModel.config";
+import type { KrathongDesignId } from "@/config/krathongDesigns.config";
+import { KRATHONG_HERO_LOD, KRATHONG_INCENSE_MODEL, KRATHONG_LEAF_COUNT } from "@/config/krathongModel.config";
 import { DEFAULT_KRATHONG_APPEARANCE, designFlameParts } from "@/core/customization";
 import { writeFlameFlickerAt } from "@/core/customization/flameFlicker";
 import { parseKrathongDesignGlb, type KrathongDesignMeshData } from "@/core/customization/krathongDesignGlb";
@@ -14,6 +15,7 @@ import { KrathongAssetsProvider, useKrathongAssets } from "./KrathongAssetsProvi
 import type { KrathongAssets } from "./krathongAssets";
 import type { KrathongDesignLoad } from "./krathongDesignLoader";
 import { KrathongModel } from "./KrathongModel";
+import { createDesignHeroMesh, KRATHONG_DESIGN_USERDATA_KEY } from "./designHeroMesh";
 
 const r3f = vi.hoisted(() => ({ frames: [] as (() => void)[] }));
 vi.mock("@react-three/fiber", () => ({
@@ -160,7 +162,7 @@ describe("KrathongModel", () => {
         <Probe />
         <Profiler id="design" onRender={() => (commits += 1)}>
           <DesignKrathongModel
-            asset={{ geometry: new BufferGeometry(), flames: data.flames }}
+            asset={{ design: "banana_leaf_01", geometry: new BufferGeometry(), flames: data.flames }}
             shadows={false}
           />
         </Profiler>
@@ -184,5 +186,61 @@ describe("KrathongModel", () => {
     writeFlameFlickerAt(0, true, a.flameFlicker);
     frame();
     flames.forEach((f, i) => expect([f.scale.x, f.scale.y, f.scale.z]).toEqual([...parts[i].scale]));
+  });
+
+  describe("design picker (MFW-78)", () => {
+    const BODY = '[name="krathong-design-body"]';
+
+    it("MFW-78 KM1: the hero loads and draws the chosen design", async () => {
+      useDeviceStore.setState({ profiled: true });
+      const loadDesign = vi.fn<KrathongDesignLoad>(() => Promise.resolve(designData()));
+      const { container } = render(
+        <KrathongAssetsProvider loadDesign={loadDesign}>
+          <KrathongModel appearance={{ ...DEFAULT_KRATHONG_APPEARANCE, design: "marigold_01" }} shadows={false} />
+        </KrathongAssetsProvider>,
+      );
+      await flush();
+      expect(loadDesign).toHaveBeenCalledWith("marigold_01", KRATHONG_HERO_LOD);
+      expect(count(container, BODY)).toBe(1);
+    });
+
+    it("MFW-78 KM2: switching design keeps the last design body while the new file loads (no procedural flash)", async () => {
+      useDeviceStore.setState({ profiled: true });
+      let resolveLotus: (data: KrathongDesignMeshData) => void = () => {};
+      const lotus = new Promise<KrathongDesignMeshData>((resolve) => {
+        resolveLotus = resolve;
+      });
+      const loadDesign = vi.fn<KrathongDesignLoad>((design: KrathongDesignId) =>
+        design === "lotus_bud_01" ? lotus : Promise.resolve(designData()),
+      );
+      const ui = (design: KrathongDesignId) => (
+        <KrathongAssetsProvider loadDesign={loadDesign}>
+          <KrathongModel appearance={{ ...DEFAULT_KRATHONG_APPEARANCE, design }} shadows={false} />
+        </KrathongAssetsProvider>
+      );
+      const { container, rerender } = render(ui("banana_leaf_01"));
+      await flush();
+      expect(count(container, BODY)).toBe(1);
+      rerender(ui("lotus_bud_01"));
+      await flush();
+      expect(loadDesign).toHaveBeenCalledWith("lotus_bud_01", KRATHONG_HERO_LOD);
+      expect(count(container, BODY)).toBe(1);
+      expect(count(container, 'mesh[name="candle"]')).toBe(0);
+      resolveLotus(designData());
+      await flush();
+      expect(count(container, BODY)).toBe(1);
+      expect(count(container, 'mesh[name="candle"]')).toBe(0);
+    });
+
+    it("MFW-78 KM3: the hero mesh records its design in userData", () => {
+      const geometry = new BufferGeometry();
+      const material = new MeshStandardMaterial();
+      const mesh = createDesignHeroMesh(geometry, material, "naga_01");
+      expect(mesh.userData[KRATHONG_DESIGN_USERDATA_KEY]).toBe("naga_01");
+      expect(mesh.userData.krathongDesign).toBe("naga_01");
+      mesh.dispose();
+      geometry.dispose();
+      material.dispose();
+    });
   });
 });
