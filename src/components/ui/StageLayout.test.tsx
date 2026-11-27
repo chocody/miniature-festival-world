@@ -53,7 +53,7 @@ describe("StageLayout (MFW-54, backlog 10.2)", () => {
     const inset = (side: string) => `env(safe-area-inset-${side})`;
     expect(STAGE_LAYOUT_CLASSES.top).toContain(inset("top"));
     expect(STAGE_LAYOUT_CLASSES.top).toContain(inset("left"));
-    expect(STAGE_LAYOUT_CLASSES.top).toContain(inset("right"));
+    expect(STAGE_LAYOUT_CLASSES.floatBar).toContain(inset("bottom"));
     for (const slot of ["panel", "sheet"] as const) {
       for (const side of ["bottom", "left", "right"]) expect(STAGE_LAYOUT_CLASSES[slot]).toContain(inset(side));
     }

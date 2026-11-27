@@ -24,7 +24,7 @@ export const MY_CREATIONS_COPY = Object.freeze({
   openButton: "ค้นหาของฉัน",
   title: "กระทงของฉัน",
   searching: "กำลังค้นหากระทงของคุณ…",
-  found: (zoneId: number) => `พบกระทงของคุณที่คุ้งน้ำที่ ${zoneId}`,
+  found: "พบกระทงของคุณแล้ว",
   notFound: "ไม่พบกระทงนี้บนสายน้ำแล้ว",
   failed: "ค้นหาไม่สำเร็จ ลองอีกครั้ง",
 });

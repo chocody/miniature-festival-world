@@ -43,7 +43,7 @@ function statusText(status: FindMyStatus): string {
     case "searching":
       return COPY.searching;
     case "found":
-      return COPY.found(status.zoneId);
+      return COPY.found;
     case "not_found":
       return COPY.notFound;
     case "failed":

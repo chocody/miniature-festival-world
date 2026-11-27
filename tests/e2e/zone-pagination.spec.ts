@@ -60,7 +60,7 @@ test("3D LOW: starts on the newest zone; a full zone shows 80 of 85", async ({ p
   await expect(nav).toHaveAttribute("data-zone-count", "3");
   await expect(nav).toHaveAttribute("data-zone-status", "ready");
   await expect(nav).toHaveAttribute("data-zone-item-count", "80");
-  await expect(nav).toContainText("คุ้งน้ำที่ 3 จาก 3");
+  await expect(nav).not.toContainText("คุ้งน้ำ"); // MFW-83: no visible zone name
   // MFW-58 (open question 37): the river wraps, so at zone 3 of 3 the next button exists (it leads to zone 1).
   await expect(page.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toHaveCount(1);
 

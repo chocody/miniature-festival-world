@@ -20,11 +20,32 @@ describe("ZoneNavigator", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("1 of 1: label only, no buttons", () => {
+  it("1 of 1 (MFW-83): nothing visible, no buttons; the nav is hidden but keeps the data attributes", () => {
     setWorld({ ...base, currentZoneId: 1, zoneCount: 1 });
-    render(<ZoneNavigator pagination={pagination} />);
-    expect(screen.getByText("คุ้งน้ำที่ 1 จาก 1")).toBeInTheDocument();
+    const { container } = render(<ZoneNavigator pagination={pagination} />);
     expect(screen.queryByRole("button")).toBeNull();
+    const nav = container.querySelector("nav")!;
+    expect(nav).toHaveAttribute("hidden");
+    expect(nav).toHaveAttribute("data-zone-id", "1");
+    expect(nav).toHaveTextContent("");
+  });
+
+  it("MFW-83: the zone label is gone: no visible text says คุ้งน้ำ in any state", () => {
+    setWorld({ ...base, currentZoneId: 2, zoneCount: 3 });
+    const { container, unmount } = render(<ZoneNavigator pagination={pagination} />);
+    expect(container.textContent).not.toContain("คุ้งน้ำ");
+    expect(container.textContent).not.toMatch(/\bจาก\b|ที่ \d/);
+    unmount();
+    for (const state of [
+      { zoneStatus: "loading", currentZoneId: null, zoneCount: null },
+      { zoneStatus: "error", currentZoneId: 1, zoneCount: 1 },
+    ] as const) {
+      setWorld({ eventId: "loy_krathong", ...state });
+      const r = render(<ZoneNavigator pagination={pagination} />);
+      expect(r.container.textContent).not.toContain("คุ้งน้ำ");
+      r.unmount();
+    }
+    for (const copy of [ZONE_NAV_COPY.loading, ZONE_NAV_COPY.error, ZONE_NAV_COPY.retry]) expect(copy).not.toContain("คุ้งน้ำ");
   });
 
   it("2 of 3: both buttons travel one stretch (MFW-58: jumpBy, not loadZone)", () => {
@@ -62,12 +83,12 @@ describe("ZoneNavigator", () => {
     expect(screen.getByRole("button", { name: /คุ้งน้ำถัดไป/ })).toBeInTheDocument();
   });
 
-  it("is a live position indicator: the label and data-stretch-index follow the store (MFW-58)", () => {
+  it("is a live position indicator: data-zone-id and data-stretch-index follow the store (MFW-58)", () => {
     setWorld({ ...base, currentZoneId: 3, zoneCount: 3, currentStretchIndex: 0 });
     render(<ZoneNavigator pagination={pagination} />);
-    expect(screen.getByText("คุ้งน้ำที่ 3 จาก 3")).toBeInTheDocument();
+    expect(screen.getByTestId("zone-navigator")).toHaveAttribute("data-zone-id", "3");
     setWorld({ currentZoneId: 1, currentStretchIndex: 1 });
-    expect(screen.getByText("คุ้งน้ำที่ 1 จาก 3")).toBeInTheDocument();
+    expect(screen.getByTestId("zone-navigator")).toHaveAttribute("data-zone-id", "1");
     expect(screen.getByTestId("zone-navigator")).toHaveAttribute("data-stretch-index", "1");
   });
 

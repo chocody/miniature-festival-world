@@ -63,19 +63,15 @@ export async function expectPanelPlacement(locator: Locator, vp: StageViewport):
   expect(box.height).toBeLessThan(vp.height);
 }
 
-/** World controls: a card at the top (phone: inset from both sides; wide: a narrow top card that starts right of the HUD column, MFW-74). */
-export async function expectTopSlotPlacement(page: Page, vp: StageViewport): Promise<void> {
-  const top = page.locator('[data-overlay-slot="top"]');
-  await expect(top).toBeVisible();
-  const box = (await top.boundingBox())!;
-  expect(box.y).toBeLessThanOrEqual(24);
-  if (!vp.wide) {
-    expect(box.width).toBeLessThanOrEqual(vp.width - 20);
-    return;
-  }
-  expect(box.x).toBeLessThanOrEqual(24 + 44 + 24); // gutter + one 44 px HUD button + gutter
-  expect(box.x).toBeGreaterThanOrEqual(44);
-  expect(box.width).toBeLessThanOrEqual(336);
+/** MFW-83 customizer bar: centred, floating 8–40 px above the bottom edge, never a full-width sheet (any viewport). */
+export async function expectFloatingBarPlacement(locator: Locator, vp: StageViewport): Promise<void> {
+  await expect(locator).toBeVisible();
+  const box = (await locator.boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThanOrEqual(1);
+  const gap = vp.height - (box.y + box.height);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(gap).toBeLessThanOrEqual(40);
+  expect(box.width).toBeLessThanOrEqual(vp.width - 16);
 }
 
 /**
