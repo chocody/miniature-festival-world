@@ -28,15 +28,18 @@ jobs:
       - run: pnpm build
 
   e2e:
-    # The e2e suite outgrew one 20-minute job (owner decision 2026-11-27: split it into two parallel shards).
-    # Every shard runs the same `pnpm e2e` (its webServer builds and starts the production app).
-    name: e2e (${{ matrix.shard }}/2)
+    # The e2e suite outgrew one 20-minute job (owner decision 2026-11-27: Loy is two parallel shards); every further
+    # festival project is one shard of its own (MFW-89). Every job runs `pnpm e2e` (its webServers build and start the app).
+    name: e2e (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        include:
+          - { label: "1/2", args: "--project=chromium --shard=1/2", report: "1" }
+          - { label: "2/2", args: "--project=chromium --shard=2/2", report: "2" }
+          - { label: "christmas", args: "--project=christmas", report: "christmas" }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -46,12 +49,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm e2e --shard=${{ matrix.shard }}/2
+      - run: pnpm e2e ${{ matrix.args }}
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.shard }}
+          name: playwright-report-${{ matrix.report }}
           path: |
             playwright-report/
             test-results/
