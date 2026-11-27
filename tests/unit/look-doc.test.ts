@@ -69,4 +69,25 @@ describe("art-direction note (MFW-47 AC1)", () => {
       expect(doc.toLowerCase()).toContain(term.toLowerCase());
     }
   });
+
+  it("LD1: documents the fuller village (MFW-77, §20)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    for (const term of [
+      "## 20. Fuller village (MFW-77, backlog 14.3)",
+      "ENVIRONMENT_RENDER_BUDGETS",
+      "HOUSE_SHELL_TIERS",
+      "LOW ใช้บ้านแบบเบา",
+      "23 160",
+      "13 548",
+      "screenshots/mfw-77/",
+    ]) {
+      expect(doc).toContain(term);
+    }
+    for (const when of ["before", "after"])
+      for (const size of ["phone", "desktop"])
+        for (const preset of ["day", "night"]) {
+          const file = join(process.cwd(), `docs/design/screenshots/mfw-77/${when}-${size}-${preset}.png`);
+          expect(existsSync(file), file).toBe(true);
+        }
+  });
 });

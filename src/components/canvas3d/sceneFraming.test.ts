@@ -5,7 +5,8 @@ import { CAMERA_FLIGHT_OFFSET, SCENE_CAMERA_FAR, SCENE_CAMERA_NEAR } from "@/con
 import { MIN_TOUCH_TARGET_PX } from "@/config/customizer.config";
 import { LAMP_TAP_RADIUS, RIVER_KRATHONG_TAP_RADIUS, TAP_PROXY_INRADIUS_RATIO } from "@/config/gimmicks.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
-import { LOY_KRATHONG_PIER } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_PIER, LOY_KRATHONG_RIVER_ENVIRONMENT } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 import { getCameraFlightPose, getFramedCameraZoom } from "@/core/camera";
 import { locateOnLane, splineProgressToWorld } from "@/core/coordinates";
@@ -121,5 +122,49 @@ describe("tap discs at the framed zoom (MFW-54, MFW-68)", () => {
       expect(d.lamp, `lamp at ${w}×${h}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
       expect(d.krathong, `krathong at ${w}×${h}`).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX - 1e-9);
     }
+  });
+});
+
+describe("MFW-77 fuller village at the default world framing", () => {
+  type Rect = readonly [number, number, number, number];
+  /** [x0, y0, x1, y1] CSS px from the top-left: measured from docs/design/screenshots/mfw-74/after-*.png; not UI config. */
+  const HUD_RECTS_PX: Readonly<Record<string, readonly Rect[]>> = {
+    "390x844": [[0, 0, 390, 56], [0, 0, 60, 165], [0, 755, 390, 844]],
+    "360x640": [[0, 0, 360, 56], [0, 0, 60, 165], [0, 555, 360, 640]],
+    "1440x900": [[0, 0, 390, 56], [0, 0, 60, 165], [1040, 0, 1440, 100]],
+  };
+
+  function visibleHouses(w: number, h: number): { count: number; sides: Set<number> } {
+    const camera = new OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, SCENE_CAMERA_NEAR, SCENE_CAMERA_FAR);
+    camera.zoom = getFramedCameraZoom({ width: w, height: h });
+    camera.position.set(...RITUAL_POSE.camera);
+    camera.lookAt(...RITUAL_POSE.focus);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    const rects = HUD_RECTS_PX[`${w}x${h}`];
+    const ndc = new Vector3();
+    const sides = new Set<number>();
+    let count = 0;
+    LOY_KRATHONG_RIVER_LAYOUT.houses.forEach((house, i) => {
+      const { x, y, z } = house.position;
+      ndc.set(x, y + LOY_KRATHONG_HOUSE_MODEL.shell.centerY * house.scale, z).project(camera);
+      if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) return;
+      const px = ((ndc.x + 1) / 2) * w;
+      const py = ((1 - ndc.y) / 2) * h;
+      if (rects.some(([x0, y0, x1, y1]) => px >= x0 && px <= x1 && py >= y0 && py <= y1)) return;
+      count += 1;
+      sides.add(LOY_KRATHONG_RIVER_ENVIRONMENT.houses[i].side);
+    });
+    return { count, sides };
+  }
+
+  it("SF1: MFW-77: the default world view shows houses on both banks", () => {
+    const phone = visibleHouses(390, 844);
+    expect(phone.count).toBeGreaterThanOrEqual(6);
+    expect(phone.sides).toEqual(new Set([-1, 1]));
+    const desktop = visibleHouses(1440, 900);
+    expect(desktop.count).toBeGreaterThanOrEqual(6);
+    expect(desktop.sides).toEqual(new Set([-1, 1]));
+    expect(visibleHouses(360, 640).count).toBeGreaterThanOrEqual(4);
   });
 });

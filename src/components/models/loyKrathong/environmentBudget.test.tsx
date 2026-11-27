@@ -24,7 +24,12 @@ import type { ScenePartSpec } from "@/config/scene.config";
 import { buildRingFanData, buildShoreHighlightData, type InstanceTransform, type RiverEnvironmentLayout } from "@/core/world";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverEnvironment } from "./RiverEnvironment";
-import { LOY_KRATHONG_RIVER_FOLIAGE, LOY_KRATHONG_RIVER_LAYOUT as layout, foliageForTier } from "./riverLayout";
+import {
+  LOY_KRATHONG_RIVER_FOLIAGE,
+  LOY_KRATHONG_RIVER_LAYOUT as layout,
+  foliageForTier,
+  houseBodyForTier,
+} from "./riverLayout";
 
 vi.mock("@react-three/fiber", () => ({
   useThree: (selector: (state: { invalidate: () => void }) => unknown) => selector({ invalidate: () => {} }),
@@ -66,7 +71,7 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
   add(1, tris(createBankGeometry(l.banks.left))); // 2 bank left
   add(1, tris(createBankGeometry(l.banks.right))); // 3 bank right
   add(1, tris(createRibbonGeometry(l.ground.strips))); // 4 ground strips (MFW-58; per stretch copy)
-  part(parts.houseBody, l.houses); // 5
+  part(houseBodyForTier(tier), l.houses); // 5 (MFW-77: LOW draws the lite shell)
   part(parts.houseRoof, l.housesByRoof.pyramid); // 6
   part(parts.houseRoofGable, l.housesByRoof.gable); // 7
   part(parts.houseWindow, l.houseWindows); // 8
@@ -157,4 +162,29 @@ describe("environment render budget per tier (MFW-49 AC5, lead regression guard)
       expect(drawn).toBe(summarize(layout, tier).drawCalls);
     },
   );
+});
+
+describe("MFW-77 fuller village", () => {
+  it("EB1: 16 houses (8 + 8 roofs), 80 windows, 14 trees, 10 bushes, 6 rocks, 12 lamps, 12 plants, 52 / 38 leaf clumps", () => {
+    expect(layout.houses).toHaveLength(16);
+    expect(layout.housesByRoof.pyramid).toHaveLength(8);
+    expect(layout.housesByRoof.gable).toHaveLength(8);
+    expect(layout.houseWindows).toHaveLength(80);
+    expect(layout.trees).toHaveLength(14);
+    expect(layout.bushes).toHaveLength(10);
+    expect(layout.rocks).toHaveLength(6);
+    expect(layout.lamps).toHaveLength(12);
+    expect(LOY_KRATHONG_RIVER_FOLIAGE.plants).toHaveLength(12);
+    expect(LOY_KRATHONG_RIVER_FOLIAGE.clumps).toHaveLength(52);
+    expect(LOY_KRATHONG_RIVER_FOLIAGE.clumpsLow).toHaveLength(38);
+  });
+
+  // MFW-77 measured; update with any prop change.
+  it.each([
+    ["HIGH", { drawCalls: 19, triangles: 23_160 }],
+    ["MEDIUM", { drawCalls: 19, triangles: 22_584 }],
+    ["LOW", { drawCalls: 18, triangles: 13_548 }],
+  ] as const)("EB2: %s draws the pinned draw calls and triangles (LOW with the lite house shell)", (tier, expected) => {
+    expect(summarize(layout, tier)).toEqual(expected);
+  });
 });

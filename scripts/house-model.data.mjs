@@ -35,6 +35,8 @@ export const HOUSE_MODEL_SPEC = Object.freeze({
   /** Drop an on-wall face of an inwardRegions region if n · (that wall's outward normal) < this. */
   inwardDot: -0.9,
   inwardRegions: Object.freeze(/** @type {ShellRegion[]} */ (["trim", "door", "step"])),
+  /** Regions left out of the LOW lite shell (MFW-77, owner 2026-11-27). */
+  liteDroppedRegions: Object.freeze(/** @type {ShellRegion[]} */ (["trim"])),
   /** The door knob (216 triangles, under 1 px). */
   droppedNodes: Object.freeze(["Cylinder001"]),
   /** Any primitive with this material index is the roof. */

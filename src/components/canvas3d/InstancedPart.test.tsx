@@ -98,6 +98,22 @@ describe("InstancedPart", () => {
     expect(materialDispose).toHaveBeenCalledTimes(1);
   });
 
+  it("MFW-77: a geometry-only swap disposes only the old geometry; unmount disposes both", () => {
+    const geometryDispose = vi.spyOn(BufferGeometry.prototype, "dispose");
+    const materialDispose = vi.spyOn(Material.prototype, "dispose");
+    createdMaterials.length = 0;
+    const transforms = [T0, T1];
+    const lite: ScenePartSpec = { ...PART, geometry: { kind: "box", width: 0.5, height: 0.5, depth: 0.5 } }; // same material spec object
+    const view = render(<InstancedPart name="x" part={PART} transforms={transforms} shadows={false} />);
+    view.rerender(<InstancedPart name="x" part={lite} transforms={transforms} shadows={false} />);
+    expect(geometryDispose).toHaveBeenCalledTimes(1);
+    expect(materialDispose).not.toHaveBeenCalled();
+    expect(createdMaterials).toHaveLength(1);
+    view.unmount();
+    expect(geometryDispose).toHaveBeenCalledTimes(2);
+    expect(materialDispose).toHaveBeenCalledTimes(1);
+  });
+
   it("applies and updates the emissiveIntensity prop without re-creating the material (MFW-49)", () => {
     const glowing: ScenePartSpec = { ...PART, material: { ...PART.material, emissive: "#ffc46b", emissiveIntensity: 0.9 } };
     createdMaterials.length = 0;

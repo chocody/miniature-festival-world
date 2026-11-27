@@ -208,4 +208,24 @@ describe("house model script (MFW-66)", () => {
     expect(a).toContain('import type { HouseModelData } from "@/config/scene.config";');
     expect(a).toContain("export const LOY_KRATHONG_HOUSE_MODEL: HouseModelData");
   });
+
+  it("HS6: MFW-77: liteShell = the shell without the liteDroppedRegions faces", () => {
+    const b = build();
+    expect(HOUSE_MODEL_SPEC.liteDroppedRegions).toEqual(["trim"]);
+    // The shell's 12 faces minus the 2 outward trim faces.
+    expect(b.liteShell.indices.length / 3).toBe(10);
+    expect(b.liteShell.palette).toEqual(b.shell.palette);
+    const trim = b.shell.palette.indexOf(HOUSE_MODEL_SPEC.palette.trim.hex);
+    expect(trim).toBeGreaterThanOrEqual(0);
+    expect(b.liteShell.faceColors).toHaveLength(10);
+    expect(b.liteShell.faceColors?.filter((c) => c === trim)).toEqual([]);
+    expect(b.liteShell.centerY).toBe(b.shell.centerY);
+    const text = renderHouseModelModule(b, { file: "house.glb", sha256: "ab".repeat(32) });
+    const shellAt = text.indexOf("  shell: {");
+    const liteAt = text.indexOf("  liteShell: {");
+    const roofAt = text.indexOf("  roof: {");
+    expect(shellAt).toBeGreaterThanOrEqual(0);
+    expect(liteAt).toBeGreaterThan(shellAt);
+    expect(roofAt).toBeGreaterThan(liteAt);
+  });
 });

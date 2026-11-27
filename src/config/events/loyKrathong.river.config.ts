@@ -18,7 +18,7 @@ import { KRATHONG_DESIGN_BODY_MATERIAL } from "@/config/krathongDesigns.config";
 import { KRATHONG_BASE_MODELS, KRATHONG_FLOWER_MODELS } from "@/config/krathongModel.config";
 import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
 import { LOOK_PALETTE, VILLAGE_LIGHTS } from "@/config/look.config";
-import type { FoliageVariant } from "@/config/performance.config";
+import type { FoliageVariant, HouseShellVariant } from "@/config/performance.config";
 import {
   type FoliageBladeSpec,
   type MatteMaterialSpec,
@@ -309,6 +309,19 @@ export const RIVER_ENVIRONMENT_PARTS = {
 
 export type RiverEnvironmentPartId = keyof typeof RIVER_ENVIRONMENT_PARTS;
 
+/**
+ * House body per shell variant (HOUSE_SHELL_TIERS, MFW-77). FULL = RIVER_ENVIRONMENT_PARTS.houseBody; LITE = the trim-less lite
+ * shell with the SAME material object, so a tier change re-creates only the geometry of the same InstancedMesh.
+ */
+export const RIVER_HOUSE_BODY_PARTS: Readonly<Record<HouseShellVariant, ScenePartSpec>> = Object.freeze({
+  FULL: RIVER_ENVIRONMENT_PARTS.houseBody,
+  LITE: Object.freeze({
+    ...RIVER_ENVIRONMENT_PARTS.houseBody,
+    geometry: staticMeshGeometry(LOY_KRATHONG_HOUSE_MODEL.liteShell),
+    yOffset: LOY_KRATHONG_HOUSE_MODEL.liteShell.centerY,
+  }),
+});
+
 export interface RiverFoliageParts {
   readonly treeTrunk: ScenePartSpec;
   readonly leafClump: ScenePartSpec;
@@ -367,10 +380,17 @@ export const LOY_KRATHONG_TREES: readonly TreePlacement[] = Object.freeze([
   Object.freeze({ progress: 0.5, side: 1, setback: 1.9, scale: 1.1, yawOffsetRad: 5.0, shape: "tall" }),
   Object.freeze({ progress: 0.6, side: 1, setback: 1.6, scale: 0.9, yawOffsetRad: 1.9, shape: "round" }),
   Object.freeze({ progress: 0.66, side: 1, setback: 2.2, scale: 1, yawOffsetRad: 2.9, shape: "tall" }),
+  // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+  Object.freeze({ progress: 0.22, side: -1, setback: 4.3, scale: 1, yawOffsetRad: 0.9, shape: "round" }),
+  Object.freeze({ progress: 0.305, side: -1, setback: 4.0, scale: 1.05, yawOffsetRad: 3.7, shape: "tall" }),
+  Object.freeze({ progress: 0.155, side: 1, setback: 1.8, scale: 1, yawOffsetRad: 2.2, shape: "round" }),
+  Object.freeze({ progress: 0.475, side: 1, setback: 4.4, scale: 1.1, yawOffsetRad: 4.6, shape: "tall" }),
+  Object.freeze({ progress: 0.57, side: 1, setback: 4.5, scale: 1, yawOffsetRad: 0.3, shape: "round" }),
 ] satisfies TreePlacement[]);
 /**
  * Reeds on the bank lip (1–8), then grass tufts (9–10, the same tuft at half scale). DRAFT (MFW-70). The lead's ordered cut 1
  * (grass tufts 4 → 2, planned plants 10 and 12 removed) keeps MEDIUM inside its budget with detail-1 leaf clumps.
+ * MFW-77: reeds 11–12.
  */
 export const LOY_KRATHONG_RIVERSIDE_PLANTS: readonly BankPlacement[] = Object.freeze([
   Object.freeze({ progress: 0.3, side: 1, setback: 0.04, scale: 1, yawOffsetRad: 0 }),
@@ -383,6 +403,9 @@ export const LOY_KRATHONG_RIVERSIDE_PLANTS: readonly BankPlacement[] = Object.fr
   Object.freeze({ progress: 0.56, side: -1, setback: 0.05, scale: 0.95, yawOffsetRad: 3.2 }),
   Object.freeze({ progress: 0.38, side: 1, setback: 1.25, scale: 0.5, yawOffsetRad: 0.4 }),
   Object.freeze({ progress: 0.505, side: -1, setback: 0.95, scale: 0.5, yawOffsetRad: 4.4 }),
+  // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+  Object.freeze({ progress: 0.215, side: -1, setback: 0.05, scale: 1, yawOffsetRad: 2.1 }),
+  Object.freeze({ progress: 0.205, side: 1, setback: 0.04, scale: 1.05, yawOffsetRad: 4.9 }),
 ] satisfies BankPlacement[]);
 
 /** Gentle sway (MFW-70 AC4), DRAFT; phaseStepRad technical (golden angle: neighbouring owners never sway in step). */
@@ -415,6 +438,8 @@ export const RIVER_ENVIRONMENT_BLOB_SHADOWS = Object.freeze({
 /**
  * Full environment definition. setback = world units from the water edge. Placements are DRAFT (spec silent; MFW-49 village
  * v2, guarded by riverLayout.test.ts). Near-bank houses turn their front (yawOffsetRad π) to the camera and the path.
+ * MFW-77 (fuller village, DRAFT): 16 houses (7 + 9 appended, staggered second rows on both banks), 14 trees, 10 bushes,
+ * 6 rocks, 12 lamps and 12 riverside plants; appended entries only, so every index-based reference stays stable.
  */
 export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
   channel: LOY_KRATHONG_RIVER_CHANNEL,
@@ -433,6 +458,16 @@ export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
     { progress: 0.66, side: -1, setback: 1.45, scale: 1, yawOffsetRad: 0, roof: "pyramid" },
     { progress: 0.29, side: 1, setback: 2.6, scale: 1, yawOffsetRad: Math.PI, roof: "gable" },
     { progress: 0.71, side: 1, setback: 2.6, scale: 1, yawOffsetRad: Math.PI, roof: "gable" },
+    // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+    { progress: 0.13, side: -1, setback: 1.45, scale: 1.05, yawOffsetRad: 0, roof: "pyramid" },
+    { progress: 0.22, side: -1, setback: 1.45, scale: 1, yawOffsetRad: 0, roof: "gable" },
+    { progress: 0.175, side: -1, setback: 3.2, scale: 0.95, yawOffsetRad: 0, roof: "gable" },
+    { progress: 0.265, side: -1, setback: 3.2, scale: 1, yawOffsetRad: 0, roof: "pyramid" },
+    { progress: 0.22, side: 1, setback: 2.6, scale: 1, yawOffsetRad: Math.PI, roof: "pyramid" },
+    { progress: 0.265, side: 1, setback: 3.8, scale: 0.95, yawOffsetRad: Math.PI, roof: "gable" },
+    { progress: 0.43, side: 1, setback: 3.5, scale: 1, yawOffsetRad: Math.PI, roof: "pyramid" },
+    { progress: 0.525, side: 1, setback: 3.5, scale: 1.05, yawOffsetRad: Math.PI, roof: "gable" },
+    { progress: 0.615, side: 1, setback: 3.6, scale: 0.95, yawOffsetRad: Math.PI, roof: "pyramid" },
   ] satisfies HousePlacement[],
   houseFacade: HOUSE_FACADE,
   trees: LOY_KRATHONG_TREES, // MFW-70: same positions, plus crown shape and yaw
@@ -446,12 +481,20 @@ export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
     { progress: 0.33, side: 1, setback: 1.4, scale: 1, yawOffsetRad: 0.8 },
     { progress: 0.46, side: 1, setback: 1.5, scale: 0.9, yawOffsetRad: 2.4 },
     { progress: 0.56, side: 1, setback: 1.35, scale: 1.1, yawOffsetRad: 4.6 },
+    // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+    { progress: 0.175, side: -1, setback: 1.1, scale: 1, yawOffsetRad: 0.5 },
+    { progress: 0.265, side: -1, setback: 1.1, scale: 0.9, yawOffsetRad: 2.0 },
+    { progress: 0.24, side: 1, setback: 1.45, scale: 1, yawOffsetRad: 3.6 },
+    { progress: 0.475, side: 1, setback: 3.2, scale: 0.95, yawOffsetRad: 5.3 },
   ] satisfies BankPlacement[],
   rocks: [
     { progress: 0.37, side: -1, setback: 0.12, scale: 1, yawOffsetRad: 0 },
     { progress: 0.32, side: 1, setback: 0.12, scale: 1.1, yawOffsetRad: 0 },
     { progress: 0.47, side: 1, setback: 0.13, scale: 0.9, yawOffsetRad: 0 },
     { progress: 0.58, side: 1, setback: 0.12, scale: 1, yawOffsetRad: 0 },
+    // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+    { progress: 0.24, side: -1, setback: 0.12, scale: 1, yawOffsetRad: 0 },
+    { progress: 0.22, side: 1, setback: 0.12, scale: 0.95, yawOffsetRad: 0 },
   ] satisfies BankPlacement[],
   lamps: [
     { progress: 0.34, side: 1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
@@ -462,6 +505,11 @@ export const LOY_KRATHONG_RIVER_ENVIRONMENT: RiverEnvironmentDefinition = {
     { progress: 0.43, side: -1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
     { progress: 0.51, side: -1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
     { progress: 0.6, side: -1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
+    // MFW-77 fuller village (DRAFT, owner review from the PR screenshots)
+    { progress: 0.19, side: -1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
+    { progress: 0.27, side: -1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
+    { progress: 0.18, side: 1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
+    { progress: 0.26, side: 1, setback: 0.2, scale: 1, yawOffsetRad: 0 },
   ] satisfies BankPlacement[],
   pier: LOY_KRATHONG_PIER,
   paths: LOY_KRATHONG_RIVERSIDE_PATHS,

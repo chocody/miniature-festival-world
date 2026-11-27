@@ -16,7 +16,7 @@ import { HOUSE_MODEL_SPEC, SHELL_REGION_ORDER } from "./house-model.data.mjs";
  * }} StaticPartMeshBuild
  * @typedef {{ x: number, y: number, z: number, yawRad: number }} WindowBuild
  * @typedef {{
- *   scale: number, shell: StaticPartMeshBuild, roof: StaticPartMeshBuild, windows: WindowBuild[],
+ *   scale: number, shell: StaticPartMeshBuild, liteShell: StaticPartMeshBuild, roof: StaticPartMeshBuild, windows: WindowBuild[],
  *   glass: { width: number, height: number, depth: number }, stats: Record<string, number>,
  * }} HouseModelBuild
  */
@@ -261,6 +261,15 @@ export function buildHouseModel(prims, spec = HOUSE_MODEL_SPEC) {
     (region) => shellPalette.indexOf(paletteOf[/** @type {keyof typeof paletteOf} */ (region)].hex),
     shellPalette,
   );
+  // MFW-77: the LOW lite shell = the same kept shell faces minus liteDroppedRegions (same frame, rounding and palette).
+  const liteDropped = /** @type {readonly string[]} */ (spec.liteDroppedRegions);
+  const liteShell = buildPart(
+    kept.filter((f) => f.region !== "roof" && !liteDropped.includes(f.region)),
+    toLocal,
+    spec.decimals,
+    (region) => shellPalette.indexOf(paletteOf[/** @type {keyof typeof paletteOf} */ (region)].hex),
+    shellPalette,
+  );
   const roof = buildPart(
     kept.filter((f) => f.region === "roof"),
     toLocal,
@@ -295,7 +304,7 @@ export function buildHouseModel(prims, spec = HOUSE_MODEL_SPEC) {
     depth: roundTo(spec.glassDepth, spec.decimals),
   };
 
-  return { scale: roundTo(k, spec.decimals), shell, roof, windows, glass, stats };
+  return { scale: roundTo(k, spec.decimals), shell, liteShell, roof, windows, glass, stats };
 }
 
 /**
@@ -431,6 +440,7 @@ export function renderHouseModelModule(build, source, decimals = HOUSE_MODEL_SPE
     `  source: { file: ${JSON.stringify(source.file)}, sha256: ${JSON.stringify(source.sha256)}, generator: ${JSON.stringify(HOUSE_MODEL_GENERATOR)} },`,
     `  scale: ${num(build.scale, d)},`,
     renderPart("shell", build.shell, d),
+    renderPart("liteShell", build.liteShell, d),
     renderPart("roof", build.roof, d),
     `  windows: [\n${windows}\n  ],`,
     `  glass: { width: ${num(build.glass.width, d)}, height: ${num(build.glass.height, d)}, depth: ${num(build.glass.depth, d)} },`,

@@ -119,6 +119,7 @@ export interface HouseModelData {
   readonly source: { readonly file: string; readonly sha256: string; readonly generator: "mfw scripts/house-model.mjs" };
   readonly scale: number;
   readonly shell: StaticPartMesh;
+  readonly liteShell: StaticPartMesh; // MFW-77: the shell without trim (LOW)
   readonly roof: StaticPartMesh;
   readonly windows: readonly { readonly x: number; readonly y: number; readonly z: number; readonly yawRad: number }[];
   readonly glass: { readonly width: number; readonly height: number; readonly depth: number };
