@@ -10,12 +10,11 @@ import {
   SCENE_TAP_REACTIONS,
   SKY_LANTERN_LOOK,
   SKY_LAUNCH_GIMMICKS,
-  SKY_LAUNCH_SEED_GLOBAL_NAME,
-  SKY_LAUNCH_SPLIT,
   WINDOW_GLOW_LOOK,
   type NudgeTargetKind,
   type SceneGimmickKind,
   type SceneTargetKind,
+  type SkyLaunchKind,
 } from "@/config/gimmicks.config";
 import { RIVER_FOLIAGE_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { LightPresetId } from "@/config/look.config";
@@ -25,10 +24,7 @@ import type { WorldVec3, WorldXZ } from "@/core/coordinates";
 import type { EndlessRiverFrame } from "@/core/coordinates/endlessRiverFrame";
 import {
   chimneySmokeEmitMs,
-  createSeededRandom,
   fallingLeavesEmitMs,
-  pickSkyLaunch,
-  resolveSkyLaunchSeed,
   releaseExpiredNudges,
   retriggerGlow,
   startNudge,
@@ -36,6 +32,7 @@ import {
   type ObjectPoolManager,
   type SmokeDrift,
 } from "@/core/effects";
+import { useDeviceStore } from "@/store/useDeviceStore";
 import type { InstanceTransform } from "@/core/world";
 import type { TreeLeafAnchor } from "./sceneEffectAnchors";
 import {
@@ -70,17 +67,6 @@ const isNudgeKind = (kind: SceneTargetKind): kind is NudgeTargetKind =>
 const isFiniteXZ = (at: WorldXZ | null): at is WorldXZ => at !== null && Number.isFinite(at.x) && Number.isFinite(at.z);
 
 /**
- * MFW-75 (caller override of the spec's D3): the sky launch generator is seeded once per SceneEffects mount from a non-deterministic
- * source (Math.random), so every visit is a real surprise; tests set window[SKY_LAUNCH_SEED_GLOBAL_NAME] (the e2e scene probe) or pass
- * `skyLaunchRandom` to make the picks deterministic.
- */
-function createDefaultSkyLaunchRandom(): () => number {
-  const override =
-    typeof window === "undefined" ? undefined : (window as unknown as Record<string, unknown>)[SKY_LAUNCH_SEED_GLOBAL_NAME];
-  return createSeededRandom(resolveSkyLaunchSeed(override, Math.random));
-}
-
-/**
  * The drift of a smoke (MFW-84): the camera's horizontal right axis, signed downwind (writeSmokeDriftInto), so the smoke moves only
  * sideways on screen while it rises; no camera (tests) → TAP_SHAKE_WIND. Writes into `out`; allocation-free.
  */
@@ -113,11 +99,11 @@ export interface SceneEffectsHandle {
    */
   releaseSkyLantern(at: WorldXZ | null): boolean;
   /**
-   * MFW-75: the empty-ground tap. Draws one value from the seeded generator and launches a firework or a sky lantern
-   * (pickSkyLaunch with SKY_LAUNCH_SPLIT); returns its gimmick (SKY_LAUNCH_GIMMICKS) or null when nothing started. A non-finite `at`
-   * returns null without drawing; a rate-limited firework (WCAG) spends the draw and returns null (no fallback to a lantern).
+   * MFW-75 / MFW-85: the empty-ground tap. Launches a firework or a sky lantern: `kind`, or when omitted the HUD choice
+   * (useDeviceStore.skyLaunchChoice, read at call time, no subscription). Returns its gimmick (SKY_LAUNCH_GIMMICKS) or null when
+   * nothing started. A non-finite `at` returns null; a rate-limited firework (WCAG) returns null (no fallback to a lantern).
    */
-  launchFromSky(at: WorldXZ | null): SceneGimmickKind | null;
+  launchFromSky(at: WorldXZ | null, kind?: SkyLaunchKind): SceneGimmickKind | null;
   /**
    * MFW-72 / MFW-84: a faint smoke rises from house `houseIndex`'s chimney in stretch `stretchIndex` (+ s·T). False under reduced motion (no
    * particles), for an index out of range or a non-safe-integer stretch. A re-tap on the same (house, stretch) while it is still
@@ -170,8 +156,6 @@ export interface SceneEffectsProps {
   readonly leafMaterial?: MatteMaterialSpec;
   /** MFW-75: BLOB_SHADOW_TIER_GEOMETRY[tier], the fan of the lamp ground light. */
   readonly lampGroundFan: Readonly<{ segments: number; rings: number }>;
-  /** MFW-75: the sky launch generator ([0, 1) values). Default: one seeded generator per mount (createDefaultSkyLaunchRandom). Tests inject. */
-  readonly skyLaunchRandom?: () => number;
   /** Clock in ms; default SCENE_EFFECT_CLOCK. Injectable for tests. */
   readonly now?: () => number;
   /**
@@ -204,7 +188,6 @@ export function SceneEffects({
   leavesPerFall,
   leafMaterial = RIVER_FOLIAGE_PARTS.FULL.leafClump.material,
   lampGroundFan,
-  skyLaunchRandom,
   now = SCENE_EFFECT_CLOCK,
   frame = null,
 }: SceneEffectsProps) {
@@ -238,7 +221,6 @@ export function SceneEffects({
   const driftScratch = useRef<SmokeDrift | null>(null);
   const lastLaunchMs = useRef(-Infinity);
   const launchCounter = useRef(0);
-  const defaultSkyRandom = useRef<(() => number) | null>(null);
   useEffect(() => () => disposeEffectMesh(ripple), [ripple]);
   useEffect(() => () => disposeEffectMesh(glow), [glow]);
   useEffect(() => () => disposeLampGroundLightMesh(lampGround), [lampGround]);
@@ -313,11 +295,9 @@ export function SceneEffects({
       invalidate();
       return true;
     };
-    const launchFromSky = (at: WorldXZ | null): SceneGimmickKind | null => {
-      if (!isFiniteXZ(at)) return null; // no draw for a tap without a land point
-      let random = skyLaunchRandom;
-      if (random === undefined) random = defaultSkyRandom.current ??= createDefaultSkyLaunchRandom();
-      const kind = pickSkyLaunch(random(), SKY_LAUNCH_SPLIT.fireworkShare);
+    const launchFromSky = (at: WorldXZ | null, kind?: SkyLaunchKind): SceneGimmickKind | null => {
+      if (!isFiniteXZ(at)) return null; // a tap without a land point starts nothing
+      kind ??= useDeviceStore.getState().skyLaunchChoice; // read at tap time: no subscription, no re-render (MFW-85)
       const started = kind === "firework" ? launchFirework(at) : releaseSkyLantern(at);
       return started ? SKY_LAUNCH_GIMMICKS[kind] : null;
     };
@@ -425,7 +405,6 @@ export function SceneEffects({
     treeLeafAnchors,
     leavesPerFall,
     camera,
-    skyLaunchRandom,
   ]);
 
   useFrame(() => {

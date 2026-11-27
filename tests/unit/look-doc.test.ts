@@ -61,12 +61,18 @@ describe("art-direction note (MFW-47 AC1)", () => {
     for (const term of [
       "## 19. Lamp light and sky launch (MFW-75",
       "LAMP_GROUND_LIGHT_LOOK",
-      "SKY_LAUNCH_SPLIT",
-      "SKY_LAUNCH_SEED",
+      "SKY_LAUNCH_DEFAULT_KIND",
       "reduced motion",
       "screenshots/mfw-75/",
     ]) {
       expect(doc.toLowerCase()).toContain(term.toLowerCase());
+    }
+  });
+
+  it("LD85: documents the sky launch choice (MFW-85, §19.2)", () => {
+    const doc = readFileSync(DOC, "utf8");
+    for (const term of ["MFW-85", "SKY_LAUNCH_SWITCH_COPY", "SKY_LAUNCH_CHOICE_STORAGE_KEY", "screenshots/mfw-85/", "DRAFT"]) {
+      expect(doc).toContain(term);
     }
   });
 

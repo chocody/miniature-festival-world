@@ -43,7 +43,7 @@ describe("look config (MFW-47)", () => {
   });
 
   it("is frozen, nested preset objects included", () => {
-    for (const o of [LIGHT_PRESETS, LOOK_PALETTE, BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY, HUD_GLYPH_COLORS, HUD_GLYPH_COLORS.sun, HUD_GLYPH_COLORS.moon, HUD_GLYPH_COLORS.krathong]) {
+    for (const o of [LIGHT_PRESETS, LOOK_PALETTE, BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY, DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY, HUD_GLYPH_COLORS, HUD_GLYPH_COLORS.sun, HUD_GLYPH_COLORS.moon, HUD_GLYPH_COLORS.krathong, HUD_GLYPH_COLORS.firework, HUD_GLYPH_COLORS.skyLantern]) {
       expect(Object.isFrozen(o)).toBe(true);
     }
     for (const id of LIGHT_PRESET_IDS) {

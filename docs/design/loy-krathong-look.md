@@ -1033,9 +1033,9 @@ committed: 2 puffs, LIGHT crowns, the leaves match).
 
 ## 19. Lamp light and sky launch (MFW-75, backlog 14.2)
 
-Config: `LAMP_GLOW_LOOK`, `LAMP_GROUND_LIGHT_LOOK`, `SKY_LAUNCH_SPLIT`, `SKY_LAUNCH_SEED`, `SKY_LAUNCH_GIMMICKS` and
-`SKY_LANTERN_LOOK` in `src/config/gimmicks.config.ts`; curve `writeLampLightFrameAt` in `src/core/effects/gimmickCurves.ts`; generator
-`createSeededRandom` / `pickSkyLaunch` / `resolveSkyLaunchSeed` in `src/core/effects/seededRandom.ts`. Config wins over this note.
+Config: `LAMP_GLOW_LOOK`, `LAMP_GROUND_LIGHT_LOOK`, `SKY_LAUNCH_GIMMICKS`, `SKY_LAUNCH_DEFAULT_KIND`, `SKY_LAUNCH_SWITCH_COPY`,
+`SKY_LAUNCH_CHOICE_STORAGE_KEY` and `SKY_LANTERN_LOOK` in `src/config/gimmicks.config.ts`; curve `writeLampLightFrameAt` in
+`src/core/effects/gimmickCurves.ts`. Config wins over this note.
 Owner (2026-11-26): "every tap should feel natural". How it is built and every number is a loop decision, not yet reviewed by the owner
 (DRAFT values in docs/follow-ups.md, MFW-75).
 
@@ -1058,19 +1058,32 @@ Owner (2026-11-26): "every tap should feel natural". How it is built and every n
   At 390×844 the patch is ≈ 43 px in radius; in neither preset does it read as a ring, a halo or a disc (a faint warm smudge at
   the foot; checked on 4× crops). Owner reviews the look (Open question 2 of the spec).
 
-### 19.2 The empty-ground tap launches a firework or a sky lantern
+### 19.2 The empty-ground tap launches a firework or a sky lantern (MFW-75; MFW-85: chosen, not random)
 
-- The "sky" tap (bare land, §16) starts `skyLaunch`: one draw `u` from the sky launch generator; `u < SKY_LAUNCH_SPLIT.fireworkShare`
-  (0.5, DRAFT) → the §16 firework (`firework`), else a sky lantern (`sky-lantern`) that sits on the terrace at the tapped land point
-  (`fireworkBaseY` + half its height) and rises with the unchanged `SKY_LANTERN_LOOK`. Both stay pooled with their fixed caps.
-- A rate-limited firework (WCAG 2.3.1, `FIREWORK_MIN_LAUNCH_INTERVAL_MS`) spends the draw and starts nothing (no lantern fallback); a tap
-  without a land point draws nothing.
-- **Seed.** Production seeds the generator (mulberry32) once per SceneEffects mount from `Math.random`, so every visit is a surprise.
-  Tests set `window.__MFW_SKY_LAUNCH_SEED__` (the e2e scene probe does) or inject the generator, with `SKY_LAUNCH_SEED` = 8: the
-  smallest positive integer whose first two picks are a firework, then a sky lantern (found with a throw-away loop; pinned by
-  `gimmicks.config.test.ts`). Screenshot: `screenshots/mfw-75/after-night-sky-lantern.png` (the second sky tap of a page).
-- Reduced motion: the static variants of §16 (static starburst, static lantern 0.8 above its launch point).
+Owner (2026-11-27): "มีปุ่มให้เลือกว่าจะกดที่ว่างเพื่อปล่อยพลุหรือโคมลอย". Everything below marked DRAFT is a loop decision, not yet reviewed by
+the owner (docs/follow-ups.md, MFW-85).
 
+- The "sky" tap (bare land, §16) starts `skyLaunch`: it launches the kind chosen with the HUD switch, read from
+  `useDeviceStore.skyLaunchChoice` at tap time: the §16 firework (`firework`) or a sky lantern (`sky-lantern`) that sits on the terrace
+  at the tapped land point (`fireworkBaseY` + half its height) and rises with the unchanged `SKY_LANTERN_LOOK`. Both stay pooled with
+  their fixed caps. The random pick of MFW-75 and its seeded generator are removed.
+- **The switch** (`SkyLaunchSwitch.tsx`): the 4th round 44 px button of the world HUD column, after rotate, icon only. Its icon is the
+  current choice (`FireworkIcon`: a small centre with radial sparks in coral and glow; `SkyLanternIcon`: a rounded paper lantern with a
+  flame at its base; colours `HUD_GLYPH_COLORS.firework` / `.skyLantern`, palette entries only). The Thai aria-label
+  (`SKY_LAUNCH_SWITCH_COPY`, DRAFT copy) says the current kind and what a tap on the button does.
+- **Default** `SKY_LAUNCH_DEFAULT_KIND` = firework (DRAFT). **Remembered** on this device in LocalStorage
+  (`SKY_LAUNCH_CHOICE_STORAGE_KEY` = `mfw:skyLaunchChoice:v1`, the kind only; DRAFT), hydrated by `DeviceProfiler`.
+- A rate-limited firework (WCAG 2.3.1, `FIREWORK_MIN_LAUNCH_INTERVAL_MS`) starts nothing (no lantern fallback); a tap without a land
+  point starts nothing. Reduced motion: the static variants of §16 (static starburst, static lantern 0.8 above its launch point).
+- At 390×844 the 4th button overlaps the river edge (clearance is asserted for the first three only; docs/follow-ups.md, MFW-85).
+- Screenshots (NIGHT, HIGH, the HUD with the switch on the firework choice; the after-lantern shots follow a tap on the switch and a sky tap):
+
+| Case | Before | After |
+|---|---|---|
+| Phone 390×844 | ![before phone](screenshots/mfw-85/before-phone-night.png) | ![after phone](screenshots/mfw-85/after-phone-night.png) |
+| Desktop 1440×900 | ![before desktop](screenshots/mfw-85/before-desktop-night.png) | ![after desktop](screenshots/mfw-85/after-desktop-night.png) |
+| Sky lantern, phone | | ![after phone lantern](screenshots/mfw-85/after-phone-night-sky-lantern.png) |
+| Sky lantern, desktop | | ![after desktop lantern](screenshots/mfw-85/after-desktop-night-sky-lantern.png) |
 
 ## 20. Fuller village (MFW-77, backlog 14.3)
 

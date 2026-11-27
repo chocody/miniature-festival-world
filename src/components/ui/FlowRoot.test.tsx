@@ -6,6 +6,7 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import { DAY_NIGHT_HOURS, LIGHT_PRESET_TOGGLE_COPY } from "@/config/look.config";
+import { SKY_LAUNCH_DEFAULT_KIND, SKY_LAUNCH_SWITCH_COPY } from "@/config/gimmicks.config";
 import { WISH_COPY } from "@/config/wish.config";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
@@ -147,6 +148,7 @@ describe("FlowRoot", () => {
     expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
       LIGHT_PRESET_TOGGLE_COPY[expectedShown()],
       WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel,
+      SKY_LAUNCH_SWITCH_COPY[SKY_LAUNCH_DEFAULT_KIND],
     ]);
   });
 
@@ -418,7 +420,7 @@ describe("FlowRoot", () => {
     const labels = within(corner as HTMLElement)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual([MY_CREATIONS_COPY.openButton, LIGHT_PRESET_TOGGLE_COPY[expectedShown()], WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel]);
+    expect(labels).toEqual([MY_CREATIONS_COPY.openButton, LIGHT_PRESET_TOGGLE_COPY[expectedShown()], WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel, SKY_LAUNCH_SWITCH_COPY[SKY_LAUNCH_DEFAULT_KIND]]);
     const top = container.querySelector('[data-overlay-slot="top"]') as HTMLElement;
     expect(within(top).getByTestId("zone-navigator")).toBeInTheDocument();
     expect(within(top).queryByTestId("day-night-toggle")).toBeNull();

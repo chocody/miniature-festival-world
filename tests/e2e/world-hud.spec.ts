@@ -142,6 +142,15 @@ for (const size of [
     expect(c!.y).toBeGreaterThanOrEqual(b!.y + b!.height);
     expect(c!.x + c!.width).toBeLessThanOrEqual(size.width / 2);
     expect(c!.y + c!.height).toBeLessThanOrEqual(size.height / 2);
+    // MFW-85: the sky launch switch is the 4th button, below rotate (not in hudButtons(): it overlaps the river at 390x844, see follow-ups)
+    const sky = page.getByTestId("sky-launch-switch");
+    await expect(sky).toBeVisible();
+    const d = (await sky.boundingBox())!;
+    expect(d.width).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX);
+    expect(d.height).toBeGreaterThanOrEqual(E2E_MIN_TOUCH_TARGET_PX);
+    expect(Math.abs(d.x - c!.x)).toBeLessThanOrEqual(1);
+    expect(d.y).toBeGreaterThanOrEqual(c!.y + c!.height);
+    expect(d.y + d.height).toBeLessThanOrEqual(size.height / 2);
     // owner decision 2026-11-27: overlap accepted at 360x640 and 1440x900; clearance asserted at 390x844 only
     if (size.width === 390) await expectHudClearOfRiver(page);
   });

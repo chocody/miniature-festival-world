@@ -28,8 +28,9 @@ import { expectWorldAfterRelease } from "./helpers/release";
  * tap lights its windows, a drag fires nothing, no reaction adds a shader program and nothing draws a ring or a halo. Every target
  * is located through the scene probe (never a fixed screen point) and every check polls a DOM attribute.
  * MFW-72 (backlog 11.6): the house tap also puffs chimney smoke (no new program, no ring or halo); under reduced motion it does not.
- * MFW-75 (backlog 14.2): a sky tap launches a firework OR a sky lantern at random. The scene probe seeds the choice (SKY_LAUNCH_SEED),
- * so the first sky tap of a page is a firework and the second a sky lantern; a lamp tap lights the lamp (head + ground light).
+ * MFW-75 (backlog 14.2): a lamp tap lights the lamp (head + ground light). MFW-85 (backlog 15.3) replaces the random firework / sky
+ * lantern pick of the sky tap with the HUD switch: the default is a firework, and after a tap on the switch the sky tap releases a
+ * sky lantern.
  * MFW-84 (backlog 15.2): S1 (HIGH) and S3 (LOW) tap a house (chimney smoke) and a tree (falling leaves, drawn with the crown's lit
  * material); neither adds a shader program.
  */
@@ -79,10 +80,10 @@ const PAN_DRAG_STEPS = 8;
 const SKY_TAP_ATTEMPTS = 3;
 
 /**
- * A sky tap (bare land) that must launch `expected` (seeded: the first sky draw of a page is a firework, the second a sky lantern).
- * A walking villager can step onto the located point before the tap lands; that tap hops the villager and spends no sky draw, so
- * the helper locates the land again (at most SKY_TAP_ATTEMPTS taps; MFW-75 for the second tap, MFW-77 for the first). Every tap
- * adds exactly one to the gimmick count; any other result than `expected` or "villager-hop" fails. Returns the count after the launch.
+ * A sky tap (bare land) that must launch `expected` (the kind currently chosen with the HUD switch). A walking villager can step
+ * onto the located point before the tap lands; that tap hops the villager and launches nothing, so the helper locates the land
+ * again (at most SKY_TAP_ATTEMPTS taps; MFW-75 / MFW-77). Every tap adds exactly one to the gimmick count; any other result than
+ * `expected` or "villager-hop" fails. Returns the count after the launch.
  */
 async function skyTapLaunches(page: Page, countBefore: number, expected: "firework" | "sky-lantern"): Promise<number> {
   let n = countBefore;
@@ -93,15 +94,26 @@ async function skyTapLaunches(page: Page, countBefore: number, expected: "firewo
     n += 1;
     await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n));
     const last = await scene(page).getAttribute("data-last-gimmick");
-    if (last === "villager-hop") continue; // a walking villager took the tap; it spends no sky draw
-    expect(last).toBe(expected); // seed 8: anything else is a regression
+    if (last === "villager-hop") continue; // a walking villager took the tap; nothing was launched
+    expect(last).toBe(expected); // the chosen kind: anything else is a regression
     return n;
   }
   throw new Error(`no ${expected} after ${SKY_TAP_ATTEMPTS} land taps`);
 }
 
-/** MFW-75: the second sky tap of the page (seeded) releases a sky lantern from the land point. Returns the count after it. */
-async function secondSkyTapReleasesLantern(page: Page, countBefore: number): Promise<number> {
+/** MFW-85: chooses what a sky tap launches with the HUD switch (one click when it differs); a HUD tap adds no scene gimmick. */
+async function chooseSkyLaunch(page: Page, kind: "firework" | "skyLantern") {
+  const before = await count(page);
+  const sw = page.getByTestId("sky-launch-switch");
+  if ((await sw.getAttribute("data-sky-launch")) !== kind) await sw.click();
+  await expect(sw).toHaveAttribute("data-sky-launch", kind);
+  await expect(sw.locator(`svg[data-glyph="${kind === "firework" ? "firework" : "sky-lantern"}"]`)).toBeVisible();
+  expect(await count(page)).toBe(before);
+}
+
+/** MFW-85: switches to the sky lantern, then a sky tap releases one from the land point. Returns the count after it. */
+async function lanternTapAfterSwitch(page: Page, countBefore: number): Promise<number> {
+  await chooseSkyLaunch(page, "skyLantern");
   const n = await skyTapLaunches(page, countBefore, "sky-lantern");
   await expect.poll(() => sceneObjectVisible(page, E2E_SKY_LANTERN_NAME)).toBe(true);
   return n;
@@ -156,10 +168,11 @@ test("S1 HIGH: a sky tap launches a firework, a house tap lights its windows, a 
   const programsBefore = await readProgramCount(page);
   const base = await count(page);
 
+  await expect(page.getByTestId("sky-launch-switch")).toHaveAttribute("data-sky-launch", "firework"); // MFW-85: the default
   const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
   await expect.poll(() => sceneObjectVisible(page, E2E_FIREWORK_NAME)).toBe(true); // drawn now (the mesh exists from mount)
   await expect(scene(page)).not.toHaveAttribute("data-selected-target", "lamp"); // a prop tap selects nothing
-  const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75
+  const n = await lanternTapAfterSwitch(page, afterFirework); // MFW-85
 
   // A drag that starts on bare land pans the camera and fires no reaction (MFW-57 / MFW-59 tap-drag separation). It pans the
   // village (which sits under the top overlay at the pier framing on 360 × 640) into view.
@@ -194,8 +207,9 @@ test.describe("reduced motion", () => {
     const errors = await openWorld(page, 8, 8, E2E_PINNED_TIER_URL);
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     const base = await count(page);
+    await expect(page.getByTestId("sky-launch-switch")).toHaveAttribute("data-sky-launch", "firework"); // MFW-85: the default
     const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
-    const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75: the static lantern
+    const n = await lanternTapAfterSwitch(page, afterFirework); // MFW-85: the static lantern
     // MFW-66: the house tap comes before the lamp tap (the S1 path). After the lamp tap's camera move and the drag, the only house
     // left in the 360 × 640 frame sat about 0.5 px above the bottom card, so a lower roof top (the owner house model) hid it.
     await dragFromLand(page);
@@ -222,9 +236,10 @@ test.describe("LOW", () => {
     await nextFrames(page);
     const programsBefore = await readProgramCount(page);
     const base = await count(page);
+    await expect(page.getByTestId("sky-launch-switch")).toHaveAttribute("data-sky-launch", "firework"); // MFW-85: the default
     const afterFirework = await skyTapLaunches(page, base, "firework"); // MFW-77: retries a villager-hop like the second tap
-    const n = await secondSkyTapReleasesLantern(page, afterFirework); // MFW-75
-    await lampTapLightsLamp(page, n + 1); // MFW-75
+    const n = await lanternTapAfterSwitch(page, afterFirework); // MFW-85
+    await lampTapLightsLamp(page, n + 1); // MFW-85
     await dragFromLand(page); // MFW-84: pans the village into the frame (as S1)
     await houseTapPuffsSmoke(page, n + 2);
     await treeTapDropsLeaves(page, n + 3);

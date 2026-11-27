@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeCanvas, fakeMql, type FakeMql } from "@/core/performance/testFakes";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { LIGHT_PRESET_STORAGE_KEY } from "@/config/look.config";
+import { SKY_LAUNCH_CHOICE_STORAGE_KEY, SKY_LAUNCH_DEFAULT_KIND } from "@/config/gimmicks.config";
 import { DeviceProfiler } from "./DeviceProfiler";
 
 let mql: FakeMql;
@@ -36,6 +37,7 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "hardwareConcurrency");
   useDeviceStore.setState(useDeviceStore.getInitialState(), true);
   localStorage.removeItem(LIGHT_PRESET_STORAGE_KEY);
+  localStorage.removeItem(SKY_LAUNCH_CHOICE_STORAGE_KEY);
 });
 
 describe("DeviceProfiler", () => {
@@ -46,6 +48,16 @@ describe("DeviceProfiler", () => {
     expect(s.qualityTier).toBe("HIGH");
     expect(s.reducedMotion).toBe(true);
     expect(s.webglAvailable).toBe(true);
+  });
+  it("DP1: hydrates the stored sky launch choice; garbage falls back to the default (MFW-85)", () => {
+    localStorage.setItem(SKY_LAUNCH_CHOICE_STORAGE_KEY, "skyLantern");
+    const first = render(<DeviceProfiler />);
+    expect(useDeviceStore.getState().skyLaunchChoice).toBe("skyLantern");
+    first.unmount();
+    useDeviceStore.setState(useDeviceStore.getInitialState(), true);
+    localStorage.setItem(SKY_LAUNCH_CHOICE_STORAGE_KEY, "garbage");
+    render(<DeviceProfiler />);
+    expect(useDeviceStore.getState().skyLaunchChoice).toBe(SKY_LAUNCH_DEFAULT_KIND);
   });
   it("D1: no WebGL -> LOW and webglAvailable false", () => {
     vi.restoreAllMocks();
