@@ -30,7 +30,6 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   krathongBlobShadow: "scene-blob-shadow-krathong",
   ground: "scene-ground",
   houseRoofsGable: "scene-house-roofs-gable",
-  houseDoors: "scene-house-doors",
   houseWindows: "scene-house-windows",
   riversidePlants: "scene-riverside-plants",
   rocks: "scene-rocks",

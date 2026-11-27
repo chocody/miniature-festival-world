@@ -1,4 +1,6 @@
-# Krathong models — owner-supplied designs (MFW-65, backlog 13.1)
+# Owner-supplied models (krathong MFW-65 / MFW-76, house MFW-66)
+
+Sections 1–9: the krathong designs (MFW-65 / MFW-76, backlog 13.1 / 13.7). Section 10: the riverside house (MFW-66, backlog 13.2).
 
 The krathong is drawn from owner-supplied 3D models instead of the procedural parts. Each model is decimated **once,
 offline** into three levels of detail and coloured by a committed, deterministic Node script with pastel vertex colours by
@@ -258,3 +260,93 @@ file (route substitution, decision D6).
 - Worst design per LOD (KA4, body + procedural flames): full `rose_candles_01` 4 748 (banana 5 588 stays the worst);
   medium `banana_leaf_01` 1 056 (new designs ≤ 1 049); low `marigold_01` 880 (banana 868). All within the unchanged guards 6 000 / 1 088 / 900.
 
+## 10. House (MFW-66, backlog 13.2)
+
+The seven riverside houses are drawn from the owner's house model instead of the procedural body / roof / door. A run-once
+offline script turns it into a committed TypeScript data module; the owner file itself is **not** in the repo (owner:
+commit only the outputs).
+
+### 10a. Source and licence
+
+| Field | Value |
+|---|---|
+| Owner file | `House by Poly by Google - 6PGyqELX8M-.glb` (from the owner's `models_and_refs.zip`, 2026-11-26) |
+| sha256 | `cead59093e07cdcf6112748716dad9dbadc6ae1c177f3bd13b0c27572cda9722` |
+| Embedded metadata | `asset.generator = "obj2gltf"`, `asset.version = "2.0"`; **no** `asset.copyright`, no `extras`, no extensions, no licence or author field |
+| Geometry | 49 nodes (one mesh each, no node transforms), 4 materials, indexed triangles ≈ 1 300 |
+| Owner note | "ใช้ได้แต่ไม่ใช้เชิงพาณิชย์" (usable, non-commercial; the owner wrote "…เชิงภาณิชย์") |
+
+**Licence flag (open, owner):** the file carries no licence metadata. "Poly by Google" models were usually published
+CC-BY, but that is **unverified** for this file, and the attribution line is pending the owner. Loop decision: the model
+is used for the **Loy Krathong 2026 private test only**; before the public launch (Christmas) the owner must confirm the
+original licence and credit, or replace the model. No in-app credit is added in MFW-66 (docs/follow-ups.md).
+
+### 10b. Build (offline, once)
+
+```sh
+node scripts/house-model.mjs --source "<path>/House by Poly by Google - 6PGyqELX8M-.glb"           # writes the module
+node scripts/house-model.mjs --source "<path>/House by Poly by Google - 6PGyqELX8M-.glb" --check   # exit 1 if stale
+```
+
+Output: `src/config/events/loyKrathong.houseModel.ts` (generated, do not edit; ≈ 31 KB). Exit codes: 0 ok · 1 differs
+(`--check`) · 2 usage / missing source / parse error. Node built-ins only, deterministic (no dates; test HS5).
+
+- `scripts/house-model.data.mjs` — `HOUSE_MODEL_SPEC`, every number of the build (below).
+- `scripts/house-model-lib.mjs` — `readGlbPrimitives`, `buildHouseModel`, `renderHouseModelModule` (tests HS1–HS5).
+
+Rules, in order (source units unless stated):
+
+1. Drop the door knob (`Cylinder001`, 216 triangles, under 1 px).
+2. Region per face: material 1 = roof; `Box001` material 0 = walls; `Box002` chimney; `Box003` chimney cap; `Box040`
+   step; `Plane006`, `Box035`–`Box039` door; every other node = trim.
+3. Turn by `sourceYawRad` π/18 so the walls are axis-aligned: rotated = (x cosθ − z sinθ, y, x sinθ + z cosθ).
+4. Walls bbox (before culling) gives the four wall planes.
+5. Drop degenerate faces, then faces with unit normal y < `downFaceMaxNormalY` −0.84 (never seen from the fixed camera
+   elevation, any yaw; test HA7), then trim / door / step faces within `wallBand` 6 of a wall plane that face into the
+   wall (n · outward < `inwardDot` −0.9). No decimation.
+6. House-local: X = −(x′ − cx)·k, Y = (y − y0)·k, Z = −(z′ − cz)·k with k = `bodyWidth` 0.8 / walls x extent (the old
+   procedural body width) — the door ends at +Z, the walls are centred, the base is y 0.
+7. Shell (every non-roof region, per-face palette index) and roof; round to 4 decimals and weld; y stored about the
+   part's mid height (`centerY` = the part's `yOffset`).
+8. Window glass: one box behind each of the five open window holes (2 front, 2 back, 1 side), the size of the largest
+   opening + `glassMargin` 0.01 per side, depth `glassDepth` 0.02.
+
+Shell palette (`LOOK_PALETTE` clay pastels, vertex colours, no textures): walls `wallCream` #E4D4B3, chimney and step
+`stone` #B9B7A8, chimney cap and trim `woodDark` #725F46, door `doorWood` #B9815A. The roof colour comes from the roof
+kind (`roofTeal` / `roofTerracotta`).
+
+### 10c. Triangles and budgets
+
+| Part | Triangles | Culled (stats) |
+|---|---|---|
+| shell | 612 (guard `HOUSE_MODEL_MAX_TRIANGLES.shell` 640) | walls:down 68, chimney:down 2, trim:down 76, trim:inward 76, door:down 10, door:inward 10, step:down 2 |
+| roof | 200 (guard 200) | — |
+| knob | 0 | 216 dropped |
+| window glass | 5 boxes × 12 = 60 | — |
+
+k = 0.0080630 (written as `scale` 0.0081). Shell half extents (0.4137, 0.3903, 0.3257), centre y 0.3809; roof
+(0.4245, 0.1963, 0.3101), centre y 0.5803; glass 0.1759 × 0.2015 × 0.02 — all inside the old procedural envelope
+(0.92 × 0.72, top ≤ 0.85; test HA4).
+
+**Budget raise (stated openly; lead, DRAFT for owner review):** the house goes from 152 to 872 triangles (+720) × 7
+houses = **+5 040** measured: environment triangles 7 464 / 7 104 / 4 368 → 12 504 / 12 144 / 9 408 (HIGH / MEDIUM /
+LOW). `ENVIRONMENT_RENDER_BUDGETS.maxTriangles` 7 800 / 7 350 / 5 400 → 12 900 / 12 450 / 10 500 (+5 100 each).
+Draw calls go **down** by one (the door is part of the model): 20 / 20 / 19 → 19 / 19 / 18; `maxDrawCalls` unchanged.
+
+### 10d. Runtime
+
+- Parts (`RIVER_ENVIRONMENT_PARTS`, one `InstancedMesh` each, placed by the unchanged house layout): `houseBody` = the
+  shell (`staticMesh` geometry, `HOUSE_SHELL_MATERIAL` = white matte × vertex colours — the same program variant as the
+  MFW-65 krathong design body); `houseRoof` / `houseRoofGable` = the same roof geometry in teal / terracotta; `houseWindow`
+  = the glass box (emissive at NIGHT, MFW-49; lights on a house tap, MFW-60). House draw calls 5 → 4.
+- `staticMesh` geometry (`createStaticMeshGeometry`): non-indexed, flat normals, colour = Uint8 RGBA normalized.
+- `HOUSE_FACADE.windows` = the model's five windows, each with its own yaw (back π, side π/2); every window lights (W = 5
+  per house, existing glow cap).
+- Static: no per-frame work, no texture, no new program, the same model on every tier (no `reducedMotion` /
+  `qualityTier` branch). Disposal as before (`InstancedPart`).
+- Smoke on a house tap still starts at the roof-top centre (chimney-top smoke is a follow-up).
+
+### 10e. Screenshots
+
+`docs/design/screenshots/mfw-66/` (390 × 844, HIGH pinned with `?pinTier=1`, opening view): `before-world-day.png`,
+`before-world-night.png` (procedural houses, BASE) and `after-world-day.png`, `after-world-night.png` (owner model).

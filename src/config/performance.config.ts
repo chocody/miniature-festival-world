@@ -167,13 +167,22 @@ export const WATER_EFFECT_TIERS: Readonly<Record<RenderTier, Readonly<{ glintCou
  * MFW-70 (lead override, owner review 2026-11-25 "only squares and triangles"): triangles HIGH 6 500 → 7 800 (+1 300) and
  * MEDIUM 5 850 → 7 350 (+1 500, the allowed maximum) so tree crowns and bushes can use smooth detail-1 leaf clumps (80
  * triangles each) instead of faceted 20-triangle ones. Draw calls and LOW are unchanged (LOW foliage got lighter).
+ * MFW-66 (lead, stated openly; DRAFT for owner review): owner house model 812 triangles × 7 + 5 glass boxes per house =
+ * +5 040 measured (7 464 / 7 104 / 4 368 → 12 504 / 12 144 / 9 408 HIGH / MEDIUM / LOW); maxTriangles +5 100 on every tier.
+ * maxDrawCalls unchanged (the house now uses one draw call fewer: the door is part of the model; 20 / 20 / 19 → 19 / 19 / 18).
  */
 export const ENVIRONMENT_RENDER_BUDGETS: Readonly<Record<RenderTier, Readonly<{ maxDrawCalls: number; maxTriangles: number }>>> =
   Object.freeze({
-    HIGH: Object.freeze({ maxDrawCalls: 21, maxTriangles: 7_800 }),
-    MEDIUM: Object.freeze({ maxDrawCalls: 21, maxTriangles: 7_350 }),
-    LOW: Object.freeze({ maxDrawCalls: 20, maxTriangles: 5_400 }),
+    HIGH: Object.freeze({ maxDrawCalls: 21, maxTriangles: 12_900 }),
+    MEDIUM: Object.freeze({ maxDrawCalls: 21, maxTriangles: 12_450 }),
+    LOW: Object.freeze({ maxDrawCalls: 20, maxTriangles: 10_500 }),
   });
+
+/**
+ * Owner house model triangles per part (MFW-66, scripts/house-model.mjs output: shell 612, roof 200). Lead regression guard,
+ * tests/unit/house-model-asset.test.ts HA2.
+ */
+export const HOUSE_MODEL_MAX_TRIANGLES = Object.freeze({ shell: 640, roof: 200 });
 
 /** Max triangles of one krathong ripple ring (the ring fan of RIVER_WATER_HIGHLIGHTS.ripple). Lead regression guard, MFW-49. */
 export const KRATHONG_RIPPLE_MAX_TRIANGLES = 48;

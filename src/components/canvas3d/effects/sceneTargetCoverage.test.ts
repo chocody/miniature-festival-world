@@ -14,7 +14,6 @@ const TAPPABLE: Partial<Record<NameKey, SceneTargetKind | readonly SceneTargetKi
   houseBodies: "house",
   houseRoofs: "house",
   houseRoofsGable: "house",
-  houseDoors: "house",
   houseWindows: "house",
   treeTrunks: "tree",
   leafClumps: ["tree", "bush"], // tree crowns and bushes share the clump mesh; the owner refs pick tree or bush

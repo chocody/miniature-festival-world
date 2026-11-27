@@ -62,7 +62,8 @@ function useBankGeometry(data: BankGeometryData) {
 }
 
 /**
- * Low-poly riverside diorama (one stretch of the endless river, MFW-58): water, rounded banks on ground strips, a village (two roof kinds, doors, windows), foliage
+ * Low-poly riverside diorama (one stretch of the endless river, MFW-58): water, rounded banks on ground strips, a village (MFW-66: the owner house model — a vertex-coloured shell, its roof in two
+ * colours by roof kind, and window glasses), foliage
  * (leaf-clump trees, bushes and reeds, MFW-70), rocks, lamps and a pier. No lights: windows and lanterns glow by emissive per
  * light preset. Only the foliage moves: it sways on HIGH and MEDIUM, and only on frames that are already rendered.
  */
@@ -145,7 +146,6 @@ export function RiverEnvironment(props: RiverEnvironmentProps) {
         transforms={layout.housesByRoof.gable}
         shadows={shadows}
       />
-      <InstancedPart name={SCENE_OBJECT_NAMES.houseDoors} part={parts.houseDoor} transforms={layout.houseDoors} shadows={shadows} />
       <InstancedPart
         name={SCENE_OBJECT_NAMES.houseWindows}
         part={parts.houseWindow}

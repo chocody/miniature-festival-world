@@ -21,6 +21,7 @@ import {
   RIVER_ENVIRONMENT_PARTS,
   LOY_KRATHONG_PIER,
 } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
 import { PINCH_ZOOM_MIN } from "@/config/interaction.config";
 import { KRATHONG_FLAME_MODEL } from "@/config/krathongModel.config";
 import {
@@ -41,7 +42,7 @@ import {
 import { acrossOf, createEndlessRiverFrame, createRiverLane, locateOnEndlessLane, locateOnLane, splineProgressToWorld, type WorldVec3 } from "@/core/coordinates";
 import { getFramedCameraZoom } from "@/core/camera";
 import { relativeLuminance } from "@/core/math/relativeLuminance";
-import { FOLIAGE_TIERS, type RenderTier } from "@/config/performance.config";
+import { FOLIAGE_TIERS, HOUSE_MODEL_MAX_TRIANGLES, type RenderTier } from "@/config/performance.config";
 import {
   TREE_SHAPE_IDS,
   bankSurfaceY,
@@ -72,6 +73,7 @@ function footprintRadius(g: PartGeometrySpec): number {
     case "leafClump": return 1 + g.lumpAmplitude;
     case "trunk": return g.radiusBottom;
     case "bladeTuft": return bladeTuftExtent(g.blades).footprintRadius;
+    case "staticMesh": return Math.hypot(g.width, g.depth) / 2; // L1 (MFW-66): the owner house model's box
   }
 }
 function topY(part: ScenePartSpec): number {
@@ -230,12 +232,22 @@ describe("river layout", () => {
 
   it("every part is low-poly", () => {
     for (const part of Object.values(parts)) {
-      expect(countTriangles(createPartGeometry(part.geometry))).toBeLessThanOrEqual(ENVIRONMENT_PART_MAX_TRIANGLES);
+      // MFW-66: the owner house model parts have their own lead guard (HOUSE_MODEL_MAX_TRIANGLES, also HA2).
+      const max =
+        part === parts.houseBody
+          ? HOUSE_MODEL_MAX_TRIANGLES.shell
+          : part === parts.houseRoof || part === parts.houseRoofGable
+            ? HOUSE_MODEL_MAX_TRIANGLES.roof
+            : ENVIRONMENT_PART_MAX_TRIANGLES;
+      expect(countTriangles(createPartGeometry(part.geometry))).toBeLessThanOrEqual(max);
     }
   });
 
+  // L4 (MFW-66): the vertex-coloured house shell has a white material; its real colours are the shell palette.
   const environmentMaterials = (): Pick<MatteMaterialSpec, "color" | "emissive" | "emissiveIntensity">[] => [
-    ...Object.values(parts).map((p) => p.material),
+    ...Object.values(parts).flatMap((p): Pick<MatteMaterialSpec, "color" | "emissive" | "emissiveIntensity">[] =>
+      p === parts.houseBody ? LOY_KRATHONG_HOUSE_MODEL.shell.palette.map((color) => ({ color })) : [p.material],
+    ),
     RIVER_BANK_MATERIAL,
     PIER_DECK_MATERIAL,
     PIER_PILE_MATERIAL,
@@ -293,10 +305,9 @@ describe("river layout", () => {
     }
   });
 
-  it("rounded clay rule: bevelled house bodies, smooth-shaded curved parts", () => {
-    const body = parts.houseBody.geometry;
-    expect(body.kind).toBe("roundedBox");
-    if (body.kind === "roundedBox") expect(body.radius).toBeGreaterThan(0);
+  it("rounded clay rule: the owner house model body (L2, MFW-66), smooth-shaded curved parts", () => {
+    // The owner model (MFW-66) replaces the bevelled MFW-47 body.
+    expect(parts.houseBody.geometry.kind).toBe("staticMesh");
     const all: ScenePartSpec[] = Object.values(parts);
     for (const part of all) {
       const g = part.geometry;
@@ -401,10 +412,10 @@ describe("river layout", () => {
     expect(parts.houseRoof.material.color).not.toBe(parts.houseRoofGable.material.color);
   });
 
-  it("R5: one door and two windows on each house's front face", () => {
-    expect(layout.houseDoors).toHaveLength(layout.houses.length);
-    expect(layout.houseWindows).toHaveLength(HOUSE_FACADE.windows.length * layout.houses.length);
-    expect(HOUSE_FACADE.windows).toHaveLength(2);
+  it("R5 (L3, MFW-66): each house has the model's 5 window glasses", () => {
+    const M = LOY_KRATHONG_HOUSE_MODEL;
+    expect(HOUSE_FACADE.windows).toHaveLength(5);
+    expect(layout.houseWindows).toHaveLength(5 * layout.houses.length);
     layout.houses.forEach((house, h) => {
       HOUSE_FACADE.windows.forEach((w, k) => {
         const win = layout.houseWindows[h * HOUSE_FACADE.windows.length + k];
@@ -413,13 +424,13 @@ describe("river layout", () => {
         // Un-rotate by the house yaw: local z = dx sin θ + dz cos θ.
         const localZ = dx * Math.sin(house.yawRad) + dz * Math.cos(house.yawRad);
         const localX = dx * Math.cos(house.yawRad) - dz * Math.sin(house.yawRad);
-        expect(localZ).toBeCloseTo(w.z * house.scale, 9);
-        expect(localX).toBeCloseTo(w.x * house.scale, 9);
-        // The front face of the body is at local z = depth / 2.
-        const body = parts.houseBody.geometry;
-        if (body.kind === "roundedBox") expect(w.z).toBeGreaterThanOrEqual(body.depth / 2);
+        expect(Math.abs(localZ - w.z * house.scale)).toBeLessThanOrEqual(1e-9);
+        expect(Math.abs(localX - w.x * house.scale)).toBeLessThanOrEqual(1e-9);
+        expect(Math.abs(win.yawRad - (house.yawRad + (w.yawRad ?? 0)))).toBeLessThanOrEqual(1e-9);
+        expect(win.scale).toBe(house.scale);
       });
     });
+    expect(HOUSE_FACADE.windows).toBe(M.windows);
   });
 
   it("R6: the walking paths are clear of every prop and of the pier", () => {
@@ -487,8 +498,6 @@ describe("river layout", () => {
 
   it("R8: every new part is low-poly", () => {
     for (const part of [
-      parts.houseRoofGable,
-      parts.houseDoor,
       parts.houseWindow,
       parts.leafClump,
       parts.riversidePlant,

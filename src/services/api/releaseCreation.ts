@@ -1,5 +1,5 @@
 import type { FestivalEventId } from "@/config/events/types";
-import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
+import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.riverLane.config";
 import { DEFAULT_KRATHONG_APPEARANCE, serializeKrathongAppearance } from "@/core/customization/krathongAppearance";
 import {
   buildReleaseCoord,

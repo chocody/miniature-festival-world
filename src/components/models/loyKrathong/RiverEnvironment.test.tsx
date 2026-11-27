@@ -79,17 +79,19 @@ afterEach(() => {
 });
 
 describe("RiverEnvironment", () => {
+  // RE1 (MFW-66): the house is the owner model's shell + roof (two roof colours) + window glasses; no door part any more.
   it("renders every environment part once", () => {
     const { container } = render(<RiverEnvironment {...makeProps()} />);
     const names = [
       "water", "bankLeft", "bankRight", "houseBodies", "houseRoofs", "treeTrunks", "leafClumps",
       "lampPosts", "lampHeads", "pierDeck", "pierPiles", "lampFocus",
-      "ground", "houseRoofsGable", "houseDoors", "houseWindows", "riversidePlants", "rocks",
+      "ground", "houseRoofsGable", "houseWindows", "riversidePlants", "rocks",
     ] as const;
     for (const key of names) {
       expect(container.querySelectorAll(`[name="${SCENE_OBJECT_NAMES[key]}"]`)).toHaveLength(1);
     }
-    expect(container.querySelectorAll("instancedMesh")).toHaveLength(12);
+    expect(container.querySelectorAll('[name="scene-house-doors"]')).toHaveLength(0);
+    expect(container.querySelectorAll("instancedMesh")).toHaveLength(11);
   });
 
   it("riverside trees are instanced (backlog 8.2 AC1)", () => {
@@ -212,10 +214,10 @@ describe("RiverEnvironment", () => {
     expect(geometryDispose).not.toHaveBeenCalled();
     expect(materialDispose).not.toHaveBeenCalled();
     view.unmount();
-    // water + 2 banks + ground ring (MFW-49), 12 instanced parts (MFW-49), +1: the shared lamp tap-proxy geometry (MFW-59).
-    // The ground's material is an R3F JSX element, disposed by R3F itself.
-    expect(geometryDispose).toHaveBeenCalledTimes(4 + 12 + 1);
-    expect(materialDispose).toHaveBeenCalledTimes(12 + 1); // +1: the proxy material
+    // water + 2 banks + ground ring (MFW-49), 11 instanced parts (MFW-49; MFW-66 removed the door part), +1: the shared lamp
+    // tap-proxy geometry (MFW-59). The ground's material is an R3F JSX element, disposed by R3F itself.
+    expect(geometryDispose).toHaveBeenCalledTimes(4 + 11 + 1);
+    expect(materialDispose).toHaveBeenCalledTimes(11 + 1); // +1: the proxy material
   });
 
   it("village windows and lanterns are lit at NIGHT and off at DAY, without re-creating materials (MFW-49 AC3)", () => {

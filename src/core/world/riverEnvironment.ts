@@ -49,9 +49,10 @@ export interface LocalOffset {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  readonly yawRad?: number; // added to the prop's yaw (MFW-66: back and side windows face away from the front)
 }
+/** Since MFW-66 the door is part of the house model; the facade lists only the window glasses. */
 export interface HouseFacadeDefinition {
-  readonly door: LocalOffset;
   readonly windows: readonly LocalOffset[];
 }
 /**
@@ -132,7 +133,6 @@ export interface RiverEnvironmentLayout {
   readonly banks: { readonly left: BankGeometryData; readonly right: BankGeometryData };
   readonly houses: readonly InstanceTransform[];
   readonly housesByRoof: Readonly<Record<HouseRoofKind, readonly InstanceTransform[]>>;
-  readonly houseDoors: readonly InstanceTransform[];
   readonly houseWindows: readonly InstanceTransform[];
   readonly trees: readonly InstanceTransform[];
   readonly bushes: readonly InstanceTransform[];
@@ -381,8 +381,9 @@ export function resolvePierLayout(channel: RiverLane, pier: PierDefinition, wate
 }
 
 /**
- * Features on each house's front (door, windows), house by house then offset by offset: position = house.position +
- * R_y(house.yawRad)·(offset·house.scale), with R_y(θ)(x, z) = (x cos θ + z sin θ, −x sin θ + z cos θ); yaw and scale are the house's.
+ * Features on each house (windows), house by house then offset by offset: position = house.position +
+ * R_y(house.yawRad)·(offset·house.scale), with R_y(θ)(x, z) = (x cos θ + z sin θ, −x sin θ + z cos θ); yaw = house.yawRad +
+ * (offset.yawRad ?? 0); scale is the house's.
  */
 export function resolveHouseFeatures(
   houses: readonly InstanceTransform[],
@@ -401,7 +402,7 @@ export function resolveHouseFeatures(
           y: house.position.y + o.y * house.scale,
           z: house.position.z - x * sin + z * cos,
         },
-        yawRad: house.yawRad,
+        yawRad: house.yawRad + (o.yawRad ?? 0),
         scale: house.scale,
       });
     }
@@ -478,7 +479,6 @@ export function resolveRiverEnvironment(def: RiverEnvironmentDefinition): RiverE
     banks: { left, right },
     houses,
     housesByRoof,
-    houseDoors: resolveHouseFeatures(houses, [def.houseFacade.door]),
     houseWindows: resolveHouseFeatures(houses, def.houseFacade.windows),
     trees: resolve(def.trees),
     bushes: resolve(def.bushes),
