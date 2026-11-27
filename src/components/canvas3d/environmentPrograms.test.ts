@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { FrontSide, MeshBasicMaterial, MeshStandardMaterial, type BufferGeometry } from "three";
+import { Color, FrontSide, MeshBasicMaterial, MeshStandardMaterial, type BufferGeometry } from "three";
+import { LOY_KRATHONG_HOUSE_MODEL } from "@/config/events/loyKrathong.houseModel";
+import { KRATHONG_DESIGN_BODY_MATERIAL } from "@/config/krathongDesigns.config";
 import {
   PIER_DECK_MATERIAL,
   RIVER_BANK_MATERIAL,
@@ -14,7 +16,7 @@ import { LAMP_GROUND_LIGHT_LOOK } from "@/config/gimmicks.config";
 import { buildRingFanData, buildShoreHighlightData } from "@/core/world";
 import { LOY_KRATHONG_RIVER_LAYOUT as layout } from "@/components/models/loyKrathong/riverLayout";
 import { createBlobShadowGeometry, createBlobShadowMaterial, createFanMaterial, createVertexAlphaGeometry } from "./blobShadowMeshes";
-import { createInstancedPartMaterial, createMatteMaterial } from "./geometry";
+import { createInstancedPartMaterial, createMatteMaterial, createStaticMeshGeometry } from "./geometry";
 
 /**
  * MFW-49 "no new shader variant" guard: every environment material keeps the parameters of one of the two programs the
@@ -25,7 +27,10 @@ describe("environment programs (MFW-49 AC5)", () => {
   it("every lit environment material shares the matte program parameters", () => {
     const water: MatteMaterialSpec = { color: TOY_MATTE_MATERIALS.water.color, roughness: 1, metalness: 0, flatShading: false };
     const materials = [
-      ...Object.values(RIVER_ENVIRONMENT_PARTS).map((p) => createInstancedPartMaterial(p.material)),
+      // MFW-66: the vertex-coloured house shell uses the krathong design-body variant (checked in the P1 case below).
+      ...Object.values(RIVER_ENVIRONMENT_PARTS)
+        .filter((p) => p !== RIVER_ENVIRONMENT_PARTS.houseBody)
+        .map((p) => createInstancedPartMaterial(p.material)),
       ...[RIVER_BANK_MATERIAL, PIER_DECK_MATERIAL, RIVER_BANK_MATERIAL /* ground */, water].map(createMatteMaterial),
     ];
     for (const m of materials) {
@@ -37,6 +42,25 @@ describe("environment programs (MFW-49 AC5)", () => {
       expect(m.side).toBe(FrontSide);
       m.dispose();
     }
+  });
+
+  it("P1 (MFW-66): the house shell shares the MFW-65 design-body program (vertex colours, RGBA bytes)", () => {
+    const m = createInstancedPartMaterial(RIVER_ENVIRONMENT_PARTS.houseBody.material);
+    expect(m).toBeInstanceOf(MeshStandardMaterial);
+    expect(m.vertexColors).toBe(true);
+    expect(m.flatShading).toBe(false);
+    expect(m.side).toBe(FrontSide);
+    expect(m.transparent).toBe(false);
+    expect(m.roughness).toBe(KRATHONG_DESIGN_BODY_MATERIAL.roughness);
+    expect(m.metalness).toBe(KRATHONG_DESIGN_BODY_MATERIAL.metalness);
+    expect(m.color.getHexString()).toBe(new Color(KRATHONG_DESIGN_BODY_MATERIAL.color).getHexString());
+    m.dispose();
+    const g = createStaticMeshGeometry(LOY_KRATHONG_HOUSE_MODEL.shell);
+    const color = g.getAttribute("color");
+    expect(color.itemSize).toBe(4);
+    expect(color.normalized).toBe(true);
+    expect(color.array).toBeInstanceOf(Uint8Array);
+    g.dispose();
   });
 
   it("every fan material (blobs, shore, glints, ripples, MFW-75 lamp ground light) shares the blob program parameters", () => {

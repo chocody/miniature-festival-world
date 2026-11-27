@@ -42,7 +42,8 @@ describe("house smoke origins (MFW-72)", () => {
     expect(roofKinds).toContain("gable");
     layout.houses.forEach((h, i) => {
       const s = h.scale;
-      const roof = roofKinds[i] === "gable" ? 0.65 + 0.15 : 0.675 + 0.175; // houseRoofGable / houseRoof: yOffset + height / 2
+      const roofPart = roofKinds[i] === "gable" ? RIVER_ENVIRONMENT_PARTS.houseRoofGable : RIVER_ENVIRONMENT_PARTS.houseRoof;
+      const roof = roofPart.yOffset + roofPart.geometry.height / 2; // roof top (MFW-66: the owner model roof, both kinds)
       expect(origins[i].y, `house ${i}`).toBeCloseTo(h.position.y + roof * s + 0.04, 9);
       expect(origins[i].x).toBe(h.position.x);
       expect(origins[i].z).toBe(h.position.z);

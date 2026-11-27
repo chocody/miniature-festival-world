@@ -313,7 +313,10 @@ Config: `src/config/events/loyKrathong.river.config.ts` (geometry, placements, p
 - 7 houses: 5 on the far bank, 2 on the near bank turned to face the camera (`yawOffsetRad` π) so their lit windows show.
 - Two roof kinds and colours: teal pyramid (`houseRoof`) and terracotta gable (`houseRoofGable`), one InstancedMesh each
   (no per-instance colour: it would add a shader variant on SwiftShader). Walls stay cream.
-- `HOUSE_FACADE`: one door and two windows on each house front (local +Z), resolved by `resolveHouseFeatures`.
+- `HOUSE_FACADE`: the window glass positions of the owner house model (MFW-66: two front, two back, one side; the window
+  offsets come from `LOY_KRATHONG_HOUSE_MODEL.windows`), resolved by `resolveHouseFeatures`. Since MFW-66 the door is part
+  of the house shell's vertex colours (`doorWood`); there is no separate door part (`houseDoor` removed). See
+  `docs/design/models.md` §10.
 - `VILLAGE_LIGHTS` (DRAFT): NIGHT windows 0.9 and lanterns 1.2 emissive (lamp light pools removed in MFW-67); DAY all
   off. Emissive is a uniform, so a preset switch recompiles
   nothing and creates nothing. No new lights (the light count is part of every program key).
@@ -387,7 +390,7 @@ Rebased on main ce0f2e4 (MFW-47, 48, 54, 55, 57): full-screen stage, `?pinTier=1
 ### 11.8 DRAFT values (MFW-49)
 
 Channel and lane widths, pier `overWaterLength` / `releaseInset`, `RIVER_BANK_PROFILE`, `bankWidth`, `RIVER_GROUND`,
-`HOUSE_FACADE`, every placement, the new parts (`houseRoofGable`, `houseDoor`, `houseWindow`, `bush`, `rock`), `stone`,
+`HOUSE_FACADE`, every placement, the new parts (`houseRoofGable`, `houseDoor` (removed in MFW-66), `houseWindow`, `bush`, `rock`), `stone`,
 `VILLAGE_LIGHTS`, `LAMP_LIGHT_POOL_LOOK`, `WATER_HIGHLIGHT_LOOK`, `RIVER_WATER_HIGHLIGHTS`, `LOY_KRATHONG_RIVERSIDE_PATHS`.
 Lead guards (not product numbers): `WATER_EFFECT_TIERS`, `ENVIRONMENT_RENDER_BUDGETS`, `KRATHONG_RIPPLE_MAX_TRIANGLES`.
 

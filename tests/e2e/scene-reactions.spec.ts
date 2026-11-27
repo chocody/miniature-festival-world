@@ -173,16 +173,18 @@ test.describe("reduced motion", () => {
     await page.touchscreen.tap(sky.x, sky.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "firework");
     const n = await secondSkyTapReleasesLantern(page, base + 1); // MFW-75: the static lantern
-    await lampTapLightsLamp(page, n + 1); // MFW-75: the light switches on instantly
+    // MFW-66: the house tap comes before the lamp tap (the S1 path). After the lamp tap's camera move and the drag, the only house
+    // left in the 360 × 640 frame sat about 0.5 px above the bottom card, so a lower roof top (the owner house model) hid it.
     await dragFromLand(page);
     const house = await locateStableTarget(page, "house");
     await page.touchscreen.tap(house.x, house.y);
     await expect(scene(page)).toHaveAttribute("data-last-gimmick", "house-lights");
-    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n + 2));
+    await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(n + 1));
     // MFW-72: the instant state is the window light-up; no smoke particles under reduced motion.
     await expect.poll(() => sceneObjectVisible(page, E2E_WINDOW_GLOW_NAME)).toBe(true);
     await nextFrames(page);
     expect(await sceneObjectVisible(page, E2E_CHIMNEY_SMOKE_NAME)).toBe(false);
+    await lampTapLightsLamp(page, n + 2); // MFW-75: the light switches on instantly
     expect(errors.pageErrors).toEqual([]);
     expect(errors.consoleErrors).toEqual([]);
   });

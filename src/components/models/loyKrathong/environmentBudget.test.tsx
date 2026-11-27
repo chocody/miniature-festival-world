@@ -69,20 +69,19 @@ function summarize(l: RiverEnvironmentLayout, tier: RenderTier): Summary {
   part(parts.houseBody, l.houses); // 5
   part(parts.houseRoof, l.housesByRoof.pyramid); // 6
   part(parts.houseRoofGable, l.housesByRoof.gable); // 7
-  part(parts.houseDoor, l.houseDoors); // 8
-  part(parts.houseWindow, l.houseWindows); // 9
+  part(parts.houseWindow, l.houseWindows); // 8
   const f = foliageForTier(LOY_KRATHONG_RIVER_FOLIAGE, tier); // MFW-70 foliage variant per tier
-  part(f.parts.treeTrunk, f.trunks); // 10
-  part(f.parts.leafClump, f.clumps); // 11
-  part(f.parts.riversidePlant, f.plants); // 12
-  part(parts.rock, l.rocks); // 13
-  part(parts.lampPost, l.lamps); // 14
-  part(parts.lampHead, l.lamps); // 15
-  add(1, tris(new BoxGeometry(l.pier.width, l.pier.thickness, l.pier.length))); // 16 pier deck
-  part(parts.pierPile, l.pier.piles); // 17
-  add(l.houses.length + l.trees.length + l.lamps.length, fan()); // 18 environment blobs
-  add(1, tris(createVertexAlphaGeometry(buildShoreHighlightData(l.channel, RIVER_WATER_HIGHLIGHTS.shore.bandWidth, l.ribbonSegments)))); // 19
-  add(WATER_EFFECT_TIERS[tier].glintCount, fan()); // 20 glints
+  part(f.parts.treeTrunk, f.trunks); // 9
+  part(f.parts.leafClump, f.clumps); // 10
+  part(f.parts.riversidePlant, f.plants); // 11
+  part(parts.rock, l.rocks); // 12
+  part(parts.lampPost, l.lamps); // 13
+  part(parts.lampHead, l.lamps); // 14
+  add(1, tris(new BoxGeometry(l.pier.width, l.pier.thickness, l.pier.length))); // 15 pier deck
+  part(parts.pierPile, l.pier.piles); // 16
+  add(l.houses.length + l.trees.length + l.lamps.length, fan()); // 17 environment blobs
+  add(1, tris(createVertexAlphaGeometry(buildShoreHighlightData(l.channel, RIVER_WATER_HIGHLIGHTS.shore.bandWidth, l.ribbonSegments)))); // 18
+  add(WATER_EFFECT_TIERS[tier].glintCount, fan()); // 19 glints
   return { drawCalls, triangles };
 }
 

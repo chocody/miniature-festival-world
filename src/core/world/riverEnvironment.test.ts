@@ -162,7 +162,7 @@ describe("resolveRiverEnvironment", () => {
     bankProfile: PROFILE,
     ground: { y: -0.5, holeMargin: 0.5, outerAcross: 20 },
     houses: [HOUSE, { ...HOUSE, progress: 0.3, roof: "pyramid" }],
-    houseFacade: { door: { x: 0, y: 0.1, z: 0.3 }, windows: [{ x: -0.2, y: 0.3, z: 0.3 }, { x: 0.2, y: 0.3, z: 0.3 }] },
+    houseFacade: { windows: [{ x: -0.2, y: 0.3, z: 0.3 }, { x: 0.2, y: 0.3, z: 0.3 }] },
     trees: [PLACEMENT],
     bushes: [PLACEMENT],
     rocks: [PLACEMENT],
@@ -173,7 +173,7 @@ describe("resolveRiverEnvironment", () => {
   it("resolves everything", () => {
     const l = resolveRiverEnvironment(def);
     expect([l.houses.length, l.trees.length, l.lamps.length, l.pier.piles.length]).toEqual([2, 1, 1, 4]);
-    expect([l.bushes.length, l.rocks.length, l.houseDoors.length, l.houseWindows.length]).toEqual([1, 1, 2, 4]);
+    expect([l.bushes.length, l.rocks.length, l.houseWindows.length]).toEqual([1, 1, 4]);
     expect(l.housesByRoof.gable).toEqual([l.houses[0]]);
     expect(l.housesByRoof.pyramid).toEqual([l.houses[1]]);
     expect(l.ribbonSegments).toBe(4);
@@ -228,7 +228,7 @@ describe("resolveRiverEnvironment v2 validation (MFW-49)", () => {
     ],
     ground: { y: -0.5, holeMargin: 0.5, outerAcross: 20 },
     houses: [{ ...PLACEMENT, roof: "pyramid" }],
-    houseFacade: { door: { x: 0, y: 0, z: 0 }, windows: [] },
+    houseFacade: { windows: [] },
     trees: [],
     bushes: [],
     rocks: [],
@@ -281,6 +281,18 @@ describe("resolveHouseFeatures", () => {
     expect(f.position.x).toBeCloseTo(1 + 2); // z·scale along +X
     expect(f.position.z).toBeCloseTo(3 - 1); // −x·scale along Z
     expect(f.yawRad).toBeCloseTo(Math.PI / 2);
+  });
+  it("C1 (MFW-66): an offset yaw adds to the house yaw; positions keep the same formula", () => {
+    const h = house(0.5);
+    const [f] = resolveHouseFeatures([h], [{ x: 0.3, y: 0.2, z: 0, yawRad: Math.PI / 2 }]);
+    expect(f.position.x).toBeCloseTo(1 + 0.3 * 2 * Math.cos(0.5), 12);
+    expect(f.position.y).toBeCloseTo(2 + 0.2 * 2, 12);
+    expect(f.position.z).toBeCloseTo(3 - 0.3 * 2 * Math.sin(0.5), 12);
+    expect(f.yawRad).toBeCloseTo(0.5 + Math.PI / 2, 12);
+    expect(f.scale).toBe(2);
+    const [g] = resolveHouseFeatures([h], [{ x: 0.3, y: 0.2, z: 0 }]);
+    expect(g.yawRad).toBe(0.5);
+    expect(g.position).toEqual(f.position);
   });
   it("orders house by house, then offset by offset", () => {
     const a = house(0);

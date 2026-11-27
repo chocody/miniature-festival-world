@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, ConeGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial } from "three";
+import { BoxGeometry, Color, ConeGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial } from "three";
 import { buildRibbonGeometryData, createRiverChannel } from "@/core/world";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { BLOB_SHADOW_LOOK, BLOB_SHADOW_TIER_GEOMETRY } from "@/config/look.config";
 import { createBlobShadowGeometry } from "./blobShadowMeshes";
-import { createBankGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry } from "./geometry";
+import { createBankGeometry, createInstancedPartGeometry, createInstancedPartMaterial, countTriangles, createMatteMaterial, createPartGeometry, createRibbonGeometry, createStaticMeshGeometry } from "./geometry";
+import { staticMeshGeometry, type StaticPartMesh } from "@/config/scene.config";
 import { Box3, Triangle, Vector3 } from "three";
 import { LOY_KRATHONG_RIVER_LAYOUT } from "@/components/models/loyKrathong/riverLayout";
 
@@ -158,5 +159,67 @@ describe("riverside v2 parts (MFW-49)", () => {
     for (let i = 0; i < pos.count; i++) expect(pos.getY(i)).toBe(0); // the mesh position sets the height
     g.dispose();
     water.dispose();
+  });
+});
+
+describe("static mesh parts (MFW-66, the owner house model)", () => {
+  // Two triangles of a unit square in the xy plane (CCW seen from +z).
+  const square: StaticPartMesh = {
+    positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
+    indices: [0, 1, 2, 0, 2, 3],
+    faceColors: null,
+    palette: [],
+    halfExtents: [1, 1, 0],
+    centerY: 0,
+  };
+
+  it("G1: non-indexed, 3 vertices per triangle, one flat normal per face, no colour attribute", () => {
+    const g = createStaticMeshGeometry(square);
+    expect(g.index).toBeNull();
+    expect(g.getAttribute("position").count).toBe(6);
+    expect(g.getAttribute("color")).toBeUndefined();
+    const n = g.getAttribute("normal");
+    for (let f = 0; f < 2; f++) {
+      for (let k = 1; k < 3; k++) {
+        expect([n.getX(f * 3 + k), n.getY(f * 3 + k), n.getZ(f * 3 + k)]).toEqual([n.getX(f * 3), n.getY(f * 3), n.getZ(f * 3)]);
+      }
+      expect(n.getZ(f * 3)).toBeCloseTo(1, 9);
+    }
+    expect(g.boundingSphere).not.toBeNull();
+  });
+
+  it("G2: face colours → Uint8 RGBA (itemSize 4, normalized, alpha 255) of three's linear colour", () => {
+    const palette = ["#E4D4B3", "#725F46"];
+    const g = createStaticMeshGeometry({ ...square, faceColors: [0, 1], palette });
+    const color = g.getAttribute("color");
+    expect(color.array).toBeInstanceOf(Uint8Array);
+    expect(color.itemSize).toBe(4);
+    expect(color.normalized).toBe(true);
+    const bytes = color.array as Uint8Array;
+    for (let f = 0; f < 2; f++) {
+      const c = new Color(palette[f]);
+      const expected = [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255), 255];
+      for (let k = 0; k < 3; k++) expect(Array.from(bytes.slice((f * 3 + k) * 4, (f * 3 + k) * 4 + 4))).toEqual(expected);
+    }
+  });
+
+  it("G3: an index out of range, a wrong face-colour count or palette index throws RangeError", () => {
+    expect(() => createStaticMeshGeometry({ ...square, indices: [0, 1, 4] })).toThrow(RangeError);
+    expect(() => createStaticMeshGeometry({ ...square, indices: [0, 1] })).toThrow(RangeError);
+    expect(() => createStaticMeshGeometry({ ...square, faceColors: [0], palette: ["#ffffff"] })).toThrow(RangeError);
+    expect(() => createStaticMeshGeometry({ ...square, faceColors: [0, 1], palette: ["#ffffff"] })).toThrow(RangeError);
+  });
+
+  it("G4: the instanced part geometry is the static mesh unchanged; vertexColors reaches the material", () => {
+    const spec = staticMeshGeometry(square);
+    expect([spec.width, spec.height, spec.depth]).toEqual([2, 2, 0]);
+    const g = createInstancedPartGeometry(spec, true);
+    expect(g.index).toBeNull();
+    expect(countTriangles(g)).toBe(2);
+    expect(g.getAttribute("position").count).toBe(6);
+    expect(createPartGeometry(spec).getAttribute("position").count).toBe(6);
+    const base = { color: "#ffffff", roughness: 1, metalness: 0, flatShading: false } as const;
+    expect(createMatteMaterial({ ...base, vertexColors: true }).vertexColors).toBe(true);
+    expect(createMatteMaterial(base).vertexColors).toBe(false);
   });
 });
