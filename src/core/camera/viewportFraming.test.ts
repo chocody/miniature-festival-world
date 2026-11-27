@@ -73,4 +73,15 @@ describe("getFramedCameraZoom (MFW-54, MFW-68)", () => {
       expect(h / zoom, `${w}×${h}`).toBeGreaterThanOrEqual(SCENE_FRAME_VIEW_SIZE.height - 1e-9);
     }
   });
+
+  it("VF1: takes an optional frame and defaults to SCENE_FRAME_VIEW_SIZE (MFW-93)", () => {
+    const frame = { width: 4.6, height: 6 };
+    expect(getFramedCameraZoom({ width: 390, height: 844 }, frame)).toBeCloseTo(390 / 4.6, 9);
+    expect(getFramedCameraZoom({ width: 1440, height: 900 }, frame)).toBe(SCENE_CAMERA_ZOOM_MAX);
+    for (const [w, h] of GRID) {
+      expect(getFramedCameraZoom({ width: w, height: h }), `${w}×${h}`).toBe(
+        getFramedCameraZoom({ width: w, height: h }, SCENE_FRAME_VIEW_SIZE),
+      );
+    }
+  });
 });

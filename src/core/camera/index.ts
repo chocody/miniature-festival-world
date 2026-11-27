@@ -50,4 +50,4 @@ export function createCameraController(animation: CameraAnimationApi, reducedMot
   };
 }
 
-export { getFramedCameraZoom, type ViewportPixelSize } from "./viewportFraming";
+export { getFramedCameraZoom, type ViewFrameSize, type ViewportPixelSize } from "./viewportFraming";
