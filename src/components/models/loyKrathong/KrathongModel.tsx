@@ -4,8 +4,9 @@ import { useFrame } from "@react-three/fiber";
 import { memo, useMemo, useRef } from "react";
 import type { Mesh } from "three";
 import { KRATHONG_HERO_LOD } from "@/config/krathongModel.config";
-import { assembleKrathong, type KrathongAppearance, type KrathongPartInstance } from "@/core/customization";
-import { useKrathongAssets } from "./KrathongAssetsProvider";
+import { assembleKrathong, krathongDesignForAppearance, type KrathongAppearance, type KrathongPartInstance } from "@/core/customization";
+import { DesignKrathongModel } from "./DesignKrathongModel";
+import { useKrathongAssets, useKrathongDesign } from "./KrathongAssetsProvider";
 import { UprightAnchor } from "./UprightAnchor";
 
 export interface KrathongModelProps {
@@ -45,7 +46,16 @@ function FlameMesh({ part, shadows }: PartMeshProps) {
 
 function KrathongModelImpl({ appearance, shadows }: KrathongModelProps) {
   const assets = useKrathongAssets();
+  // MFW-65: the owner-supplied design once loaded (after the tier is decided); the procedural model until then or on failure.
+  const design = useKrathongDesign(krathongDesignForAppearance(appearance), KRATHONG_HERO_LOD);
   const assembly = useMemo(() => assembleKrathong(appearance), [appearance]);
+  if (design !== null) {
+    return (
+      <group name="krathong-model">
+        <DesignKrathongModel asset={design} shadows={shadows} />
+      </group>
+    );
+  }
   const renderPart = (part: KrathongPartInstance) =>
     part.role === "flame" ? (
       <FlameMesh key={part.id} part={part} shadows={shadows} />

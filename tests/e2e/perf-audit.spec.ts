@@ -16,7 +16,7 @@ import {
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
-import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { E2E_PINNED_TIER_URL, waitForKrathongModels } from "./helpers/sceneProbe";
 
 /** Phone-sized viewport: far fewer pixels for SwiftShader, so these long renders do not starve the other 3D tests running in parallel. */
 const PHONE_VIEWPORT = { width: 360, height: 800 };
@@ -125,6 +125,7 @@ async function walkToWorld(page: Page, pinned = false): Promise<{ customize: Pro
   await page.goto("/" + E2E_PERF_PROBE_QUERY + (pinned ? `&${PIN_TIER_PARAM}` : ""));
   await waitForActiveEvent(page);
   await expect(page.locator(PROBE)).toBeVisible();
+  await waitForKrathongModels(page); // MFW-65: the hero design file is in before the first counter sample
   const customize = await sample(page);
   const fpsCustomize = await readFps(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
@@ -206,6 +207,7 @@ test("HIGH: draw calls do not grow with the number of river krathongs", async ({
   let pair: { tier: string | null; full: ProbeSample; one: ProbeSample; fpsFull: number | null; fpsOne: number | null } | null = null;
   for (let attempt = 0; attempt < 3 && pair === null; attempt++) {
     await goToZone(page, 2, 80);
+    await waitForKrathongModels(page); // MFW-65: the river design file is in before the zone samples
     const t0 = await tierNow();
     const full = await sample(page);
     const fpsFull = await readFps(page);
@@ -253,6 +255,7 @@ test("LOW: memory stays flat across repeated zone switches", async ({ page }, te
   await goToZone(page, 3, 80);
   await goToZone(page, 2, 80);
   await goToZone(page, 1, 1);
+  await waitForKrathongModels(page); // MFW-65: the river design file is in too
   const one = await sample(page);
   await goToZone(page, 2, 80);
   await goToZone(page, 3, 80);

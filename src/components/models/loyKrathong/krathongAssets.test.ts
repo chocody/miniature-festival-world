@@ -17,7 +17,31 @@ import {
   type KrathongAppearance,
 } from "@/core/customization";
 import { buildKrathongMeshData, countKrathongTriangles } from "@/core/customization/krathongMeshData";
+import { KRATHONG_DESIGN_BODY_MATERIAL } from "@/config/krathongDesigns.config";
+import { KRATHONG_MATTE_SURFACE } from "@/config/krathongModel.config";
+import { parseKrathongDesignGlb, type KrathongDesignMeshData } from "@/core/customization/krathongDesignGlb";
+import { writeGlb } from "../../../../scripts/krathong-models-lib.mjs";
 import { createKrathongAssets } from "./krathongAssets";
+import type { KrathongDesignLoad } from "./krathongDesignLoader";
+
+function designData(): KrathongDesignMeshData {
+  const bytes = writeGlb({
+    positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]),
+    colors: new Uint8Array(12).fill(200),
+    indices: [0, 1, 2],
+    flames: [[0, 1, 0, 0.4, 0.1]],
+  });
+  return parseKrathongDesignGlb(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+}
+
+/** A loader whose promises the test settles. */
+function deferredLoader() {
+  const pending: { resolve: (d: KrathongDesignMeshData) => void; reject: (e: Error) => void }[] = [];
+  const load = vi.fn<KrathongDesignLoad>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  return { load, pending };
+}
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const countTriangles = (g: BufferGeometry) => (g.index ? g.index.count : g.getAttribute("position").count) / 3;
 /** v1 default krathong at BASE 9c98d1c (MFW-47): 1360 triangles, measured from the primitive geometries. */
@@ -52,7 +76,7 @@ describe("createKrathongAssets", () => {
     expect(assets.geometry("base:banana_trunk_01")).not.toBe(assets.geometry("base:toy_bread_01"));
     const distinctSpecs = new Set(KRATHONG_GEOMETRY_KEYS.flatMap((key) => KRATHONG_LODS.map((lod) => meshSpecFor(key, lod))));
     expect(assets.listGeometries()).toHaveLength(distinctSpecs.size);
-    expect(assets.listMaterials()).toHaveLength(KRATHONG_MATERIAL_KEYS.length);
+    expect(assets.listMaterials()).toHaveLength(KRATHONG_MATERIAL_KEYS.length + 1); // + the design-body material (MFW-65)
   });
 
   it("MFW-69: identical specs share one geometry", () => {
@@ -131,8 +155,10 @@ describe("createKrathongAssets", () => {
     }
   });
 
-  it("MFW-48: no new shader-program variants", () => {
-    for (const material of createKrathongAssets().listMaterials()) {
+  it("MFW-48: no new shader-program variants (MFW-65: except the one design-body vertex-colour variant, D3)", () => {
+    const assets = createKrathongAssets();
+    expect(assets.listMaterials().filter((m) => m.vertexColors)).toEqual([assets.designMaterial]);
+    for (const material of assets.listMaterials().filter((m) => m !== assets.designMaterial)) {
       expect(material.type).toBe("MeshStandardMaterial");
       expect(material.side).toBe(FrontSide);
       expect(material.flatShading).toBe(false);
@@ -149,5 +175,85 @@ describe("createKrathongAssets", () => {
     const assets = createKrathongAssets();
     expect(() => assets.geometry("nope" as never)).toThrow("unknown krathong asset key");
     expect(() => assets.material("nope" as never)).toThrow("unknown krathong asset key");
+  });
+
+  it("KAS1: a design is null until it resolves, then a vertex-coloured geometry with its flames", async () => {
+    const { load, pending } = deferredLoader();
+    const assets = createKrathongAssets({ loadDesign: load });
+    const listener = vi.fn();
+    assets.subscribeDesigns(listener);
+    assets.requestDesign("banana_leaf_01", "full");
+    expect(assets.design("banana_leaf_01", "full")).toBeNull();
+    expect(assets.getDesignVersion()).toBe(0);
+    const data = designData();
+    pending[0].resolve(data);
+    await flush();
+    const design = assets.design("banana_leaf_01", "full");
+    expect(design).not.toBeNull();
+    expect(assets.design("banana_leaf_01", "full")).toBe(design);
+    const g = design!.geometry;
+    expect(g.getAttribute("position").itemSize).toBe(3);
+    expect(g.getAttribute("normal").itemSize).toBe(3);
+    expect(g.getAttribute("color").itemSize).toBe(4);
+    expect(g.getAttribute("color").normalized).toBe(true);
+    expect(g.index).not.toBeNull();
+    expect(g.boundingSphere).not.toBeNull();
+    expect(design!.flames).toEqual(data.flames);
+    expect(assets.getDesignVersion()).toBe(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(assets.listGeometries()).toContain(g);
+    assets.dispose();
+  });
+
+  it("KAS2: requestDesign is idempotent", () => {
+    const { load } = deferredLoader();
+    const assets = createKrathongAssets({ loadDesign: load });
+    assets.requestDesign("banana_leaf_01", "low");
+    assets.requestDesign("banana_leaf_01", "low");
+    expect(load).toHaveBeenCalledTimes(1);
+    assets.dispose();
+    assets.requestDesign("banana_leaf_01", "medium");
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("KAS3: dispose frees the design geometry, material and placeholder; a later resolve builds nothing", async () => {
+    const { load, pending } = deferredLoader();
+    const assets = createKrathongAssets({ loadDesign: load });
+    assets.requestDesign("banana_leaf_01", "full");
+    assets.requestDesign("banana_leaf_01", "low");
+    pending[0].resolve(designData());
+    await flush();
+    const geometry = assets.design("banana_leaf_01", "full")!.geometry;
+    const placeholder = assets.batchGeometry("design:banana_leaf_01", "medium");
+    const spies = [vi.spyOn(geometry, "dispose"), vi.spyOn(assets.designMaterial, "dispose"), vi.spyOn(placeholder, "dispose")];
+    assets.dispose();
+    for (const spy of spies) expect(spy).toHaveBeenCalledTimes(1);
+    pending[1].resolve(designData());
+    await flush();
+    expect(assets.design("banana_leaf_01", "low")).toBeNull();
+  });
+
+  it("KAS4: the design material and the batch keys", async () => {
+    const { load, pending } = deferredLoader();
+    const assets = createKrathongAssets({ loadDesign: load });
+    const m = assets.designMaterial;
+    expect(m).toBeInstanceOf(MeshStandardMaterial);
+    expect(m.vertexColors).toBe(true);
+    expect(m.roughness).toBe(KRATHONG_MATTE_SURFACE.roughness);
+    expect(m.metalness).toBe(KRATHONG_MATTE_SURFACE.metalness);
+    expect(m.color.getHexString()).toBe(KRATHONG_DESIGN_BODY_MATERIAL.color.slice(1).toLowerCase());
+    expect(m.map).toBeNull();
+    expect(m.side).toBe(FrontSide);
+    expect(assets.batchMaterial("designBody")).toBe(m);
+    expect(assets.batchMaterial("flame")).toBe(assets.material("flame"));
+    expect(assets.batchGeometry("candle", "low")).toBe(assets.geometry("candle", "low"));
+    const placeholder = assets.batchGeometry("design:banana_leaf_01", "medium");
+    expect(placeholder.getAttribute("position")).toBeUndefined();
+    assets.requestDesign("banana_leaf_01", "medium");
+    pending[0].resolve(designData());
+    await flush();
+    expect(assets.batchGeometry("design:banana_leaf_01", "medium")).toBe(assets.design("banana_leaf_01", "medium")!.geometry);
+    expect(assets.batchGeometry("design:banana_leaf_01", "low")).toBe(placeholder);
+    assets.dispose();
   });
 });

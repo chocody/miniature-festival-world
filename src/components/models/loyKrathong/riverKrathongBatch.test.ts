@@ -13,6 +13,10 @@ import {
 } from "@/core/customization";
 import { computeUprightLocalQuaternion } from "@/core/customization/uprightConstraint";
 import { RIVER_ITEM_EULER_ORDER } from "@/core/world/riverFlow";
+import { KRATHONG_DESIGN_MAX_FLAMES } from "@/config/krathongDesigns.config";
+import { krathongInstanceBucketIndex, type KrathongFlameAnchor } from "@/core/customization";
+import { parseKrathongDesignGlb } from "@/core/customization/krathongDesignGlb";
+import { writeGlb } from "../../../../scripts/krathong-models-lib.mjs";
 import { createKrathongAssets } from "./krathongAssets";
 import {
   applyKrathongBatchLod,
@@ -191,8 +195,8 @@ describe("batch meshes", () => {
     expect(meshes).toHaveLength(KRATHONG_INSTANCE_BUCKET_COUNT);
     meshes.forEach((mesh, i) => {
       const b = KRATHONG_INSTANCE_BUCKETS[i];
-      expect(mesh.geometry).toBe(assets.geometry(b.geometryKey));
-      expect(mesh.material).toBe(assets.material(b.materialKey));
+      expect(mesh.geometry).toBe(assets.batchGeometry(b.geometryKey, "full"));
+      expect(mesh.material).toBe(assets.batchMaterial(b.materialKey));
       expect(mesh.instanceMatrix.count).toBe(b.maxPerKrathong * ZONE_ITEM_CAP);
       expect(mesh.frustumCulled).toBe(false);
       expect(mesh.instanceMatrix.usage).toBe(DynamicDrawUsage);
@@ -221,7 +225,7 @@ describe("batch meshes", () => {
   it("MFW-69: createKrathongBatchMeshes(…, \"low\") uses the low geometries", () => {
     const assets = createKrathongAssets();
     const meshes = createKrathongBatchMeshes(assets, ZONE_ITEM_CAP, "low");
-    meshes.forEach((mesh, i) => expect(mesh.geometry).toBe(assets.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, "low")));
+    meshes.forEach((mesh, i) => expect(mesh.geometry).toBe(assets.batchGeometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, "low")));
     assets.dispose();
   });
 
@@ -234,11 +238,92 @@ describe("batch meshes", () => {
       applyKrathongBatchLod(meshes, assets, lod);
       meshes.forEach((mesh, i) => {
         expect(mesh, `${lod} ${i}`).toBe(items[i]);
-        expect(mesh.geometry, `${lod} ${i}`).toBe(assets.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
+        expect(mesh.geometry, `${lod} ${i}`).toBe(assets.batchGeometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
       });
     }
     expect(dispose).toHaveBeenCalledTimes(0);
     dispose.mockRestore();
     assets.dispose();
+  });
+
+  describe("MFW-65 owner-supplied designs", () => {
+    const DESIGN_BUCKET = krathongInstanceBucketIndex("design:banana_leaf_01", "designBody")!;
+    const FLAME_BUCKET = krathongInstanceBucketIndex("flame", "flame")!;
+    const flame = (i: number): KrathongFlameAnchor => ({ x: 0.01 * i, y: 1, z: 0, height: 0.4, radius: 0.1 });
+    const source = (flames: readonly KrathongFlameAnchor[] | null) => ({ flames: () => flames });
+    const zone = (n: number) => Array.from({ length: n }, (_, k) => perfSoakAppearance(k));
+    const elements = (plan: ReturnType<typeof planKrathongInstances>) =>
+      plan.items.map((item) => item.parts.map((p) => [p.bucketIndex, p.slot, p.upright, p.flicker, ...p.local.elements]));
+
+    it("RB1 / RB3: no source, or a design not loaded, plans the procedural parts as before", () => {
+      const appearances = zone(12);
+      const today = planKrathongInstances(appearances);
+      for (const plan of [planKrathongInstances(appearances, ZONE_ITEM_CAP, null), planKrathongInstances(appearances, ZONE_ITEM_CAP, source(null))]) {
+        expect(plan.bucketCounts).toEqual(today.bucketCounts);
+        expect(elements(plan)).toEqual(elements(today));
+        expect(plan.bucketCounts[DESIGN_BUCKET]).toBe(0);
+      }
+    });
+
+    it("RB2: a loaded design with one flame: one body and one flickering, tilting flame per item", () => {
+      const plan = planKrathongInstances(zone(5), ZONE_ITEM_CAP, source([flame(0)]));
+      for (const item of plan.items) {
+        expect(item.anchorLocal.toArray()).toEqual([0, 0, 0]);
+        expect(item.parts).toHaveLength(2);
+        const [body, f] = item.parts;
+        expect(body.bucketIndex).toBe(DESIGN_BUCKET);
+        expect(body.upright).toBe(false);
+        expect(body.flicker).toBe(false);
+        expect(body.local.equals(new Matrix4())).toBe(true);
+        expect(f.bucketIndex).toBe(FLAME_BUCKET);
+        expect(f.flicker).toBe(true);
+        expect(f.upright).toBe(false);
+      }
+      plan.bucketCounts.forEach((c, b) => expect(c, String(b)).toBe(b === DESIGN_BUCKET || b === FLAME_BUCKET ? 5 : 0));
+    });
+
+    it("RB4: a full zone of designs with the most flames fits the flame bucket", () => {
+      const flames = Array.from({ length: KRATHONG_DESIGN_MAX_FLAMES }, (_, i) => flame(i));
+      const plan = planKrathongInstances(zone(ZONE_ITEM_CAP), ZONE_ITEM_CAP, source(flames));
+      expect(plan.bucketCounts[FLAME_BUCKET]).toBe(ZONE_ITEM_CAP * KRATHONG_DESIGN_MAX_FLAMES);
+      expect(plan.bucketCounts[DESIGN_BUCKET]).toBe(ZONE_ITEM_CAP);
+      for (const item of plan.items) expect(item.parts).toHaveLength(1 + KRATHONG_DESIGN_MAX_FLAMES);
+    });
+
+    it("RB5: applyKrathongBatchLod re-points the design bucket from the placeholder once the design has loaded", async () => {
+      const bytes = writeGlb({
+        positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        normals: new Float32Array(9),
+        colors: new Uint8Array(12).fill(255),
+        indices: [0, 1, 2],
+        flames: [[0, 1, 0, 0.4, 0.1]],
+      });
+      const data = parseKrathongDesignGlb(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+      const assets = createKrathongAssets({ loadDesign: () => Promise.resolve(data) });
+      const meshes = createKrathongBatchMeshes(assets, ZONE_ITEM_CAP, "medium");
+      const placeholder = meshes[DESIGN_BUCKET].geometry;
+      expect(placeholder).toBe(assets.batchGeometry("design:banana_leaf_01", "medium"));
+      expect(meshes[DESIGN_BUCKET].material).toBe(assets.designMaterial);
+      assets.requestDesign("banana_leaf_01", "medium");
+      await new Promise((r) => setTimeout(r, 0));
+      const dispose = vi.spyOn(BufferGeometry.prototype, "dispose");
+      applyKrathongBatchLod(meshes, assets, "medium");
+      expect(meshes[DESIGN_BUCKET].geometry).toBe(assets.design("banana_leaf_01", "medium")!.geometry);
+      expect(meshes[DESIGN_BUCKET].geometry).not.toBe(placeholder);
+      expect(dispose).not.toHaveBeenCalled();
+      dispose.mockRestore();
+      assets.dispose();
+    });
+
+    it("RB6: the design body casts with the shadows flag and never receives", () => {
+      const assets = createKrathongAssets();
+      const meshes = createKrathongBatchMeshes(assets);
+      for (const shadows of [true, false]) {
+        applyKrathongBatchShadows(meshes, shadows);
+        expect(meshes[DESIGN_BUCKET].castShadow).toBe(shadows);
+        expect(meshes[DESIGN_BUCKET].receiveShadow).toBe(false);
+      }
+      assets.dispose();
+    });
   });
 });

@@ -26,6 +26,7 @@ const TAPPABLE: Partial<Record<NameKey, SceneTargetKind | readonly SceneTargetKi
   pierPiles: "pier",
   krathong: "krathong",
   krathongPose: "krathong",
+  krathongDesignBody: "krathong", // MFW-65: the hero body of an owner-supplied design, inside the krathong pose
   riverKrathongBatch: "krathong",
   villagers: "villager",
   villagerBodies: "villager",

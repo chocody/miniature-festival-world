@@ -4,13 +4,16 @@ import type { KrathongLod } from "@/config/krathongModel.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import {
   assembleKrathong,
+  designFlameParts,
   KRATHONG_INSTANCE_BUCKETS,
+  krathongDesignForAppearance,
   krathongInstanceBucketIndex,
   type KrathongAppearance,
   type KrathongPartInstance,
 } from "@/core/customization";
 import { STATIC_FLAME_FLICKER, type FlameFlickerFrame } from "@/core/customization/flameFlicker";
 import { writeYawTwistQuaternion } from "@/core/customization/uprightConstraint";
+import type { KrathongDesignPlanSource } from "./KrathongAssetsProvider";
 import type { KrathongAssets } from "./krathongAssets";
 
 /** Elements of one 4×4 instance matrix. */
@@ -76,9 +79,18 @@ function localMatrixOf(part: KrathongPartInstance): Matrix4 {
   );
 }
 
+const IDENTITY_LOCAL: Matrix4 = new Matrix4();
+const ORIGIN: readonly [number, number, number] = Object.freeze([0, 0, 0] as const);
+
+/**
+ * `designs` (MFW-65): when the item's owner-supplied design is loaded, the item is that design's body (one instance in its
+ * design bucket) plus the procedural flame on each flame anchor (flame bucket, flicker, not upright: it tilts with the body).
+ * Otherwise (null source, design not loaded, failed load) the procedural parts as before.
+ */
 export function planKrathongInstances(
   appearances: readonly KrathongAppearance[],
   maxItems: number = ZONE_ITEM_CAP,
+  designs: KrathongDesignPlanSource | null = null,
 ): KrathongInstancePlan {
   assertMaxItems(maxItems);
   const n = KRATHONG_INSTANCE_BUCKETS.length;
@@ -88,15 +100,24 @@ export function planKrathongInstances(
   const items: PlannedKrathongItem[] = [];
   const itemCount = Math.min(appearances.length, maxItems);
   for (let i = 0; i < itemCount; i++) {
-    const assembly = assembleKrathong(appearances[i]);
     const parts: PlannedKrathongPart[] = [];
-    const place = (part: KrathongPartInstance, upright: boolean) => {
-      const b = krathongInstanceBucketIndex(part.geometryKey, part.materialKey);
+    const placeIn = (b: number | null, upright: boolean, flicker: boolean, local: Matrix4) => {
       if (b === null || counts[b] >= capacity[b]) return; // defensive: a test proves it never happens
       const slot = counts[b]++;
       slotItems[b].push(i);
-      parts.push(Object.freeze({ bucketIndex: b, slot, upright, flicker: part.role === "flame", local: localMatrixOf(part) }));
+      parts.push(Object.freeze({ bucketIndex: b, slot, upright, flicker, local }));
     };
+    const place = (part: KrathongPartInstance, upright: boolean) =>
+      placeIn(krathongInstanceBucketIndex(part.geometryKey, part.materialKey), upright, part.role === "flame", localMatrixOf(part));
+    const design = krathongDesignForAppearance(appearances[i]);
+    const flames = designs?.flames(design) ?? null;
+    if (flames !== null) {
+      placeIn(krathongInstanceBucketIndex(`design:${design}`, "designBody"), false, false, IDENTITY_LOCAL);
+      for (const part of designFlameParts(flames)) place(part, false);
+      items.push(Object.freeze({ anchorLocal: new Vector3(...ORIGIN), parts: Object.freeze(parts) }));
+      continue;
+    }
+    const assembly = assembleKrathong(appearances[i]);
     for (const part of assembly.body) place(part, false);
     for (const part of assembly.centerAnchor.parts) place(part, true);
     items.push(
@@ -151,7 +172,7 @@ export function createKrathongBatchMeshes(
 ): readonly InstancedMesh[] {
   assertMaxItems(maxItems);
   const meshes = KRATHONG_INSTANCE_BUCKETS.map((b, i) => {
-    const mesh = new InstancedMesh(assets.geometry(b.geometryKey, lod), assets.material(b.materialKey), b.maxPerKrathong * maxItems);
+    const mesh = new InstancedMesh(assets.batchGeometry(b.geometryKey, lod), assets.batchMaterial(b.materialKey), b.maxPerKrathong * maxItems);
     mesh.name = SCENE_OBJECT_NAMES.riverBatchMeshPrefix + i;
     mesh.userData[KRATHONG_BATCH_BUCKET_USERDATA_KEY] = i;
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -165,14 +186,15 @@ export function createKrathongBatchMeshes(
 }
 
 /**
- * Re-points each bucket mesh at the shared geometry of `lod` (MFW-69, tier change). Creates, disposes and allocates nothing;
- * called from a layout effect, never per frame. Part matrices do not depend on the LOD.
+ * Re-points each bucket mesh at the shared geometry of `lod` (MFW-69, tier change) and, once a design has loaded, the design
+ * bucket from the placeholder to the design geometry (MFW-65). Creates, disposes and allocates nothing; called from a layout
+ * effect, never per frame. Part matrices do not depend on the LOD.
  */
 export function applyKrathongBatchLod(meshes: readonly InstancedMesh[], assets: KrathongAssets, lod: KrathongLod): void {
   for (let i = 0; i < meshes.length; i++) {
     const bucket = KRATHONG_INSTANCE_BUCKETS[i];
     if (bucket === undefined) continue;
-    const geometry = assets.geometry(bucket.geometryKey, lod);
+    const geometry = assets.batchGeometry(bucket.geometryKey, lod);
     if (meshes[i].geometry !== geometry) {
       meshes[i].geometry = geometry;
       meshes[i].boundingSphere = null;

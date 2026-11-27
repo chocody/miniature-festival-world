@@ -28,7 +28,7 @@ import {
 } from "./fixtures/endlessRiver";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { readStagePixels } from "./helpers/backgroundProbe";
-import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest } from "./helpers/sceneProbe";
+import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
 
 /**
@@ -307,6 +307,7 @@ for (const tier of ["LOW", "HIGH"] as const) {
       // Warm-up: every slot has shown every zone once.
       for (let i = 0; i < 3; i++) await jump(E2E_NEXT_ZONE_NAME);
       for (let i = 0; i < 3; i++) await jump(E2E_PREVIOUS_ZONE_NAME);
+      await waitForKrathongModels(page); // MFW-65: every design file is in before the first counter sample
       const base = await sample(page);
       const heap0 = await heapAfterGc(cdp);
       await startGapSampler(page);

@@ -3,14 +3,19 @@
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Matrix4, Vector3, type Group } from "three";
-import { planKrathongInstances, RiverKrathongBatch, type RiverKrathongBatchHandle } from "@/components/models/loyKrathong";
+import {
+  planKrathongInstances,
+  RiverKrathongBatch,
+  useKrathongDesignPlanSource,
+  type RiverKrathongBatchHandle,
+} from "@/components/models/loyKrathong";
 import { RIVER_WATER_HIGHLIGHTS } from "@/config/events/loyKrathong.river.config";
 import { RIVER_KRATHONG_BLOB_SHADOW_RADIUS } from "@/config/look.config";
 import { TIER_BUDGETS, WATER_EFFECT_TIERS } from "@/config/performance.config";
 import { RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { ZONE_ITEM_CAP } from "@/config/world.config";
 import type { RiverLaneSet, SplinePathCoord } from "@/core/coordinates";
-import type { KrathongAppearance } from "@/core/customization";
+import { krathongRiverLod, uniqueKrathongDesigns, type KrathongAppearance } from "@/core/customization";
 import { createBounceFrame, createMarkCueState, trackMarkCue, writeBounceAt, writeMarkCueAt } from "@/core/effects";
 import {
   applyRiverItemTransform,
@@ -86,7 +91,14 @@ export const RiverFlow = memo(function RiverFlow({
     () => selectVisibleRiverItems(prepared, visibleCap, pinnedIds),
     [prepared, visibleCap, pinnedIds],
   );
-  const plan = useMemo(() => planKrathongInstances(visible.map((item) => item.source.appearance)), [visible]);
+  // MFW-65: owner-supplied designs, loaded lazily after the tier is decided; procedural parts until then.
+  const lod = krathongRiverLod(qualityTier);
+  const designs = useMemo(() => uniqueKrathongDesigns(visible.map((item) => item.source.appearance)), [visible]);
+  const designSource = useKrathongDesignPlanSource(designs, lod);
+  const plan = useMemo(
+    () => planKrathongInstances(visible.map((item) => item.source.appearance), ZONE_ITEM_CAP, designSource),
+    [visible, designSource],
+  );
   // Defensive: the batch capacity is ZONE_ITEM_CAP, so a plan never holds fewer items than `visible` in practice.
   const rendered = useMemo(
     () => (plan.items.length === visible.length ? visible : visible.slice(0, plan.items.length)),
@@ -111,8 +123,8 @@ export const RiverFlow = memo(function RiverFlow({
   useEffect(() => () => hitProxy?.dispose(), [hitProxy]);
 
   useEffect(() => {
-    if (rendered.length > 0) invalidate(); // start the demand loop when items appear
-  }, [rendered, invalidate]);
+    if (rendered.length > 0) invalidate(); // start the demand loop when items appear (and draw a design swap, MFW-65)
+  }, [rendered, plan, invalidate]);
 
   useFrame(() => {
     if (!stretchVisible.visible) return; // MFW-58: a culled stretch copy skips its writes (another copy keeps the loop alive)

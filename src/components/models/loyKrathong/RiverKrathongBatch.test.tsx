@@ -56,8 +56,8 @@ describe("RiverKrathongBatch", () => {
     expect(ref.current!.meshes).toHaveLength(KRATHONG_INSTANCE_BUCKETS.length);
     ref.current!.meshes.forEach((mesh, i) => {
       // HIGH draws the LOD of KRATHONG_RIVER_LOD_BY_TIER.HIGH (PLACEHOLDER "medium", MFW-69 lead decision).
-      expect(mesh.geometry).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, KRATHONG_RIVER_LOD_BY_TIER.HIGH));
-      expect(mesh.material).toBe(a.material(KRATHONG_INSTANCE_BUCKETS[i].materialKey));
+      expect(mesh.geometry).toBe(a.batchGeometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, KRATHONG_RIVER_LOD_BY_TIER.HIGH));
+      expect(mesh.material).toBe(a.batchMaterial(KRATHONG_INSTANCE_BUCKETS[i].materialKey));
     });
   });
 
@@ -83,7 +83,7 @@ describe("RiverKrathongBatch", () => {
       expect(ref.current!.meshes, tier).toBe(meshes);
       meshes.forEach((mesh, i) => {
         expect(mesh, `${tier} ${i}`).toBe(items[i]);
-        expect(mesh.geometry, `${tier} ${i}`).toBe(a.geometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
+        expect(mesh.geometry, `${tier} ${i}`).toBe(a.batchGeometry(KRATHONG_INSTANCE_BUCKETS[i].geometryKey, lod));
       });
     }
     expect(geometrySpy).toHaveBeenCalledTimes(0);
@@ -138,7 +138,8 @@ describe("RiverKrathongBatch", () => {
       </KrathongAssetsProvider>,
     );
     view.unmount();
-    expect(geometrySpy).toHaveBeenCalledTimes((assets as unknown as KrathongAssets).listGeometries().length);
+    // + 1: the empty placeholder geometry of a design bucket not loaded yet (MFW-65), owned by the assets.
+    expect(geometrySpy).toHaveBeenCalledTimes((assets as unknown as KrathongAssets).listGeometries().length + 1);
   });
 
   it("writeItem + commit write the planned slots", () => {

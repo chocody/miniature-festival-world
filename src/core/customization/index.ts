@@ -9,3 +9,5 @@ export * from "./krathongInstanceBuckets";
 export * from "./appearanceRegistry";
 export * from "./krathongChoices";
 // The three.js quaternion helper is imported by its own path only, so server code can import this barrel.
+export * from "./krathongDesignGlb";
+export * from "./krathongDesign";

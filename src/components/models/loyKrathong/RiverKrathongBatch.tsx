@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, type Ref } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useSyncExternalStore, type Ref } from "react";
 import type { InstancedMesh, Matrix4, Quaternion } from "three";
 import { SCENE_OBJECT_NAMES } from "@/components/canvas3d/sceneObjectNames";
 import { krathongRiverLod } from "@/core/customization";
@@ -46,8 +46,10 @@ export function RiverKrathongBatch({ plan, shadows, ref }: RiverKrathongBatchPro
     () => ({ setMatrixAt: (bucketIndex, slot, matrix) => meshes[bucketIndex]?.setMatrixAt(slot, matrix) }),
     [meshes],
   );
+  // MFW-65: a design that finishes loading re-points its bucket from the placeholder to the design geometry.
+  const designVersion = useSyncExternalStore(assets.subscribeDesigns, assets.getDesignVersion, assets.getDesignVersion);
   useEffect(() => () => disposeKrathongBatch(meshes), [meshes]);
-  useLayoutEffect(() => applyKrathongBatchLod(meshes, assets, lod), [meshes, assets, lod]);
+  useLayoutEffect(() => applyKrathongBatchLod(meshes, assets, lod), [meshes, assets, lod, designVersion]);
   useLayoutEffect(() => applyKrathongBatchPlan(meshes, plan), [meshes, plan]);
   useLayoutEffect(() => applyKrathongBatchShadows(meshes, shadows), [meshes, shadows]);
   useImperativeHandle(

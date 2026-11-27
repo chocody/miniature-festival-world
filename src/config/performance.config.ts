@@ -60,6 +60,14 @@ export const TIER_BUDGETS: Readonly<Record<RenderTier, TierBudget>> = Object.fre
 });
 
 /**
+ * Lead guard (MFW-65, not an owner number): river krathong triangles of a full HIGH zone — riverItemCap × one krathong at
+ * KRATHONG_RIVER_LOD_BY_TIER.HIGH, × 2 because the HIGH river also draws the shadow pass. Set at the measured value of the
+ * owner-supplied design banana_leaf_01 (80 × 1 056 × 2 = 168 960; the procedural worst case at MFW-69 was 80 × 992 × 2).
+ * Tested in tests/unit/krathong-model-assets.test.ts (KA4c). Raise only with a phone check (docs/perf/MFW-65.md §5).
+ */
+export const HIGH_RIVER_KRATHONG_ZONE_MAX_TRIANGLES = 168_960;
+
+/**
  * Max renderer drawing-buffer pixels (screen CSS area × pixel ratio²) per 3D tier; null = no cap (MFW-54). The full-screen stage
  * made the canvas 5–7× larger than the old 704×256 box, so a big screen renders at a lower pixel ratio (LOW even below 1) instead
  * of spending the frame budget on fill or stepping down. PLACEHOLDER (spec silent; owner to confirm): HIGH ≈ 2.5 MP

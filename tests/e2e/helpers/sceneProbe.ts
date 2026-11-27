@@ -31,6 +31,11 @@ export const E2E_SKY_LANTERN_NAME = "scene-sky-lanterns"; // = SCENE_OBJECT_NAME
 export const E2E_CHIMNEY_SMOKE_NAME = "scene-chimney-smoke"; // = SCENE_OBJECT_NAMES.chimneySmoke (MFW-72)
 export const E2E_FALLING_LEAVES_NAME = "scene-falling-leaves"; // = SCENE_OBJECT_NAMES.fallingLeaves (MFW-72)
 export const E2E_DRAG_START_DISTANCE_PX = 8; // = DRAG_START_DISTANCE_PX
+// MFW-65 owner-supplied krathong models
+/** River batch mesh of the banana_leaf_01 design body (= riverBatchMeshPrefix + its bucket index). */
+export const E2E_DESIGN_BUCKET_MESH = "river-batch-18";
+export const E2E_DESIGN_BODY_NAME = "krathong-design-body"; // = SCENE_OBJECT_NAMES.krathongDesignBody
+const KRATHONG_MODELS_READY_TIMEOUT_MS = 20_000;
 
 const WATER_GRID_X_FROM = 0.1;
 const WATER_GRID_X_TO = 0.9;
@@ -431,4 +436,15 @@ export async function sceneObjectVisible(page: Page, name: string): Promise<bool
     });
     return visible;
   }, name);
+}
+
+/**
+ * MFW-65: the owner-supplied krathong model files load lazily after the tier is decided; wait until every requested file is in
+ * (`data-krathong-models="ready"`) before sampling renderer counters, so a late load never shows up as a counter change.
+ * `"failed"`: wait for the fallback state (blocked files) with the same load-tolerant timeout.
+ */
+export async function waitForKrathongModels(page: Page, status: "ready" | "failed" = "ready"): Promise<void> {
+  await expect(page.locator('[aria-label="Toy-like night river preview"]')).toHaveAttribute("data-krathong-models", status, {
+    timeout: KRATHONG_MODELS_READY_TIMEOUT_MS,
+  });
 }

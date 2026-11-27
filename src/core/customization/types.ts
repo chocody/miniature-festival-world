@@ -7,6 +7,7 @@ import type {
   CENTER_SOCKET_ID,
   RIM_SOCKET_ID_PREFIX,
 } from "@/config/events/loyKrathong.config";
+import type { KrathongDesignId } from "@/config/krathongDesigns.config";
 export type { CandleColor, FlowerKind, KrathongBaseId, LeafColor, LeafFoldStyleId };
 
 /** Stored in creations_public.appearance (spec §5). Index i of `flowers` is rim socket i; null = empty socket. */
@@ -68,6 +69,12 @@ export type KrathongMaterialKey =
   | "incense";
 
 export type KrathongPartRole = "base" | "leaf" | "flower" | "flowerCentre" | "candle" | "flame" | "incense";
+
+/** River-batch keys of the owner-supplied design bodies (MFW-65): one vertex-coloured mesh per design and LOD. */
+export type KrathongDesignGeometryKey = `design:${KrathongDesignId}`;
+export type KrathongBatchGeometryKey = KrathongGeometryKey | KrathongDesignGeometryKey;
+export type KrathongBatchMaterialKey = KrathongMaterialKey | "designBody";
+export type KrathongBatchRole = KrathongPartRole | "designBody";
 
 /** Derived at render time from an appearance. NEVER persisted or sent (invariant A). */
 export interface KrathongPartInstance {
