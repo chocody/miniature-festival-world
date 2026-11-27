@@ -6,7 +6,6 @@ import { completeWishStep } from "./helpers/wishStep";
 import { expectTapHintUnoccluded } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
-  E2E_INSPECT_DIALOG_TITLE,
   E2E_LAMP_GLOW_NAME,
   E2E_LAMP_GROUND_LIGHT_NAME,
   E2E_PINNED_TIER_URL,
@@ -151,7 +150,9 @@ function defineTierTests(pointer: Pointer) {
       const krathong = await locateStableTarget(page, "krathong");
       expect(krathong.ringHits).toBe(krathong.ringSamples);
       await tap(page, pointer, krathong);
-      await expect(page.getByRole("dialog", { name: E2E_INSPECT_DIALOG_TITLE })).toBeVisible();
+      // MFW-80: the fixture wishes are private (null), so another person's krathong shows nothing: no panel, no bubble.
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByTestId("wish-bubble")).toHaveCount(0);
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "inspect");
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 3));
       expect(await sceneObjectVisible(page, E2E_LAMP_GROUND_LIGHT_NAME)).toBe(true); // MFW-75: the lamp stays lit

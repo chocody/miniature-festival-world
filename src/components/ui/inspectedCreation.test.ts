@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
-import { findInspectedCreation, pickInspectedCreation, type InspectableSource } from "./inspectedCreation";
+import { findInspectedCreation, inspectTapOutcome, pickInspectedCreation, type InspectableSource } from "./inspectedCreation";
 
 const src = (id: string, wish?: unknown, displayName?: unknown): InspectableSource =>
   ({ id, appearance: DEFAULT_KRATHONG_APPEARANCE, publicWishText: wish, displayName }) as InspectableSource;
@@ -52,5 +52,15 @@ describe("findInspectedCreation", () => {
     expect(findInspectedCreation([a, b], "b")).toEqual(pickInspectedCreation(b));
     expect(findInspectedCreation([a, b], "zzz")).toBeNull();
     expect(findInspectedCreation([], "a")).toBeNull();
+  });
+});
+
+describe("inspectTapOutcome (MFW-80)", () => {
+  const owned = (id: string) => id === "mine";
+  it("I1: own krathong → panel; another person's open wish → bubble; closed wish → none", () => {
+    expect(inspectTapOutcome(pickInspectedCreation(src("mine", "hi")), owned)).toBe("panel");
+    expect(inspectTapOutcome(pickInspectedCreation(src("mine", null)), owned)).toBe("panel");
+    expect(inspectTapOutcome(pickInspectedCreation(src("other", "hi")), owned)).toBe("bubble");
+    expect(inspectTapOutcome(pickInspectedCreation(src("other", null)), owned)).toBe("none");
   });
 });

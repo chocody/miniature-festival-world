@@ -29,12 +29,14 @@ import { getCanvasDprRange } from "@/core/performance/renderPixelRatio";
 import { LOY_KRATHONG_RIVER_ENVIRONMENT, RIVER_ENVIRONMENT_PARTS } from "@/config/events/loyKrathong.river.config";
 import type { WorldXZ } from "@/core/coordinates";
 import { InspectPopup } from "@/components/ui/InspectPopup";
+import { WishBubble } from "@/components/ui/WishBubble";
+import { isOwnedCreation } from "@/services/auth/ownedCreationHint";
 import { OverlaySlot } from "@/components/ui/StageLayout";
 import { OwnerWishSection } from "@/components/ui/OwnerWishSection";
 import { SceneTapHint } from "@/components/ui/SceneTapHint";
 import { useSceneTapHint } from "@/components/ui/useSceneTapHint";
 import { SCENE_TAP_HINT_COPY, type SceneTargetKind } from "@/config/gimmicks.config";
-import { findInspectedCreation } from "@/components/ui/inspectedCreation";
+import { findInspectedCreation, inspectTapOutcome } from "@/components/ui/inspectedCreation";
 import { SCENE_EFFECT_CLOCK, SceneEffects, type SceneEffectsHandle, type SceneGimmickKind } from "./effects/SceneEffects";
 import { createObjectPoolManager, type NudgeSource } from "@/core/effects";
 import { MOON_SHADOW_MAP_SIZE_PX } from "@/config/scene.config";
@@ -197,7 +199,10 @@ interface ToyNightSceneProps {
   effectCaps: EffectPoolCaps;
   effectsRef: Ref<SceneEffectsHandle>;
   onWaterSelected: (tap: WorldXZ | null, stretchIndex: number) => void;
-  onRiverItemTapped?: (id: string) => void;
+  onRiverItemTapped?: (id: string, stretchIndex: number) => void;
+  /** MFW-80: the krathong whose wish bubble follows it, with the stretch copy that was tapped. */
+  wishBubble: { readonly item: RiverFlowItem; readonly stretchIndex: number } | null;
+  wishBubbleRef: RefObject<HTMLDivElement | null>;
   poseKind: OwnKrathongPoseKind;
   ritual: RitualState;
   site: RitualSite;
@@ -244,6 +249,8 @@ const ToyNightScene = memo(function ToyNightScene({
   effectsRef,
   onWaterSelected,
   onRiverItemTapped,
+  wishBubble,
+  wishBubbleRef,
   poseKind,
   ritual,
   site,
@@ -295,6 +302,8 @@ const ToyNightScene = memo(function ToyNightScene({
             onLampSelected={onLampSelected}
             onPropTapped={onPropTapped}
             onRiverItemTapped={onRiverItemTapped}
+            bubbleItem={wishBubble !== null && wishBubble.stretchIndex === slot.stretchIndex ? wishBubble.item : null}
+            wishBubbleRef={wishBubbleRef}
             nudges={nudges}
             lightPreset={lightPreset}
             shadows={shadows}
@@ -361,6 +370,23 @@ function findFocusInSlots(
   for (let i = 0; i < slots.length; i++) {
     const item = findFocusedRiverItem(i === 0 ? current : neighbours[i], focusedId);
     if (item !== null) return { item, stretchIndex: slots[i].stretchIndex };
+  }
+  return null;
+}
+
+/** MFW-80: the tapped krathong in the slot that was tapped (the same id may appear in several slots), with that slot's stretch. */
+function findBubbleTargetInSlots(
+  slots: readonly { readonly stretchIndex: number }[],
+  current: readonly RiverFlowItem[],
+  neighbours: readonly (readonly RiverFlowItem[])[],
+  tapped: { readonly id: string; readonly stretchIndex: number },
+): { readonly item: RiverFlowItem; readonly stretchIndex: number } | null {
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i].stretchIndex !== tapped.stretchIndex) continue;
+    const items = i === 0 ? current : neighbours[i];
+    for (let j = 0; j < items.length; j++) {
+      if (items[j].id === tapped.id) return { item: items[j], stretchIndex: tapped.stretchIndex };
+    }
   }
   return null;
 }
@@ -535,14 +561,14 @@ export function SceneViewport({
   const [flyRequestId, setFlyRequestId] = useState(0);
   const [selectionMode, setSelectionMode] = useState(mode);
   const effectsRef = useRef<SceneEffectsHandle | null>(null);
-  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [tapped, setTapped] = useState<{ id: string; stretchIndex: number; seq: number } | null>(null);
   const [gimmick, setGimmick] = useState<{ kind: SceneGimmickKind | null; count: number }>({ kind: null, count: 0 });
   const recordGimmick = useCallback((kind: SceneGimmickKind) => setGimmick((g) => ({ kind, count: g.count + 1 })), []);
   if (selectionMode !== mode) {
     setSelectionMode(mode);
     setSelectedTarget(null);
     setFlightTarget(null);
-    setInspectedId(null);
+    setTapped(null);
   }
   if (seenFocusRequestId !== focusRequestId) {
     setSeenFocusRequestId(focusRequestId);
@@ -593,9 +619,9 @@ export function SceneViewport({
     if (gimmick !== null) recordGimmick(gimmick);
   }, [mode, recordGimmick]);
 
-  const onRiverItemTapped = useCallback((id: string) => {
+  const onRiverItemTapped = useCallback((id: string, stretchIndex: number) => {
     if (mode !== "WORLD_EXPLORE") return;
-    setInspectedId(id);
+    setTapped((p) => ({ id, stretchIndex, seq: (p?.seq ?? 0) + 1 }));
     recordGimmick("inspect");
   }, [mode, recordGimmick]);
 
@@ -615,10 +641,19 @@ export function SceneViewport({
   }, [writeChipPosition]);
 
   // MFW-58: a tapped krathong may be in any rendered stretch (the current zone first).
+  const tappedId = tapped?.id ?? null;
   const inspected = useMemo(
-    () => (mode === "WORLD_EXPLORE" && inspectedId !== null ? findInspectedInSlots(sceneRiverItems, neighbourItems, inspectedId) : null),
-    [mode, inspectedId, sceneRiverItems, neighbourItems],
+    () => (mode === "WORLD_EXPLORE" && tappedId !== null ? findInspectedInSlots(sceneRiverItems, neighbourItems, tappedId) : null),
+    [mode, tappedId, sceneRiverItems, neighbourItems],
   );
+  // MFW-80: your own krathong opens the popup; another person's open wish shows a fading bubble; a closed wish shows nothing.
+  const outcome = useMemo(() => (inspected === null ? "none" : inspectTapOutcome(inspected, isOwnedCreation)), [inspected]);
+  const wishBubble = useMemo(
+    () => (outcome === "bubble" && tapped !== null ? findBubbleTargetInSlots(slots, sceneRiverItems, neighbourItems, tapped) : null),
+    [outcome, tapped, slots, sceneRiverItems, neighbourItems],
+  );
+  const wishBubbleRef = useRef<HTMLDivElement | null>(null);
+  const onBubbleDone = useCallback(() => setTapped(null), []);
 
   const flightTargetRef: TargetRef | null = flightTarget === "krathong"
     ? krathongTargetRef
@@ -956,6 +991,8 @@ export function SceneViewport({
             effectsRef={effectsRef}
             onWaterSelected={onWaterSelected}
             onRiverItemTapped={mode === "WORLD_EXPLORE" ? onRiverItemTapped : undefined}
+            wishBubble={wishBubble}
+            wishBubbleRef={wishBubbleRef}
             poseKind={poseKind}
             ritual={ritual}
             site={site}
@@ -1020,15 +1057,24 @@ export function SceneViewport({
         />
       </OverlaySlot>
     )}
-    {inspected && (
+    {inspected && outcome === "panel" && (
       <OverlaySlot slot="sheet">
         <InspectPopup
           key={inspected.id}
           creation={inspected}
-          onClose={() => setInspectedId(null)}
+          onClose={() => setTapped(null)}
           ownerSection={<OwnerWishSection creation={inspected} />}
         />
       </OverlaySlot>
+    )}
+    {outcome === "bubble" && wishBubble !== null && inspected !== null && tapped !== null && (
+      <WishBubble
+        key={`${tapped.id}:${tapped.seq}`}
+        creation={inspected}
+        reducedMotion={reducedMotion}
+        bubbleRef={wishBubbleRef}
+        onDone={onBubbleDone}
+      />
     )}
     </>
   );

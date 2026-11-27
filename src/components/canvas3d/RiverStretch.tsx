@@ -27,6 +27,7 @@ import { EnvironmentBlobShadows } from "./BlobShadows";
 import { PropNudges } from "./effects/PropNudges";
 import { PropTapProxies } from "./effects/PropTapProxies";
 import { FindMyAnchor } from "./FindMyAnchor";
+import { WishBubbleAnchor } from "./WishBubbleAnchor";
 import { RiverFlow, type RiverFlowItem } from "./RiverFlow";
 import { StretchVisibilityContext, type StretchVisibility } from "./stretchVisibility";
 import { Villagers } from "./Villagers";
@@ -64,7 +65,12 @@ export interface RiverStretchProps {
   readonly onLampSelected: (lampIndex: number, stretchIndex: number) => void;
   /** WORLD_EXPLORE only (absent = no prop proxies, no land / pier handlers). at = world-view space. */
   readonly onPropTapped?: (kind: SceneTargetKind, index: number, at: WorldXZ | null, stretchIndex: number) => void;
-  readonly onRiverItemTapped?: (id: string) => void;
+  /** The tap carries this slot's stretch index: with one zone every slot shows the same zone, so the id alone does not say which copy. */
+  readonly onRiverItemTapped?: (id: string, stretchIndex: number) => void;
+  /** MFW-80: the krathong whose wish bubble follows it; non-null only on the tapped slot. */
+  readonly bubbleItem: RiverFlowItem | null;
+  /** The bubble's outer element (written by WishBubbleAnchor each frame). */
+  readonly wishBubbleRef: RefObject<HTMLDivElement | null>;
   /** The one nudge pool of the canvas (MFW-60); this slot reads it filtered by its stretch. */
   readonly nudges: NudgeSource;
   readonly lightPreset: LightPresetId;
@@ -97,6 +103,8 @@ export const RiverStretch = memo(function RiverStretch({
   onLampSelected,
   onPropTapped,
   onRiverItemTapped,
+  bubbleItem,
+  wishBubbleRef,
   nudges,
   lightPreset,
   shadows,
@@ -119,6 +127,10 @@ export const RiverStretch = memo(function RiverStretch({
   );
   const onWater = useCallback((tap: WorldXZ | null) => onWaterSelected(toWorld(tap), stretchIndex), [onWaterSelected, toWorld, stretchIndex]);
   const onLamp = useCallback((i: number) => onLampSelected(i, stretchIndex), [onLampSelected, stretchIndex]);
+  const onRiverItem = useMemo(
+    () => (onRiverItemTapped === undefined ? undefined : (id: string) => onRiverItemTapped(id, stretchIndex)),
+    [onRiverItemTapped, stretchIndex],
+  );
   const onProp = useMemo(
     () =>
       onPropTapped === undefined
@@ -193,13 +205,14 @@ export const RiverStretch = memo(function RiverStretch({
           reducedMotion={reducedMotion}
           now={riverNow}
           pinnedIds={pinnedRiverIds}
-          onItemTapped={onRiverItemTapped}
+          onItemTapped={onRiverItem}
           shadowSurfaceY={LOY_KRATHONG_RIVER_LAYOUT.waterSurfaceY}
           markedId={markedRiverId}
         />
         {findMyItem && (
           <FindMyAnchor item={findMyItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} anchorRef={findMyAnchorRef} />
         )}
+        {bubbleItem && <WishBubbleAnchor item={bubbleItem} lanes={getLoyKrathongRiverLanes()} now={riverNow} bubbleRef={wishBubbleRef} />}
       </group>
     </StretchVisibilityContext.Provider>
   );

@@ -12,6 +12,9 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { RiverStretch, RIVER_STRETCH_NAME_PREFIX, type RiverStretchProps } from "./RiverStretch";
 import { SCENE_OBJECT_NAMES } from "./sceneObjectNames";
 import { NO_PINNED_RIVER_IDS } from "@/core/world";
+import { DEFAULT_KRATHONG_APPEARANCE } from "@/core/customization";
+import { RIVER_DRIFT_SPEED_FACTOR } from "@/config/riverFlow.config";
+import { WISH_BUBBLE_ANCHOR_NAME } from "./WishBubbleAnchor";
 
 const frames = vi.hoisted(() => [] as { cb: (state: { camera: unknown }) => void; priority: number }[]);
 vi.mock("@react-three/fiber", () => {
@@ -59,6 +62,8 @@ function renderSlot(patch: Partial<RiverStretchProps> = {}) {
     onLampSelected: vi.fn(),
     onPropTapped: vi.fn(),
     onRiverItemTapped: undefined,
+    bubbleItem: null,
+    wishBubbleRef: createRef<HTMLDivElement | null>() as RefObject<HTMLDivElement | null>,
     nudges,
     lightPreset: "NIGHT",
     shadows: false,
@@ -168,5 +173,23 @@ describe("RiverStretch (MFW-58)", () => {
     for (const f of children()) f.cb({ camera: camera() });
     expect(writes).not.toHaveBeenCalled();
     writes.mockRestore();
+  });
+
+  it("RS1: a krathong tap reports (id, stretchIndex); the wish bubble anchor exists only with bubbleItem", () => {
+    const item = {
+      id: "rs1",
+      coord: { mode: "SPLINE_PATH" as const, laneId: 1, spawnProgress: 0.2, speedFactor: RIVER_DRIFT_SPEED_FACTOR, lateralOffset: 0 },
+      createdAtMs: 1_700_000_000_000,
+      appearance: DEFAULT_KRATHONG_APPEARANCE,
+      publicWishText: "x",
+    };
+    const onRiverItemTapped = vi.fn();
+    const { container } = renderSlot({ riverItems: [item], onRiverItemTapped, bubbleItem: item });
+    fireEvent.click(container.querySelector('[name="river-hit-rs1"]')!);
+    expect(onRiverItemTapped).toHaveBeenCalledWith("rs1", 1);
+    expect(container.querySelector(`[name="${WISH_BUBBLE_ANCHOR_NAME}"]`)).not.toBeNull();
+    cleanup();
+    const without = renderSlot({ riverItems: [item], onRiverItemTapped, bubbleItem: null });
+    expect(without.container.querySelector(`[name="${WISH_BUBBLE_ANCHOR_NAME}"]`)).toBeNull();
   });
 });
