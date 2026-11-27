@@ -17,6 +17,7 @@ import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { waitForActiveEvent } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL, waitForKrathongModels } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /** Phone-sized viewport: far fewer pixels for SwiftShader, so these long renders do not starve the other 3D tests running in parallel. */
 const PHONE_VIEWPORT = { width: 360, height: 800 };
@@ -131,7 +132,7 @@ async function walkToWorld(page: Page, pinned = false): Promise<{ customize: Pro
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await expect(page.locator(PROBE)).toBeVisible();
   return { customize, fpsCustomize };

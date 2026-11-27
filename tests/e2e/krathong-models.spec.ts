@@ -15,6 +15,7 @@ import {
   waitForKrathongModels,
 } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-65 (backlog 13.1): the owner-supplied krathong model files load after the tier is decided, replace the procedural hero and
@@ -84,7 +85,7 @@ test.describe("LOW", () => {
     await page.getByRole("button", { name: "ถัดไป" }).click();
     await completeWishStep(page);
     await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-    await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+    await expectWorldAfterRelease(page);
     await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
     await expect(scene(page)).not.toHaveAttribute("data-river-item-count", "0");
     await waitForKrathongModels(page);

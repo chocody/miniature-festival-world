@@ -4,6 +4,7 @@ import { E2E_EVENT_ID, e2eItemId, makeZoneItem } from "../fixtures/zoneFixtures"
 import { waitForActiveEvent } from "./activeEvent";
 import { E2E_PINNED_TIER_URL, E2E_RIVER_HIT_PREFIX, installSceneProbe, waitForCameraRest } from "./sceneProbe";
 import { completeWishStep } from "./wishStep";
+import { expectWorldAfterRelease } from "./release";
 
 /** MFW-80 helpers. No src/ imports: tests/unit/wish-bubble-e2e-literals.test.ts pins the mirrored literals to the app constants. */
 export const E2E_WISH_BUBBLE_TESTID = "wish-bubble";
@@ -75,7 +76,7 @@ export async function walkToWorldLow(page: Page, preset?: "DAY" | "NIGHT"): Prom
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-  await expect(page.locator("[data-flow-state]")).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await waitForCameraRest(page);
 }

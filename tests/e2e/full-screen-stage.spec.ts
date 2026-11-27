@@ -17,6 +17,7 @@ import {
   type StageViewport,
 } from "./helpers/stage";
 import { WISH_DIALOG_TITLE, completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * Backlog 10.2 (MFW-54): the scene fills the viewport, every control floats on top, the zoom frames the scene at any aspect ratio,
@@ -75,7 +76,7 @@ async function toRitual(page: Page) {
 
 async function releaseToWorld(page: Page) {
   await page.getByRole("button", { name: RELEASE }).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(page.locator("canvas")).toHaveCount(1);
 }
 

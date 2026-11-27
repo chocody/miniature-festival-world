@@ -16,6 +16,7 @@ import { E2E_WORLD_ROTATE_BUTTON_NAME, mouseDragHold, readCamera } from "./helpe
 import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest } from "./helpers/sceneProbe";
 import { SCENE_SELECTOR, forceTier } from "./helpers/stage";
 import { completeWishStep } from "./helpers/wishStep";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 /**
  * MFW-68 (backlog 13.4) AC2 / AC4 / AC5: no background (clear colour) pixel at the four corners and the centre of the stage in
@@ -88,7 +89,7 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       await expectNoBackground(page, "ritual");
 
       await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
-      await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+      await expectWorldAfterRelease(page);
       await waitForCameraRest(page);
       await expectNoBackground(page, "world");
       await expectCanvasWithinLowPixelBudget(page);

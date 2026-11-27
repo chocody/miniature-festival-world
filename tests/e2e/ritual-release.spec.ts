@@ -5,6 +5,7 @@ import { waitForActiveEvent } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
+import { expectWorldAfterRelease } from "./helpers/release";
 
 test.use({ hasTouch: true, viewport: E2E_SWIFTSHADER_3D_VIEWPORT }); // MFW-54: see E2E_SWIFTSHADER_3D_VIEWPORT
 
@@ -62,7 +63,7 @@ test("3D: releases from the pier", async ({ page }) => {
   await expect(page.locator("canvas")).toHaveCount(1);
   await expect(page.locator(VIEWPORT)).toHaveAttribute("data-own-krathong-pose", "PIER");
   await releaseButton(page).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   expect(requests).toHaveLength(1);
   const { url, body } = requests[0];
   expect(new URL(url).pathname).toBe("/api/creations");
@@ -91,7 +92,7 @@ test("3D: drag onto the water", async ({ page }) => {
   await expect(page.getByTestId("ritual-status")).toHaveText(DROP_ON_WATER);
   expect(requests).toHaveLength(0);
   await dragChip(page, -DRAG_UP_PX * scale);
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   expect(requests).toHaveLength(1);
   expect(errors).toEqual([]);
 });
@@ -99,7 +100,7 @@ test("3D: drag onto the water", async ({ page }) => {
 test("server moved the spot", async ({ page }) => {
   await setup(page, { moveLateralBy: -0.2 });
   await releaseButton(page).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   await expect(root(page)).toHaveAttribute("data-ritual-bumped", "true");
 });
 
@@ -112,7 +113,7 @@ test("503 then retry", async ({ page }) => {
   await page.unroute((url) => url.pathname === "/api/creations");
   await mockCreateCreation(page);
   await releaseButton(page).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
   expect(requests).toHaveLength(1);
 });
 
@@ -135,7 +136,7 @@ test("reduced motion", async ({ page }) => {
   await setup(page);
   await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
   await releaseButton(page).click();
-  await expect(root(page)).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+  await expectWorldAfterRelease(page);
 });
 
 test("360 px", async ({ page }) => {
