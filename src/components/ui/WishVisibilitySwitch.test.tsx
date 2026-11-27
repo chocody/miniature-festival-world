@@ -70,4 +70,31 @@ describe("WishVisibilitySwitch", () => {
     expect(sw().className).toContain("min-h-11");
     expect(sw().className).toContain("min-w-11");
   });
+
+  it("MFW-83: the knob has an equal inset on both sides in both states and sits fully inside the track", () => {
+    const px = (cls: string, prefix: string) => {
+      const m = cls.split(" ").map((c) => c.match(new RegExp(`^${prefix}(\\d+)$`))).find(Boolean);
+      return Number(m![1]) * 4; // Tailwind spacing step = 4 px
+    };
+    for (const checked of [false, true]) {
+      const { unmount } = render(<WishVisibilitySwitch checked={checked} onToggle={vi.fn()} animate={false} />);
+      const track = sw().className;
+      const knob = screen.getByTestId("wish-switch-knob").className;
+      expect(knob).toContain("absolute");
+      const trackW = px(track, "w-");
+      const trackH = px(track, "h-");
+      const size = px(knob, "size-");
+      const left = px(knob, "left-") + (checked ? px(knob, "translate-x-") : 0);
+      const right = trackW - left - size;
+      const top = px(knob, "top-");
+      const bottom = trackH - top - size;
+      const rest = checked ? right : left; // the inset on the side the knob rests against
+      const other = checked ? left : right;
+      expect(top).toBe(bottom);
+      expect(rest).toBe(top); // the same inset as top and bottom, in both states
+      expect(rest).toBeGreaterThan(0); // fully inside, never touching or crossing the edge
+      expect(other).toBe(trackW - 2 * top - size + top); // the travel is exactly track - knob - 2 × inset
+      unmount();
+    }
+  });
 });

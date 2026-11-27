@@ -13,7 +13,10 @@ export interface WishVisibilitySwitchProps {
   readonly describedBy?: string; // extra ids appended after the helper id in aria-describedby
 }
 
-/** The one "เปิดให้ทุกคนเห็น" switch (owner decisions 29 and 36), shared by the wish step and the owner controls. Presentational only. */
+/**
+ * Geometry (symmetric): track 64 × 44 px (h-11 = the touch target), knob 36 px, 4 px inset on every side. The knob is absolutely
+ * positioned at left-1/top-1 and travels 20 px (translate-x-5 = 64 − 36 − 2 × 4), so both states leave 4 px on each side.
+ * The one "เปิดให้ทุกคนเห็น" switch (owner decisions 29 and 36), shared by the wish step and the owner controls. Presentational only. */
 export function WishVisibilitySwitch({
   checked,
   onToggle,
@@ -40,11 +43,15 @@ export function WishVisibilitySwitch({
           aria-busy={busy || undefined}
           disabled={disabled || busy}
           onClick={onToggle}
-          className={`relative inline-flex min-h-11 min-w-11 w-16 shrink-0 items-center rounded-full p-1${animate ? " transition-colors" : ""} ${
+          className={`relative block h-11 min-h-11 w-16 min-w-11 shrink-0 rounded-full${animate ? " transition-colors" : ""} ${
             checked ? "bg-clay" : "bg-track"
           } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          <span aria-hidden="true" className={`h-9 w-9 rounded-full bg-paper shadow-raised${checked ? " translate-x-5" : ""}`} />
+          <span
+            aria-hidden="true"
+            data-testid="wish-switch-knob"
+            className={`absolute top-1 left-1 size-9 rounded-full bg-paper shadow-raised${checked ? " translate-x-5" : ""}`}
+          />
         </button>
       </div>
       <p id={helperId} className={UI_CLASSES.caption}>

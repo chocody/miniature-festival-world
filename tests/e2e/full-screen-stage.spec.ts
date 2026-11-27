@@ -9,9 +9,9 @@ import {
   SCENE_SELECTOR,
   expectFillsViewport,
   expectNoPageScroll,
+  expectFloatingBarPlacement,
   expectPanelPlacement,
   expectTapHintUnoccluded,
-  expectTopSlotPlacement,
   forceTier,
   sceneZoomScale,
   type StageViewport,
@@ -108,7 +108,7 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       const errors = await open3D(page);
       await expectSceneFills(page);
       await expectNoPageScroll(page);
-      await expectPanelPlacement(page.getByRole("region", { name: PANEL }), vp);
+      await expectFloatingBarPlacement(page.getByRole("region", { name: PANEL }), vp);
       await expectCameraZoom(page, vp.width, vp.height);
 
       await page.getByRole("button", { name: "ถัดไป" }).click();
@@ -127,7 +127,8 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       await releaseToWorld(page);
       await expectSceneFills(page);
       await expectPanelPlacement(page.locator(PANEL_SLOT), vp);
-      await expectTopSlotPlacement(page, vp);
+      // MFW-83: no zone label; without a second zone there is no arrow, so the top card is not shown at all.
+      await expect(page.locator('[data-overlay-slot="top"]')).toBeHidden();
       await expectTapHintUnoccluded(page);
       await expectNoPageScroll(page);
       expect(errors).toEqual([]);
@@ -192,13 +193,13 @@ test.describe("rotation and resize", () => {
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     await expectCanvasKept(page);
     await expect(naga).toHaveAttribute("aria-pressed", "true");
-    await expectPanelPlacement(page.getByRole("region", { name: PANEL }), PHONE_LANDSCAPE);
+    await expectFloatingBarPlacement(page.getByRole("region", { name: PANEL }), PHONE_LANDSCAPE);
 
     await rotateTo(page, PHONE);
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     await expectCanvasKept(page);
     await expect(naga).toHaveAttribute("aria-pressed", "true");
-    await expectPanelPlacement(page.getByRole("region", { name: PANEL }), PHONE);
+    await expectFloatingBarPlacement(page.getByRole("region", { name: PANEL }), PHONE);
 
     await toRitual(page);
     await markCanvas(page);

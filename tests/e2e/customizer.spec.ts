@@ -39,9 +39,12 @@ async function expectPanelAtBottom(page: Page) {
   const panel = page.getByRole("region", { name: PANEL });
   await expect(panel).toBeVisible();
   const box = (await panel.boundingBox())!;
-  expect(Math.round(box.y + box.height)).toBe(SMALL_PHONE.height);
-  expect(box.x).toBe(0);
-  expect(Math.round(box.width)).toBe(SMALL_PHONE.width);
+  // MFW-83: a centred floating bar a little above the bottom edge, not a full-width sheet.
+  expect(Math.abs(box.x + box.width / 2 - SMALL_PHONE.width / 2)).toBeLessThanOrEqual(1);
+  const gap = SMALL_PHONE.height - (box.y + box.height);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(gap).toBeLessThanOrEqual(40);
+  expect(box.width).toBeLessThanOrEqual(SMALL_PHONE.width - 16);
   return { panel, box };
 }
 

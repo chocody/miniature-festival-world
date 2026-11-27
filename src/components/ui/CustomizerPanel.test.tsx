@@ -33,17 +33,21 @@ const stored = () => useBuilderStore.getState().appearance;
 const valid = () => parseKrathongAppearance(stored() ?? DEFAULT_KRATHONG_APPEARANCE).ok;
 
 describe("CustomizerPanel", () => {
-  it("is a fixed bottom region", () => {
+  it("is a fixed, centred, floating bar: a gutter above the bottom edge, not a full-width sheet (MFW-83)", () => {
     setup();
     const panel = screen.getByRole("region", { name: "แต่งกระทง" });
     expect(panel.classList).toContain("fixed");
-    expect(panel.classList).toContain("bottom-0");
+    expect(panel.classList).toContain("left-1/2");
+    expect(panel.classList).toContain("-translate-x-1/2");
+    expect(panel.classList).toContain("w-max");
+    expect(panel.classList).toContain("bottom-[max(var(--spacing-gutter),env(safe-area-inset-bottom))]");
+    for (const c of ["bottom-0", "left-0", "right-0", "rounded-t-sheet"]) expect(panel.classList).not.toContain(c);
   });
 
   it("is a stage overlay panel with no in-flow spacer (MFW-54)", () => {
     setup();
     expect(screen.queryByTestId("customizer-spacer")).toBeNull();
-    expect(screen.getByRole("region", { name: "แต่งกระทง" }).className).toContain(STAGE_LAYOUT_CLASSES.panel);
+    expect(screen.getByRole("region", { name: "แต่งกระทง" }).className).toContain(STAGE_LAYOUT_CLASSES.floatBar);
   });
 
   it("CP1 (MFW-78): one row of five design thumbnails, no text, no tabs", () => {

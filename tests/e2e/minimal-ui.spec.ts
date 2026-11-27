@@ -22,7 +22,6 @@ const FIND_MY_BUTTON = "ค้นหาของฉัน";
 const PANEL = "แต่งกระทง";
 const TOGGLE = '[data-testid="day-night-toggle"]';
 const PANEL_SLOT = '[data-overlay-slot="panel"]';
-const TOP_SLOT = '[data-overlay-slot="top"]';
 const CONTROLS =
   '[data-overlay-slot] :is(button, [role="tab"], [role="radio"], [role="switch"], input, textarea), [data-testid="customizer-panel"] :is(button, [role="tab"], [role="radio"], input)';
 const PHONE = { width: 390, height: 844 } as const;
@@ -136,7 +135,7 @@ for (const vp of [
       expect(await visiblePrimaryCount(page)).toBe(0);
       await expectSceneCentreVisible(page, SCENE_SELECTOR);
       await expectTranslucent(page.locator(PANEL_SLOT));
-      await expectTranslucent(page.locator(TOP_SLOT));
+      // The top card (zone arrows) is hidden here (one zone); its placement and translucency are covered in ui-details.spec.ts (3 zones).
       expect(errors).toEqual([]);
     });
   });

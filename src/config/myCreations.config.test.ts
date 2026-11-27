@@ -29,7 +29,8 @@ describe("myCreations config", () => {
   });
   it("copy keeps the status lines and drops the old panel text", () => {
     expect(MY_CREATIONS_COPY.openButton).toBe("ค้นหาของฉัน");
-    expect(MY_CREATIONS_COPY.found(2)).toContain("คุ้งน้ำที่ 2");
+    expect(MY_CREATIONS_COPY.found).toBe("พบกระทงของคุณแล้ว");
+    for (const v of Object.values(MY_CREATIONS_COPY)) expect(String(v)).not.toContain("คุ้งน้ำ"); // MFW-83: no visible zone name
     expect(Object.keys(MY_CREATIONS_COPY).sort()).toEqual(["failed", "found", "notFound", "openButton", "searching", "title"]);
   });
   it("month table: 12 upper-case English abbreviations, frozen", () => {

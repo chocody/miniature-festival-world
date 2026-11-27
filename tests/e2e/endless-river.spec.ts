@@ -23,7 +23,6 @@ import {
   E2E_PREVIOUS_ZONE_NAME,
   E2E_TRAVEL_DRAG_FRACTION,
   E2E_TRAVEL_JUMPS,
-  E2E_ZONE_LABEL,
   E2E_TRAVEL_TEST_TIMEOUT_MS,
 } from "./fixtures/endlessRiver";
 import { waitForActiveEvent } from "./helpers/activeEvent";
@@ -147,7 +146,8 @@ test("E1 HIGH: dragging along the river passes the seam; zones stream in and wra
   await travelDownstream(page, 0);
   await expect(scene(page)).toHaveAttribute("data-stretch-index", "1");
   await expect(scene(page)).toHaveAttribute("data-zone-id", "1"); // after the last zone comes zone 1 (open question 37)
-  await expect(nav).toContainText(E2E_ZONE_LABEL(1, 3));
+  await expect(nav).toHaveAttribute("data-zone-id", "1"); // MFW-83: no zone label text, the attributes carry the zone
+  await expect(nav).not.toContainText("คุ้งน้ำ");
   await expect(nav).toHaveAttribute("data-zone-status", "ready");
   await expect(scene(page)).toHaveAttribute("data-river-item-count", "2");
   await waitForCameraRest(page);
@@ -165,14 +165,16 @@ test.describe("reduced motion", () => {
     await page.getByRole("button", { name: E2E_NEXT_ZONE_NAME }).click();
     await expect(scene(page)).toHaveAttribute("data-stretch-index", "1");
     await expect(scene(page)).toHaveAttribute("data-zone-id", "1");
-    await expect(nav).toContainText(E2E_ZONE_LABEL(1, 3));
+    await expect(nav).toHaveAttribute("data-zone-id", "1"); // MFW-83: no zone label text, the attributes carry the zone
+    await expect(nav).not.toContainText("คุ้งน้ำ");
     await page.getByRole("button", { name: E2E_PREVIOUS_ZONE_NAME }).click();
     await expect(scene(page)).toHaveAttribute("data-stretch-index", "0");
     await page.getByRole("button", { name: E2E_PREVIOUS_ZONE_NAME }).click();
     await expect(scene(page)).toHaveAttribute("data-stretch-index", "-1");
     await expect(scene(page)).toHaveAttribute("data-zone-id", "2");
     await expect(nav).toHaveAttribute("data-stretch-index", "-1");
-    await expect(nav).toContainText(E2E_ZONE_LABEL(2, 3));
+    await expect(nav).toHaveAttribute("data-zone-id", "2"); // MFW-83: no zone label text, the attributes carry the zone
+    await expect(nav).not.toContainText("คุ้งน้ำ");
     expect(errors).toEqual([]);
   });
 

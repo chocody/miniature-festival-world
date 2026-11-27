@@ -18,7 +18,7 @@ import {
 const NAV = '[data-testid="zone-navigator"]';
 const VIEWPORT = '[aria-label="Toy-like night river preview"]';
 const STATUS = '[data-testid="find-my-status"]';
-const FOUND_TEXT = "พบกระทงของคุณที่คุ้งน้ำที่ 2";
+const FOUND_TEXT = "พบกระทงของคุณแล้ว";
 const root = (page: Page) => page.locator("[data-flow-state]");
 
 /** MFW-71: the former 2D tests run on the 3D LOW tier (weak hints), pinned so the FPS watcher cannot change it. */

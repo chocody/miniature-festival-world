@@ -84,7 +84,7 @@ describe("MyCreationsDrawer (MFW-74 picker)", () => {
     expect(find).toHaveBeenCalledWith(older);
     await waitFor(() => expect(screen.queryByTestId("my-creations-list")).toBeNull());
     expect(status()).toHaveAttribute("data-find-my-status", "found");
-    expect(status()).toHaveTextContent(COPY.found(1));
+    expect(status()).toHaveTextContent(COPY.found);
   });
 
   it("M5 not found keeps the picker open; the status is screen-reader only", async () => {
