@@ -8,6 +8,8 @@ import {
   makeTestCipher,
   recordingRepository,
 } from "./__fixtures__/createCreation";
+import { ORNAMENT_DESIGN_IDS } from "@/config/ornamentDesigns.config";
+import { STAR_DESIGN_IDS } from "@/config/starDesigns.config";
 import { handleCreateCreation, type CreateCreationDeps } from "./createCreation";
 import { getCreationPlacementStrategy } from "./creationPlacement";
 import { createInMemoryCreationRepository } from "./inMemoryCreationRepository";
@@ -60,5 +62,42 @@ describe("POST /api/creations appearance allowlist per event (MFW-92)", () => {
     const bad = await post(makeCreateBody({ eventId: "christmas", appearance: { design: "ball_01", color: "#FFFFFF" } }));
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual(REJECTED);
+  });
+});
+
+describe("POST /api/creations star appearance allowlist (MFW-131)", () => {
+  async function expectRejected(body: unknown) {
+    const { inserts, post } = await setup();
+    const res = await post(body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(REJECTED);
+    expect(inserts).toHaveLength(0);
+  }
+  it("CS1 rejects a krathong appearance for new_year", async () => {
+    await expectRejected(makeCreateBody({ eventId: "new_year" }));
+  });
+  it("CS2 rejects an ornament appearance for new_year", async () => {
+    for (const id of ORNAMENT_DESIGN_IDS) {
+      await expectRejected(makeCreateBody({ eventId: "new_year", appearance: { design: id } }));
+    }
+  });
+  it("CS3 rejects a star for the other events", async () => {
+    for (const eventId of ["loy_krathong", "christmas"]) {
+      for (const id of STAR_DESIGN_IDS) {
+        await expectRejected(makeCreateBody({ eventId, appearance: { design: id } }));
+      }
+    }
+    await expectRejected(makeCreateBody({ appearance: { ...defaultAppearanceJson(), design: "star_classic_01" } }));
+  });
+  it("CS4 accepts catalogue stars and rejects extra keys", async () => {
+    for (const id of STAR_DESIGN_IDS) {
+      const { inserts, post } = await setup();
+      const res = await post(makeCreateBody({ eventId: "new_year", appearance: { design: id } }));
+      expect(res.status).toBe(201);
+      const { creation } = (await res.json()) as { creation: PublicCreation };
+      expect(creation.appearance).toEqual({ design: id });
+      expect(inserts[inserts.length - 1].appearance).toEqual({ design: id });
+    }
+    await expectRejected(makeCreateBody({ eventId: "new_year", appearance: { design: "star_classic_01", color: "#FFD700" } }));
   });
 });

@@ -23,6 +23,7 @@ describe("zustand stores", () => {
     const builder = useBuilderStore.getState();
     expect(builder.appearance).toBeNull();
     expect(builder.ornamentAppearance).toBeNull();
+    expect(builder.starAppearance).toBeNull();
     expect(builder.wish).toBeNull();
     expect(builder.wishServerReasons).toBeNull();
     expect(builder.wishDisplayName).toBeNull(); // MFW-63
@@ -32,6 +33,7 @@ describe("zustand stores", () => {
       "chooseKrathong",
       "ornamentAppearance",
       "rejectWishFromServer",
+      "starAppearance",
       "submitWish",
       "wish",
       "wishDisplayName",
