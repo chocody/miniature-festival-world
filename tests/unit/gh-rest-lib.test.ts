@@ -386,3 +386,138 @@ describe("mergeRefusal", () => {
     expect(mk({}, [{ filename: "supabase/x.sql" }])).toMatchObject({ reason: expect.stringContaining("supabase/") });
   });
 });
+
+describe("releaseFastForward", () => {
+  const ciRuns = (conclusion: string | null = "success", status = "completed") =>
+    ok({ check_runs: [{ id: 11, name: "ci", status, conclusion, app: { slug: "github-actions" } }] });
+  const cmp = (status: string, aheadBy = 0, commits: unknown[] = []) => ok({ status, ahead_by: aheadBy, commits });
+  const ref = (sha: string) => ok({ object: { sha } });
+  const methods = (calls: string[][]) => calls.map((c) => c[2]);
+  const writes = (calls: string[][]) => calls.filter((c) => c[2] === "PATCH" || c[2] === "POST");
+  const commits = [
+    { sha: "c1", commit: { message: "feat: a MFW-1\n\nbody" } },
+    { sha: "c2", commit: { message: "fix: b" } },
+  ];
+
+  it("RF1 refuses without ownerApproved and makes no call", () => {
+    const { run, calls } = fakeRun([]);
+    const gh = createGitHub({ run });
+    expect(gh.releaseFastForward(SHA).reason).toContain("owner-approved");
+    expect(calls).toEqual([]);
+    expect(() => gh.releaseFastForward("nothex", { ownerApproved: true })).toThrow(GhEnvError);
+  });
+
+  it("RF2 refuses unless ci on the sha succeeded", () => {
+    const cases: Reply[] = [ciRuns("failure"), ciRuns("cancelled"), ciRuns(null, "in_progress"), ok({ check_runs: [] })];
+    for (const reply of cases) {
+      const { run, calls } = fakeRun([reply]);
+      const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+      expect(r.reason).not.toBeNull();
+      expect(r.moved).toBe(false);
+      expect(writes(calls)).toEqual([]);
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("RF3 refuses a sha that is not on main", () => {
+    for (const status of ["diverged", "behind"]) {
+      const { run, calls } = fakeRun([ciRuns(), cmp(status)]);
+      const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+      expect(r.reason).toContain("not on main");
+      expect(calls).toHaveLength(2);
+      expect(calls.some((c) => c.join(" ").includes("git/ref"))).toBe(false);
+    }
+  });
+
+  it("RF4 fast-forwards with force=false and the follow-up GET decides", () => {
+    const { run, calls } = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp("ahead", 2, commits), ok({}), ref(SHA)]);
+    const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+    expect(r).toMatchObject({ moved: true, from: OTHER, to: SHA, aheadBy: 2, reason: null, checkRunId: 11 });
+    expect(r.commits[0].subject).toBe("feat: a MFW-1");
+    expect(methods(calls)).toEqual(["GET", "GET", "GET", "GET", "PATCH", "GET"]);
+    expect(calls[1]).toContain(`${REPO}/compare/${SHA}...main?per_page=1`);
+    expect(calls[4]).toContain(`${REPO}/git/refs/heads/release`);
+    expect(calls[4]).toContain(`sha=${SHA}`);
+    expect(calls[4]).toContain("force=false");
+    expect(calls.flat().some((a) => a.includes("force=true"))).toBe(false);
+  });
+
+  it("RF5 refuses to move release backwards or across a divergence", () => {
+    for (const status of ["behind", "diverged"]) {
+      const { run, calls } = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp(status)]);
+      const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+      expect(r.reason).toContain("not a fast-forward");
+      expect(writes(calls)).toEqual([]);
+    }
+  });
+
+  it("RF6 is a no-op when release is already at the sha", () => {
+    const { run, calls } = fakeRun([ciRuns(), cmp("identical"), ref(SHA)]);
+    const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+    expect(r).toMatchObject({ unchanged: true, moved: false, reason: null });
+    expect(methods(calls)).toEqual(["GET", "GET", "GET"]);
+  });
+
+  it("RF7 creates release when it is missing", () => {
+    const { run, calls } = fakeRun([ciRuns(), cmp("ahead"), fail(404, "Not Found"), ok({}), ref(SHA)]);
+    const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+    expect(r).toMatchObject({ created: true, moved: true, from: null });
+    expect(calls[3][2]).toBe("POST");
+    expect(calls[3]).toContain(`${REPO}/git/refs`);
+    expect(calls[3]).toContain("ref=refs/heads/release");
+    const denied = fakeRun([ciRuns(), cmp("ahead"), fail(403, "Forbidden")]);
+    expect(() => createGitHub({ run: denied.run }).releaseFastForward(SHA, { ownerApproved: true })).toThrow(GhApiError);
+  });
+
+  it("RF8 check mode runs every check and writes nothing, without ownerApproved", () => {
+    const { run, calls } = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp("ahead", 2, commits)]);
+    const r = createGitHub({ run }).releaseFastForward(SHA, { check: true });
+    expect(r).toMatchObject({ checked: true, moved: false, reason: null, aheadBy: 2 });
+    expect(writes(calls)).toEqual([]);
+  });
+
+  it("RF11 refuses two ci runs, a non-ci success, and a ci run from another app", () => {
+    const run = (name: string, slug = "github-actions", id = 11) => ({ id, name, status: "completed", conclusion: "success", app: { slug } });
+    const cases: Reply[] = [
+      ok({ check_runs: [run("ci"), run("ci", "github-actions", 12)] }),
+      ok({ check_runs: [run("lint")] }),
+      ok({ check_runs: [run("ci", "evil-app")] }),
+    ];
+    for (const reply of cases) {
+      const { run: r, calls } = fakeRun([reply]);
+      const out = createGitHub({ run: r }).releaseFastForward(SHA, { ownerApproved: true });
+      expect(out.reason).not.toBeNull();
+      expect(out.moved).toBe(false);
+      expect(writes(calls)).toEqual([]);
+      expect(calls).toHaveLength(1);
+    }
+    const other = fakeRun([ok({ check_runs: [run("ci", "evil-app")] })]);
+    expect(createGitHub({ run: other.run }).releaseFastForward(SHA, { ownerApproved: true }).reason).toContain("github-actions");
+  });
+
+  it("RF12 check mode reports a non-fast-forward and an unchanged release, writing nothing", () => {
+    const a = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp("diverged")]);
+    const r = createGitHub({ run: a.run }).releaseFastForward(SHA, { check: true });
+    expect(r.reason).toContain("not a fast-forward");
+    expect(r.checked).toBe(false);
+    expect(writes(a.calls)).toEqual([]);
+    const b = fakeRun([ciRuns(), cmp("identical"), ref(SHA)]);
+    const u = createGitHub({ run: b.run }).releaseFastForward(SHA, { check: true });
+    expect(u).toMatchObject({ unchanged: true, reason: null });
+    expect(writes(b.calls)).toEqual([]);
+  });
+
+  it("RF9 reports a refused PATCH", () => {
+    const { run } = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp("ahead", 1, commits.slice(0, 1)), fail(422, "Update is not a fast forward"), ref(OTHER)]);
+    const r = createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+    expect(r.moved).toBe(false);
+    expect(r.writeError?.status).toBe(422);
+    expect(r.reason).toContain(`expected ${SHA}`);
+  });
+
+  it("RF10 never retries the write", () => {
+    const { run, calls } = fakeRun([ciRuns(), cmp("ahead"), ref(OTHER), cmp("ahead", 1, commits.slice(0, 1)), fail(502), ref(OTHER)]);
+    createGitHub({ run }).releaseFastForward(SHA, { ownerApproved: true });
+    expect(calls.filter((c) => c[2] === "PATCH")).toHaveLength(1);
+  });
+});
