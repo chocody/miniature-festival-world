@@ -8,7 +8,8 @@ import type {
   RIM_SOCKET_ID_PREFIX,
 } from "@/config/events/loyKrathong.config";
 import type { KrathongDesignId } from "@/config/krathongDesigns.config";
-export type { CandleColor, FlowerKind, KrathongBaseId, LeafColor, LeafFoldStyleId };
+import type { OrnamentDesignId } from "@/config/ornamentDesigns.config";
+export type { CandleColor, FlowerKind, KrathongBaseId, LeafColor, LeafFoldStyleId, OrnamentDesignId };
 
 /** Stored in creations_public.appearance (spec §5). Index i of `flowers` is rim socket i; null = empty socket. */
 export interface KrathongAppearance {
@@ -20,8 +21,12 @@ export interface KrathongAppearance {
   /** MFW-78: the chosen owner-supplied design. Absent = stored before MFW-78 → KRATHONG_DEFAULT_DESIGN. */
   readonly design?: KrathongDesignId;
 }
-/** Union of every event's appearance. Only Loy Krathong exists in Phase 1. */
-export type EventAppearance = KrathongAppearance;
+/** Stored in creations_public.appearance for christmas (MFW-92). Exact key set {design}. */
+export interface OrnamentAppearance {
+  readonly design: OrnamentDesignId;
+}
+/** Union of every event's appearance: Loy Krathong and Christmas (MFW-92). */
+export type EventAppearance = KrathongAppearance | OrnamentAppearance;
 
 export type CenterSocketId = typeof CENTER_SOCKET_ID;
 export type RimSocketId = `${typeof RIM_SOCKET_ID_PREFIX}${number}`;

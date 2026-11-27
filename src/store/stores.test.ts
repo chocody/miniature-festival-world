@@ -22,12 +22,15 @@ describe("zustand stores", () => {
   it("have the specified initial shapes", () => {
     const builder = useBuilderStore.getState();
     expect(builder.appearance).toBeNull();
+    expect(builder.ornamentAppearance).toBeNull();
     expect(builder.wish).toBeNull();
     expect(builder.wishServerReasons).toBeNull();
     expect(builder.wishDisplayName).toBeNull(); // MFW-63
     expect(Object.keys(builder).sort()).toEqual([
       "appearance",
+      "chooseDesign",
       "chooseKrathong",
+      "ornamentAppearance",
       "rejectWishFromServer",
       "submitWish",
       "wish",
