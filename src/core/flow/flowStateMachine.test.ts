@@ -22,11 +22,13 @@ const VALID: ReadonlyArray<readonly [FlowState, FlowEventType, FlowState]> = [
   ["WRITE_WISH", "SUBMIT_WISH", "RITUAL_RELEASE"],
   ["RITUAL_RELEASE", "FINISH_RITUAL", "SHARED_WORLD_EXPLORE"],
   ["RITUAL_RELEASE", "REVISE_WISH", "WRITE_WISH"],
+  ["SHARED_WORLD_EXPLORE", "START_CREATE", "CUSTOMIZE_OBJECT"],
+  ["CUSTOMIZE_OBJECT", "CANCEL_CREATE", "SHARED_WORLD_EXPLORE"],
 ];
 
 describe("flow state machine", () => {
-  it("starts at CUSTOMIZE_OBJECT with no event", () => {
-    expect(INITIAL_FLOW).toEqual({ state: "CUSTOMIZE_OBJECT", eventId: null });
+  it("FS1 starts in the shared world with no event (MFW-154)", () => {
+    expect(INITIAL_FLOW).toEqual({ state: "SHARED_WORLD_EXPLORE", eventId: null });
   });
 
   it.each(VALID)("%s + %s -> %s", (from, type, to) => {
@@ -47,11 +49,11 @@ describe("flow state machine", () => {
         checked++;
       }
     }
-    expect(checked).toBe(12);
+    expect(checked).toBe(18);
   });
 
-  it("SHARED_WORLD_EXPLORE has no outgoing events", () => {
-    expect(Object.keys(FLOW_TRANSITIONS.SHARED_WORLD_EXPLORE)).toHaveLength(0);
+  it("FS3 SHARED_WORLD_EXPLORE only starts a creation", () => {
+    expect(Object.keys(FLOW_TRANSITIONS.SHARED_WORLD_EXPLORE)).toEqual(["START_CREATE"]);
   });
 
   it("ignores unknown runtime event types without throwing", () => {
@@ -62,20 +64,23 @@ describe("flow state machine", () => {
 
   it("enterEvent binds the event once", () => {
     const bound = enterEvent(INITIAL_FLOW, "loy_krathong");
-    expect(bound).toEqual({ state: "CUSTOMIZE_OBJECT", eventId: "loy_krathong" });
+    expect(bound).toEqual({ state: "SHARED_WORLD_EXPLORE", eventId: "loy_krathong" });
     expect(enterEvent(bound, "christmas")).toBe(bound);
     expect(enterEvent(INITIAL_FLOW, "__proto__" as never)).toBe(INITIAL_FLOW);
     expect(enterEvent(INITIAL_FLOW, "nope" as never)).toBe(INITIAL_FLOW);
   });
 
-  it("does not mutate the input snapshot and carries eventId through", () => {
+  it("FS4 does not mutate the input snapshot, carries eventId through and the world starts a new creation", () => {
     const start = Object.freeze({ ...INITIAL_FLOW });
     let snap: FlowSnapshot = enterEvent(start, "loy_krathong");
-    expect(start).toEqual({ state: "CUSTOMIZE_OBJECT", eventId: null });
-    for (const type of ["FINISH_CUSTOMIZE", "SUBMIT_WISH", "FINISH_RITUAL"] as const) {
+    expect(start).toEqual({ state: "SHARED_WORLD_EXPLORE", eventId: null });
+    for (const type of ["START_CREATE", "FINISH_CUSTOMIZE", "SUBMIT_WISH", "FINISH_RITUAL"] as const) {
       snap = transition(snap, { type });
       expect(snap.eventId).toBe("loy_krathong");
     }
     expect(snap.state).toBe("SHARED_WORLD_EXPLORE");
+    snap = transition(snap, { type: "START_CREATE" });
+    expect(snap.state).toBe("CUSTOMIZE_OBJECT");
+    expect(snap.eventId).toBe("loy_krathong");
   });
 });

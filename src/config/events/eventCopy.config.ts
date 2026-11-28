@@ -86,6 +86,11 @@ export interface EventZoneNavCopy {
   readonly retry: string;
   readonly vertical: EventZoneNavVerticalCopy | null;
 }
+/** The create entry (MFW-154): `start` = the landing button text; `cancel` = the customizer close control's aria-label. */
+export interface EventCreateCopy {
+  readonly start: string;
+  readonly cancel: string;
+}
 export interface EventCopy {
   readonly flowSteps: Readonly<Record<FlowState, FlowStepCopy>>;
   readonly customizer: EventCustomizerCopy;
@@ -98,6 +103,7 @@ export interface EventCopy {
   readonly sceneTapHint: string;
   readonly zoneNav: EventZoneNavCopy;
   readonly findMyIcon: EventFindMyIconId;
+  readonly create: EventCreateCopy;
 }
 
 /**

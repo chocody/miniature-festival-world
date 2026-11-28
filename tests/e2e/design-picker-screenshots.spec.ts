@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_DESIGN_LABELS, mockMixedDesignZone } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { readHeroDesigns } from "./helpers/designProbe";
 import { E2E_PINNED_TIER_URL, installSceneProbe, waitForCameraRest, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
@@ -46,7 +46,7 @@ for (const size of SIZES) {
       await mockCreateCreation(page, { zoneId: 1 });
       await installSceneProbe(page);
       await page.goto(E2E_PINNED_TIER_URL);
-      await waitForActiveEvent(page);
+      await openCustomizer(page);
       await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
       const lotus = page.getByRole("button", { name: E2E_DESIGN_LABELS.lotus_bud_01, exact: true });
       const picker = (await lotus.count()) > 0;

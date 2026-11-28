@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_MAX_SHADER_PROGRAMS } from "./fixtures/perfAudit";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import {
   E2E_CHIMNEY_SMOKE_NAME,
@@ -59,7 +59,7 @@ async function openWorld(page: Page, memory: number, cores: number, startUrl: st
   );
   await installSceneProbe(page);
   await page.goto(startUrl);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

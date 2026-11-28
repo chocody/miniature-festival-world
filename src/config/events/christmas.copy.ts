@@ -105,4 +105,5 @@ export const CHRISTMAS_COPY: EventCopy = Object.freeze({
     vertical: Object.freeze({ up: "ขึ้นไปชั้นบน", down: "ลงไปชั้นล่าง" }),
   }),
   findMyIcon: "ornament",
+  create: Object.freeze({ start: "ประดับต้นคริสต์มาส", cancel: "กลับไปดูต้นคริสต์มาส" }),
 });

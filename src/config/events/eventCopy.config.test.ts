@@ -6,7 +6,7 @@ import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { MY_CREATIONS_COPY } from "@/config/myCreations.config";
 import { OWNER_SWITCH_COPY, OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
-import { FLOW_STEP_COPY } from "@/config/ui.config";
+import { CREATE_ENTRY_COPY, FLOW_STEP_COPY } from "@/config/ui.config";
 import { WISH_COPY } from "@/config/wish.config";
 import { ZONE_NAV_COPY } from "@/config/zoneNav.config";
 import { CHRISTMAS_COPY } from "./christmas.copy";
@@ -52,6 +52,7 @@ describe("per-event copy table (MFW-91)", () => {
     for (const k of Object.keys(l.inspect) as (keyof typeof l.inspect)[]) expect(l.inspect[k]).toBe(INSPECT_POPUP_COPY[k]);
     expect(l.zoneNav).toEqual({ ...ZONE_NAV_COPY, vertical: null });
     expect(l.findMyIcon).toBe("krathong");
+    expect(l.create).toBe(CREATE_ENTRY_COPY);
   });
 
   it("EC2 no forbidden word in an event's strings", () => {
@@ -103,5 +104,10 @@ describe("per-event copy table (MFW-91)", () => {
     expect(CHRISTMAS_COPY.findMyIcon).toBe("ornament");
     expect(CHRISTMAS_COPY.customizer.panelLabel).toBe("แต่งของประดับ");
     expect(CHRISTMAS_COPY.myCreations.title).toBe("ของประดับของฉัน");
+  });
+
+  it("EC9 the create entry labels (MFW-154)", () => {
+    expect(LOY_KRATHONG_COPY.create).toEqual({ start: "ลอยกระทง", cancel: "กลับไปดูแม่น้ำ" });
+    expect(CHRISTMAS_COPY.create).toEqual({ start: "ประดับต้นคริสต์มาส", cancel: "กลับไปดูต้นคริสต์มาส" });
   });
 });

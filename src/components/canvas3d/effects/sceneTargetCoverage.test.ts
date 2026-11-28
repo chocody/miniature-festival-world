@@ -37,6 +37,7 @@ const NOT_AN_OBJECT: readonly NameKey[] = [
   "worldView",
   "krathongMarkCue",
   "pierFocus",
+  "customizeFocus", // MFW-154: empty camera focus group
   "lampFocus",
   "findMyAnchor",
   "ripples",

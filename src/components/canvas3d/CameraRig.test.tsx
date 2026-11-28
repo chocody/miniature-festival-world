@@ -79,6 +79,7 @@ function renderRig(props: {
   targetRef?: { current: WorldPositionSource | null } | null;
   requestId?: number;
   reducedMotion?: boolean;
+  flightYawRad?: number | null;
 }) {
   const handleRef = createRef<CameraRigHandle>();
   const view = (p: typeof props) => (
@@ -89,6 +90,7 @@ function renderRig(props: {
       requestId={p.requestId ?? 0}
       reducedMotion={p.reducedMotion ?? false}
       handleRef={handleRef}
+      flightYawRad={p.flightYawRad}
     />
   );
   const result = render(view(props));
@@ -96,6 +98,19 @@ function renderRig(props: {
 }
 
 describe("CameraRig (MFW-57)", () => {
+  it("CR1 (MFW-154) flightYawRad overrides the rig's yaw for a target flight", () => {
+    const target = { current: createPointTarget(1, 0, -1) };
+    rig.yawRad = 0.5;
+    renderRig({ targetRef: target });
+    expect(spring.api.start).toHaveBeenLastCalledWith(expect.objectContaining({ to: expect.objectContaining({ yawRad: 0.5 }) }));
+    cleanup();
+
+    rig = createCameraRigState();
+    rig.yawRad = 0.5;
+    renderRig({ targetRef: target, flightYawRad: 0 });
+    expect(spring.api.start).toHaveBeenLastCalledWith(expect.objectContaining({ to: expect.objectContaining({ yawRad: 0 }) }));
+  });
+
   it("no target → no flight", () => {
     renderRig({});
     expect(spring.api.start).not.toHaveBeenCalled();

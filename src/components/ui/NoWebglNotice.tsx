@@ -16,7 +16,7 @@ function Title({ text }: { text: string }) {
   );
 }
 
-/** The stage content when WebGL is unavailable (MFW-71, backlog 11.5 AC2). No control, no state. */
+/** The stage content when WebGL is unavailable (MFW-71, backlog 11.5 AC2). The notice itself has no control; the flow overlays still work above it (MFW-154). */
 export function NoWebglNotice() {
   return (
     <section

@@ -40,6 +40,15 @@ export const useUIStore = create<UIState>()((set, get) => ({
       });
       return;
     }
+    if (event.type === "SUBMIT_WISH" && get().ritual.phase === "RELEASED") {
+      // MFW-154: a second creation starts a fresh ritual (START_CREATE / CANCEL_CREATE keep the released one on the river).
+      set({
+        flowState: next.state,
+        selectedEventId: next.eventId,
+        ritual: transitionRitual(get().ritual, { type: "RESET" }),
+      });
+      return;
+    }
     set({ flowState: next.state, selectedEventId: next.eventId });
   },
   ritual: INITIAL_RITUAL_STATE,

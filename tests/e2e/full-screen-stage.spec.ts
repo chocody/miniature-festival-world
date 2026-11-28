@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { E2E_DESIGN_LABELS } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_STAGE_VIEWPORTS, E2E_WATER_TAP_OFFSET_PX, e2eFramedZoom } from "./fixtures/stageFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { seedSecondOwnEntry } from "./helpers/hud";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import {
@@ -60,7 +60,7 @@ async function open3D(page: Page) {
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
   await page.goto(E2E_PINNED_TIER_URL); // keeps forced LOW: CPU WebGL could step the tier down on a busy runner
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);
   return errors;
@@ -85,11 +85,6 @@ async function waterPoint(page: Page) {
   const vp = page.viewportSize()!;
   const scale = await sceneZoomScale(page);
   return { x: vp.width / 2 + E2E_WATER_TAP_OFFSET_PX.x * scale, y: vp.height / 2 + E2E_WATER_TAP_OFFSET_PX.y * scale };
-}
-
-async function centreOf(page: Page, selector: string) {
-  const box = (await page.locator(selector).first().boundingBox())!;
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
 async function markCanvas(page: Page) {
@@ -162,7 +157,9 @@ for (const vp of E2E_STAGE_VIEWPORTS) {
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));
       await expect(scene(page)).toHaveAttribute("data-last-gimmick", "ripple");
 
-      const panel = await centreOf(page, PANEL_SLOT);
+      // MFW-154: the panel's heading, so the overlay tap cannot press the start button.
+      const headingBox = (await page.locator(PANEL_SLOT).getByRole("heading").boundingBox())!;
+      const panel = { x: headingBox.x + headingBox.width / 2, y: headingBox.y + headingBox.height / 2 };
       await page.touchscreen.tap(panel.x, panel.y);
       await nextFrames(page);
       await expect(scene(page)).toHaveAttribute("data-gimmick-count", String(base + 1));

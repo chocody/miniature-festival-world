@@ -53,8 +53,13 @@ interface ProbeState {
 
 /** Samples the centre and the 4 corners (inset 2 px) of every visible HUD button: the scene must not hit water there. */
 export async function expectHudClearOfRiver(page: Page): Promise<void> {
+  await expectClearOfRiver(page, Object.values(hudButtons(page)));
+}
+
+/** MFW-154: the same water check for any controls over the scene (5 samples per visible target). */
+export async function expectClearOfRiver(page: Page, targets: readonly Locator[]): Promise<void> {
   const buttons = await Promise.all(
-    Object.values(hudButtons(page)).map(async (b) => ((await b.count()) > 0 && (await b.isVisible()) ? b.boundingBox() : null)),
+    targets.map(async (b) => ((await b.count()) > 0 && (await b.isVisible()) ? b.boundingBox() : null)),
   );
   const boxes = buttons.filter((b): b is NonNullable<typeof b> => b !== null);
   expect(boxes.length).toBeGreaterThan(0);
@@ -88,5 +93,5 @@ export async function expectHudClearOfRiver(page: Page): Promise<void> {
   );
   expect(hits, "scene probe ready").not.toBeNull();
   const onWater = hits!.flatMap((names, i) => (names.includes(E2E_WATER_NAME) ? [`(${Math.round(points[i].x)},${Math.round(points[i].y)})`] : []));
-  expect(onWater, "HUD samples that hit the water").toEqual([]);
+  expect(onWater, "control samples that hit the water").toEqual([]);
 }

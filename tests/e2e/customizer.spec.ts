@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { E2E_DESIGN_LABELS } from "./fixtures/krathongModels";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 
 /** Backlog 4.2 AC3 width; 640 px is a common small Android height (lead decision). */
@@ -57,7 +57,7 @@ test("3D tier at 360 px: bottom bar picks a design; rotate and zoom work", async
   });
   await page.goto(E2E_PINNED_TIER_URL); // keeps forced HIGH (CPU WebGL could step the tier down on a busy runner)
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await page.evaluate(() => window.scrollTo(0, 0));
 

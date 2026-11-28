@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { makeOwnZoneItem } from "./fixtures/findMyFixtures";
 import { E2E_CREATION_ID, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody, makeZoneItem } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import {
   E2E_LIGHT_PRESET_STORAGE_KEY,
   E2E_SECOND_OWN_CREATION_ID,
@@ -46,7 +46,7 @@ async function routeWorld(page: Page, second: boolean) {
 }
 
 async function walkToWorld(page: Page) {
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
@@ -96,7 +96,7 @@ test("H4 day/night toggle: follows the clock, then DAY and back to the clock (AU
   await lowTier(page);
   await page.clock.setFixedTime(new Date("2026-11-26T20:00:00+07:00"));
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   const toggle = hudButtons(page).toggle;
   await expect(page.locator(SCENE)).toHaveAttribute("data-light-preset", "NIGHT");

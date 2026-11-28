@@ -18,6 +18,8 @@ import { FLOW_STEP_COPY } from "@/config/ui.config";
 import { FlowRoot } from "./FlowRoot";
 import { OWNERSHIP_LOSS_WARNING } from "./OwnershipNotice";
 import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { LOY_KRATHONG_COPY } from "@/config/events/loyKrathong.copy";
+import { CUSTOMIZER_COPY } from "@/config/customizer.config";
 
 const zones = vi.hoisted(() => ({
   enterWorld: vi.fn(async () => "loaded"),
@@ -80,8 +82,10 @@ vi.mock("@/components/canvas3d", async () => {
       mode,
       onReleaseDrop,
       viewControlRef,
+      startFramedOnPier,
     }: {
       mode: string | null;
+      startFramedOnPier?: boolean;
       onReleaseDrop?: (candidate: typeof LOY_KRATHONG_PIER_RELEASE_SPOT) => void;
       viewControlRef?: React.Ref<{ rotate: (d: -1 | 1) => void; zoom: (d: -1 | 1) => void }>;
     }) => {
@@ -97,6 +101,7 @@ vi.mock("@/components/canvas3d", async () => {
       return React.createElement("div", {
         "data-testid": "scene-viewport",
         "data-mode": mode ?? "",
+        "data-start-framed-on-pier": String(startFramedOnPier),
         onClick: () => onReleaseDrop?.(LOY_KRATHONG_PIER_RELEASE_SPOT),
       });
     },
@@ -132,9 +137,15 @@ const completeWish = (text = "ขอให้ทุกคนมีความ�
 const stateOf = (container: HTMLElement) =>
   container.querySelector("[data-flow-state]")?.getAttribute("data-flow-state");
 
+/** MFW-154: the flow starts in the world; the start button opens the customizer. */
+const pressStart = () => fireEvent.click(screen.getByRole("button", { name: LOY_KRATHONG_COPY.create.start }));
+
 describe("FlowRoot", () => {
   it("clicks through all 4 states", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+    expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
+    pressStart();
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "CUSTOMIZE");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -146,15 +157,18 @@ describe("FlowRoot", () => {
     await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
     // MFW-74: only the HUD column buttons (day/night toggle, rotate); no Find My without a world or a stored krathong.
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+    // MFW-154: + the start button (a second creation starts from the world).
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
       LIGHT_PRESET_TOGGLE_COPY[expectedShown()],
       WORLD_VIEW_ROTATE_BUTTON_COPY.ariaLabel,
       SKY_LAUNCH_SWITCH_COPY[SKY_LAUNCH_DEFAULT_KIND],
+      LOY_KRATHONG_COPY.create.start,
     ]);
   });
 
   it("shows the ownership notice only in WRITE_WISH", async () => {
     render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     expect(screen.queryByRole("note")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.getByRole("note")).toHaveTextContent(OWNERSHIP_LOSS_WARNING);
@@ -169,6 +183,7 @@ describe("FlowRoot", () => {
 
   it("CUSTOMIZE_OBJECT shows the customizer panel only in that step", () => {
     render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
@@ -177,6 +192,7 @@ describe("FlowRoot", () => {
   it("3D tier: the bar's view buttons drive the scene", async () => {
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
     render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     await screen.findByTestId("scene-viewport");
     fireEvent.click(screen.getByRole("button", { name: "หมุนขวา" }));
     expect(viewSpies.rotate).toHaveBeenCalledWith(1);
@@ -197,7 +213,7 @@ describe("FlowRoot", () => {
 
   it("opens straight into the active event: no selector, festival list or Coming Soon", () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
-    expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
     expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-active-event", "loy_krathong");
     expect(useUIStore.getState().selectedEventId).toBe("loy_krathong");
     expect(screen.queryByText("Coming Soon")).toBeNull();
@@ -223,6 +239,8 @@ describe("FlowRoot", () => {
   it("mounts the lazy scene only in canvas modes on a profiled 3D tier", async () => {
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "WORLD_EXPLORE");
+    pressStart();
     expect(await screen.findByTestId("scene-viewport")).toHaveAttribute("data-mode", "CUSTOMIZE");
 
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -251,7 +269,7 @@ describe("FlowRoot", () => {
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
-  it("F1 no WebGL: notice instead of the scene, no overlay", async () => {
+  it("LD5 no WebGL: the notice instead of the scene; the start button still opens the flow (MFW-154)", async () => {
     act(() => {
       useDeviceStore.getState().setWebglAvailable(false);
       useDeviceStore.getState().setQualityTier("LOW");
@@ -260,40 +278,67 @@ describe("FlowRoot", () => {
     await act(async () => {});
     expect(within(screen.getByTestId("stage-layer")).getByTestId("no-webgl-notice")).toBeInTheDocument();
     expect(screen.queryByTestId("scene-viewport")).toBeNull();
-    expect(screen.getByTestId("overlay-layer")).toBeEmptyDOMElement();
-    expect(screen.queryByRole("button")).toBeNull();
+    const overlay = screen.getByTestId("overlay-layer");
+    const buttons = within(overlay).getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(LOY_KRATHONG_COPY.create.start);
+    expect(overlay.querySelector('[data-overlay-slot="corner"]')).toBeNull();
+    expect(overlay.querySelector('[data-overlay-slot="top"]')).toBeNull();
     const root = container.querySelector("[data-flow-state]")!;
     expect(root).toHaveAttribute("data-quality-tier", "LOW");
-    expect(root).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
+    expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+
+    pressStart();
+    expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "หมุนขวา" })).toBeNull();
+    expect(screen.getByTestId("no-webgl-notice")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+    completeWish();
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+    expect(api.posts).toHaveLength(1);
+    expect(screen.queryByTestId("scene-viewport")).toBeNull();
   });
 
-  it("F2 no notice while unprofiled nor once the scene can mount (customizer appears with the profile)", async () => {
+  it("F2 no notice while unprofiled nor once the scene can mount (the start button appears with the profile)", async () => {
     useDeviceStore.setState(useDeviceStore.getInitialState(), true);
     render(<FlowRoot eventId="loy_krathong" />);
     expect(screen.queryByTestId("no-webgl-notice")).toBeNull();
-    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+    expect(screen.queryByRole("button", { name: LOY_KRATHONG_COPY.create.start })).toBeNull();
     act(() => useDeviceStore.getState().setQualityTier("HIGH"));
-    expect(await screen.findByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: LOY_KRATHONG_COPY.create.start })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
     expect(await screen.findByTestId("scene-viewport")).toBeInTheDocument();
     expect(screen.queryByTestId("no-webgl-notice")).toBeNull();
   });
 
-  it("enters the shared world once when the ritual starts and leaves on unmount", async () => {
+  it("LD3 the world loads on landing, stays while customizing, is left in the wish step and re-entered for the ritual", async () => {
     const { unmount } = render(<FlowRoot eventId="loy_krathong" />);
-    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
-    completeWish();
     expect(zones.enterWorld).toHaveBeenCalledTimes(1);
     expect(zones.enterWorld).toHaveBeenCalledWith("loy_krathong");
-    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
-    await waitFor(() => expect(screen.queryByTestId("ritual-release-panel")).toBeNull());
+    pressStart();
     expect(zones.enterWorld).toHaveBeenCalledTimes(1);
     expect(zones.leaveWorld).not.toHaveBeenCalled();
-    unmount();
+    fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(zones.leaveWorld).toHaveBeenCalledTimes(1);
+    completeWish();
+    expect(zones.enterWorld).toHaveBeenCalledTimes(2);
+    expect(zones.enterWorld).toHaveBeenLastCalledWith("loy_krathong");
+    fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+    await waitFor(() => expect(screen.queryByTestId("ritual-release-panel")).toBeNull());
+    expect(zones.enterWorld).toHaveBeenCalledTimes(2);
+    expect(zones.leaveWorld).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(zones.leaveWorld).toHaveBeenCalledTimes(2);
   });
 
   it("shows the zone navigator only at SHARED_WORLD_EXPLORE, without buttons in a 1-zone world", async () => {
     render(<FlowRoot eventId="loy_krathong" />);
+    act(() => {
+      useWorldStore.setState({ eventId: "loy_krathong", currentZoneId: 1, zoneCount: 1, zoneStatus: "ready" });
+    });
+    expect(screen.getByTestId("zone-navigator")).toBeInTheDocument(); // MFW-154: the landing is the world
+    pressStart();
     expect(screen.queryByTestId("zone-navigator")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
@@ -312,6 +357,7 @@ describe("FlowRoot", () => {
 
   it("WRITE_WISH renders the wish modal; SUBMIT_WISH needs a valid wish", () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
     expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
@@ -328,6 +374,7 @@ describe("FlowRoot", () => {
 
   it("the wish modal shows no scene in WRITE_WISH", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     expect(stateOf(container)).toBe("WRITE_WISH");
     expect(screen.getByRole("dialog", { name: WISH_COPY.title })).toBeInTheDocument();
@@ -338,6 +385,7 @@ describe("FlowRoot", () => {
   });
 
   const walkToRitual = () => {
+    pressStart();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     completeWish();
   };
@@ -431,6 +479,7 @@ describe("FlowRoot", () => {
 
   it("a name typed in the wish step is sent as displayName and not kept after the save (MFW-63)", async () => {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    pressStart();
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
     fireEvent.change(screen.getByRole("textbox", { name: WISH_COPY.nameLabel }), { target: { value: " น้องมะลิ " } });
     completeWish();
@@ -445,6 +494,92 @@ describe("FlowRoot", () => {
     expect(JSON.stringify({ ...window.localStorage })).not.toContain("น้องมะลิ");
   });
 
+  describe("landing in the world (MFW-154)", () => {
+    const startButton = () => screen.queryByRole("button", { name: LOY_KRATHONG_COPY.create.start });
+
+    it("LD1 the flow lands in the shared world with the start button and no customizer", async () => {
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      const root = container.querySelector("[data-flow-state]")!;
+      expect(root).toHaveAttribute("data-flow-state", "SHARED_WORLD_EXPLORE");
+      expect(root).toHaveAttribute("data-interaction-mode", "WORLD_EXPLORE");
+      expect(zones.enterWorld).toHaveBeenCalledTimes(1);
+      expect(zones.enterWorld).toHaveBeenCalledWith("loy_krathong");
+      expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+      expect(screen.queryByRole("group", { name: CUSTOMIZER_COPY.designGroupLabel })).toBeNull();
+      expect(startButton()!.closest('[data-overlay-slot="panel"]')).not.toBeNull();
+      const scene = await screen.findByTestId("scene-viewport");
+      expect(scene).toHaveAttribute("data-mode", "WORLD_EXPLORE");
+      expect(scene).toHaveAttribute("data-start-framed-on-pier", "true");
+    });
+
+    it("LD2 the picker shows only after the button", () => {
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+      pressStart();
+      expect(screen.getByRole("region", { name: "แต่งกระทง" })).toBeInTheDocument();
+      expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
+      expect(startButton()).toBeNull();
+    });
+
+    it("LD4 the close control goes back to the world without releasing", async () => {
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      const before = await screen.findByTestId("scene-viewport");
+      pressStart();
+      fireEvent.click(screen.getByRole("button", { name: LOY_KRATHONG_COPY.create.cancel }));
+      expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+      expect(screen.queryByRole("region", { name: "แต่งกระทง" })).toBeNull();
+      expect(startButton()).toBeInTheDocument();
+      expect(zones.enterWorld).toHaveBeenCalledTimes(1);
+      expect(zones.leaveWorld).not.toHaveBeenCalled();
+      expect(api.posts).toHaveLength(0);
+      expect(screen.getByTestId("scene-viewport")).toBe(before);
+    });
+
+    it("LD8 focus: the customizer panel after the start button, the start button after the close control", () => {
+      render(<FlowRoot eventId="loy_krathong" />);
+      pressStart();
+      expect(document.activeElement).toBe(screen.getByRole("region", { name: "แต่งกระทง" }));
+      fireEvent.click(screen.getByRole("button", { name: LOY_KRATHONG_COPY.create.cancel }));
+      expect(document.activeElement).toBe(startButton());
+    });
+
+    it("LD8b focus moves also without WebGL", async () => {
+      act(() => {
+        useDeviceStore.getState().setWebglAvailable(false);
+        useDeviceStore.getState().setQualityTier("LOW");
+      });
+      render(<FlowRoot eventId="loy_krathong" />);
+      await act(async () => {});
+      pressStart();
+      expect(document.activeElement).toBe(screen.getByRole("region", { name: "แต่งกระทง" }));
+      fireEvent.click(screen.getByRole("button", { name: LOY_KRATHONG_COPY.create.cancel }));
+      expect(document.activeElement).toBe(startButton());
+    });
+
+    it("LD6 a second creation starts from the world and runs its own ritual", async () => {
+      const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      pressStart();
+      fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+      completeWish();
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      pressStart();
+      fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
+      completeWish("ขอให้สอบผ่าน");
+      expect(stateOf(container)).toBe("RITUAL_RELEASE");
+      fireEvent.click(screen.getByRole("button", { name: "ปล่อยกระทง" }));
+      await waitFor(() => expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE"));
+      expect(api.posts).toHaveLength(2);
+      for (const post of api.posts) expect(post.body.coord).toEqual(buildReleaseCoord(LOY_KRATHONG_PIER_RELEASE_SPOT));
+    });
+
+    it("LD7 christmas gets its own start label and customizer", () => {
+      render(<FlowRoot eventId="christmas" />);
+      fireEvent.click(screen.getByRole("button", { name: CHRISTMAS_COPY.create.start }));
+      expect(screen.getByRole("region", { name: CHRISTMAS_COPY.customizer.panelLabel })).toBeInTheDocument();
+    });
+  });
+
   describe("full-screen stage (MFW-54, backlog 10.2)", () => {
     const inSlot = (el: Element, slot: string) => el.closest(`[data-overlay-slot="${slot}"]`) !== null;
     const stageLayer = () => screen.getByTestId("stage-layer");
@@ -454,6 +589,7 @@ describe("FlowRoot", () => {
       act(() => useDeviceStore.getState().setQualityTier("HIGH"));
       const { container } = render(<FlowRoot eventId="loy_krathong" />);
       expect(container.querySelector("[data-flow-state]")).toHaveAttribute("data-stage-layout", "fullscreen");
+      pressStart();
 
       const scene = await screen.findByTestId("scene-viewport");
       expect(stageLayer()).toContainElement(scene);
@@ -480,6 +616,7 @@ describe("FlowRoot", () => {
 
     it("F2 CUSTOMIZE_OBJECT: the corner holds only the day/night toggle (MFW-74)", () => {
       const { container } = render(<FlowRoot eventId="loy_krathong" />);
+      pressStart();
       const corner = container.querySelector('[data-overlay-slot="corner"]') as HTMLElement;
       expect(within(corner).getAllByRole("button")).toHaveLength(1);
       expect(within(corner).getByTestId("day-night-toggle")).toBeInTheDocument();
@@ -515,9 +652,12 @@ describe("minimal UI (MFW-55)", () => {
   const primaryCount = () => document.querySelectorAll('[data-ui-emphasis="primary"]').length;
   const RAW_STATE_ID = /CUSTOMIZE_OBJECT|WRITE_WISH|RITUAL_RELEASE|SHARED_WORLD_EXPLORE/;
 
-  /** Walks CUSTOMIZE → WISH → RITUAL → WORLD without a scene and calls `check` in each step. */
+  /** Walks LANDING → CUSTOMIZE → WISH → RITUAL → WORLD and calls `check` in each step. */
   async function walkAllSteps(check: (step: string) => void) {
     const { container } = render(<FlowRoot eventId="loy_krathong" />);
+    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+    check("LANDING");
+    pressStart();
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
     check("CUSTOMIZE_OBJECT");
     fireEvent.click(screen.getByRole("button", { name: "ถัดไป" }));
@@ -539,7 +679,7 @@ describe("minimal UI (MFW-55)", () => {
     await walkAllSteps((step) => {
       counts[step] = primaryCount();
     });
-    expect(counts).toEqual({ CUSTOMIZE_OBJECT: 1, WRITE_WISH: 1, RITUAL_RELEASE: 1, SHARED_WORLD_EXPLORE: 0 });
+    expect(counts).toEqual({ LANDING: 1, CUSTOMIZE_OBJECT: 1, WRITE_WISH: 1, RITUAL_RELEASE: 1, SHARED_WORLD_EXPLORE: 1 });
   });
 
   it("no raw flow-state id is shown in any step", async () => {
@@ -548,19 +688,26 @@ describe("minimal UI (MFW-55)", () => {
       seen.push(step);
       expect(document.body.textContent).not.toMatch(RAW_STATE_ID);
     });
-    expect(seen).toHaveLength(4);
+    expect(seen).toHaveLength(5);
   });
 
   it("FR1 (MFW-91): the christmas entry never says กระทง, สายน้ำ, คุ้งน้ำ or ลอย in the first three steps", () => {
     const FORBIDDEN = ["กระทง", "สายน้ำ", "คุ้งน้ำ", "ลอย"];
-    const assertClean = () => {
-      const attrs = Array.from(document.querySelectorAll("[aria-label],[placeholder],[title]")).flatMap((el) =>
+    /** `skip`: a subtree left out of the check (MFW-154: the world HUD column, shared copy outside the per-event table). */
+    const assertClean = (skip?: string) => {
+      const body = document.body.cloneNode(true) as HTMLElement;
+      if (skip) for (const el of Array.from(body.querySelectorAll(skip))) el.remove();
+      const attrs = Array.from(body.querySelectorAll("[aria-label],[placeholder],[title]")).flatMap((el) =>
         ["aria-label", "placeholder", "title"].flatMap((a) => el.getAttribute(a) ?? []),
       );
-      const all = [document.body.textContent ?? "", ...attrs].join("\n");
+      const all = [body.textContent ?? "", ...attrs].join("\n");
       for (const w of FORBIDDEN) expect(all, w).not.toContain(w);
     };
     const { container } = render(<FlowRoot eventId="christmas" />);
+    expect(stateOf(container)).toBe("SHARED_WORLD_EXPLORE");
+    // MFW-154 landing: the HUD's sky-launch switch keeps its shared copy (โคมลอย) on every world view, as after a release.
+    assertClean('[data-overlay-slot="corner"]');
+    fireEvent.click(screen.getByRole("button", { name: CHRISTMAS_COPY.create.start }));
     expect(stateOf(container)).toBe("CUSTOMIZE_OBJECT");
     expect(screen.getByRole("region", { name: CHRISTMAS_COPY.customizer.panelLabel })).toBeInTheDocument();
     assertClean();

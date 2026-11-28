@@ -65,15 +65,17 @@ export interface CameraRigProps {
   stretchIndex?: number;
   /** MFW-58: fired once when the focus is RIVER_STRETCH_SWITCH_HYSTERESIS past a seam of `stretchIndex` (stable callback). */
   onStretchChange?: (stretchIndex: number) => void;
+  /** MFW-154: when a number, a targetRef flight uses this yaw instead of getFlightYaw(rig) (the customizer hand-over). */
+  flightYawRad?: number | null;
 }
 
 /**
  * MFW-57: the one writer of the camera pose. react-spring animates fly-to and the rotate button (FLIGHT); the user's drag
  * writes the rig directly (MANUAL) and the release eases out per frame (COAST). Every frame applies the rig to the camera.
  *
- * Flights use yaw 0 in CUSTOMIZE and RITUAL_RELEASE without any lock: only WORLD_EXPLORE gestures change the yaw, WORLD_EXPLORE
- * is terminal in the flow machine, and FlowRoot unmounts SceneViewport in WRITE_WISH, so every ritual entry starts with a
- * fresh rig.
+ * Only WORLD_EXPLORE gestures change the yaw. WORLD_EXPLORE is no longer terminal (MFW-154: the landing starts a creation),
+ * so the customizer hand-over passes `flightYawRad` = DEFAULT_VIEW_YAW_RAD and flies back to the default yaw; FlowRoot
+ * unmounts SceneViewport in WRITE_WISH, so every ritual entry still starts with a fresh rig.
  */
 export function CameraRig({
   getRig,
@@ -85,6 +87,7 @@ export function CameraRig({
   stretchFrame,
   stretchIndex,
   onStretchChange,
+  flightYawRad = null,
 }: CameraRigProps): null {
   const invalidate = useThree((s) => s.invalidate);
   /** Last stretch reported to onStretchChange (no repeat while the store catches up). */
@@ -110,11 +113,11 @@ export function CameraRig({
     if (!target) return;
     const rig = getRig();
     target.getWorldPosition(scratch);
-    const yaw = getFlightYaw(rig);
+    const yaw = flightYawRad ?? getFlightYaw(rig);
     syncSpringToRig(api, rig);
     createCameraController(flightAnimation(api, rig), reducedMotion).flyTo(scratch, yaw);
     invalidate();
-  }, [api, invalidate, reducedMotion, requestId, targetRef, getRig, scratch]);
+  }, [api, invalidate, reducedMotion, requestId, targetRef, getRig, scratch, flightYawRad]);
 
   useImperativeHandle(
     handleRef,

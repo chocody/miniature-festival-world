@@ -9,6 +9,7 @@ export const SCENE_OBJECT_NAMES = Object.freeze({
   krathongPose: "scene-krathong-pose",
   krathongMarkCue: "scene-krathong-mark-cue",
   pierFocus: "scene-pier-focus",
+  customizeFocus: "scene-customize-focus", // MFW-154: the customizer hero framing (stretch origin)
   houseBodies: "scene-house-bodies",
   houseRoofs: "scene-house-roofs",
   treeTrunks: "scene-tree-trunks",

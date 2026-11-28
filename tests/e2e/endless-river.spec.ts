@@ -25,7 +25,7 @@ import {
   E2E_TRAVEL_JUMPS,
   E2E_TRAVEL_TEST_TIMEOUT_MS,
 } from "./fixtures/endlessRiver";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { readStagePixels } from "./helpers/backgroundProbe";
 import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
@@ -92,7 +92,7 @@ async function routeZones(
 
 async function walkToWorld(page: Page, url: string) {
   await page.goto(url);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

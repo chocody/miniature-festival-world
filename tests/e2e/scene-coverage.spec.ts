@@ -10,7 +10,7 @@ import {
   e2eFramedZoom,
   isBackgroundPixel,
 } from "./fixtures/stageFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { STAGE_ONLY_SECTION_CSS, readStagePixels } from "./helpers/backgroundProbe";
 import { E2E_WORLD_ROTATE_BUTTON_NAME, mouseDragHold, readCamera } from "./helpers/cameraProbe";
 import { E2E_PINNED_TIER_URL, installSceneProbe, locateStableTarget, waitForCameraRest } from "./helpers/sceneProbe";
@@ -48,7 +48,7 @@ async function openStage(page: Page) {
   await installSceneProbe(page);
   await mockCreateCreation(page);
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   return errors;
 }
 

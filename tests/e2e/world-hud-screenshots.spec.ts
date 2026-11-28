@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { E2E_CREATION_ID, mockCreateCreation } from "./fixtures/ritualRoutes";
 import { makeOwnZoneItem } from "./fixtures/findMyFixtures";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import { E2E_PINNED_TIER_URL, installSceneProbe, waitForCameraRest } from "./helpers/sceneProbe";
 import { expectWorldAfterRelease } from "./helpers/release";
@@ -41,7 +41,7 @@ async function walkToWorld(page: Page, preset: "DAY" | "NIGHT") {
   await mockCreateCreation(page, { zoneId: 1 });
   await installSceneProbe(page);
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

@@ -18,6 +18,7 @@ import { OrthographicCamera } from "three";
 import type { Group, Mesh } from "three";
 import {
   CAMERA_FLIGHT_OFFSET,
+  DEFAULT_VIEW_YAW_RAD,
   SCENE_CAMERA_FAR,
   SCENE_CAMERA_NEAR,
   SCENE_CAMERA_ZOOM,
@@ -44,7 +45,6 @@ import { BLOB_SHADOW_TIER_GEOMETRY, LIGHT_PRESETS, type LightPresetId } from "@/
 import {
   applyCameraRigPose,
   applyPanDrag,
-  createCameraRigState,
   endPan,
   getEndlessRiverPanBounds,
   getFramedCameraZoom,
@@ -91,6 +91,7 @@ import { ZONE_STREAM_LOAD_RADIUS } from "@/config/world.config";
 import { getZonePagination } from "@/services/api/zonePagination";
 import { excludeOwnAndCap, isOwnSlotReserved, isOwnZoneVisible, ownKrathongPoseKind, type OwnKrathongPoseKind, type RitualState } from "@/core/ritual";
 import { CameraRig, type CameraRigHandle, type WorldPositionSource } from "./CameraRig";
+import { createRigAt, pierFramingPose } from "./landingFraming";
 import { OwnKrathong } from "./OwnKrathong";
 import { createRitualDropMapper, getLoyKrathongRitualSite, type PercentPoint, type RitualDropMapper, type RitualSite } from "./ritualSite";
 import { PerfProbePanel } from "./PerfProbePanel";
@@ -212,6 +213,8 @@ interface ToyNightSceneProps {
   onTouchedDown: (attempt: number, at: WorldXZ) => void;
   onSettled: (attempt: number) => void;
   pierFocusRef: RefObject<Group | null>;
+  /** MFW-154: an empty group at the current stretch's origin (the customizer hero framing). */
+  customizeFocusRef: RefObject<Group | null>;
   findMyAnchorRef: RefObject<Group | null>;
   ownMarked: boolean;
   /** MFW-50: the living world may keep an idle-redraw cadence (true only in WORLD_EXPLORE). A primitive keeps the memo effective. */
@@ -260,6 +263,7 @@ const ToyNightScene = memo(function ToyNightScene({
   onTouchedDown,
   onSettled,
   pierFocusRef,
+  customizeFocusRef,
   findMyAnchorRef,
   ownMarked,
   livingWorldIdleRedraw,
@@ -315,6 +319,7 @@ const ToyNightScene = memo(function ToyNightScene({
         {/* The pier focus and the own krathong belong to the camera's stretch (MFW-58; stretch 0 during the ritual). */}
         <group position={[currentOffsetX, 0, currentOffsetZ]}>
           <group ref={pierFocusRef} name={SCENE_OBJECT_NAMES.pierFocus} position={[site.tip.x, site.tip.y, site.tip.z]} />
+          <group ref={customizeFocusRef} name={SCENE_OBJECT_NAMES.customizeFocus} />
           <OwnKrathong
             targetRef={krathongTargetRef}
             appearance={appearance}
@@ -434,12 +439,19 @@ export function SceneViewport({
   onReleaseDrop,
   viewControlRef,
   riverItems,
+  startFramedOnPier = false,
 }: {
   mode?: InteractionMode | null;
   /** RITUAL_RELEASE: the chip was dropped on the water; the candidate is a parametric lane spot (invariant A). */
   onReleaseDrop?: (candidate: RiverSpot) => void;
   viewControlRef?: Ref<CustomizeViewControl>;
   riverItems?: readonly RiverFlowItem[];
+  /**
+   * MFW-154: true when FlowRoot mounts the scene on the landing view; read once, when the rig is created: the rig starts on
+   * the pier focus (the post-release framing), so the landing has no flight. false keeps the origin rig (customizer / ritual
+   * mounts and the scene unit tests).
+   */
+  startFramedOnPier?: boolean;
 }) {
   const profiled = useDeviceStore((state) => state.profiled);
   const webglAvailable = useDeviceStore((state) => state.webglAvailable);
@@ -479,6 +491,8 @@ export function SceneViewport({
   const dragPointRef = useRef<WorldXZ | null>(null);
   const releaseDropRef = useRef<WorldXZ | null>(null);
   const pierFocusRef = useRef<Group | null>(null);
+  const customizeFocusRef = useRef<Group | null>(null);
+  const [customizeHandOver, setCustomizeHandOver] = useState(false);
   const [framedPier, setFramedPier] = useState(false);
   if (mode === "RITUAL_RELEASE" && !framedPier) setFramedPier(true); // same render-phase pattern as selectionMode
   const offsetMs = ritual.saved?.serverClockOffsetMs ?? 0;
@@ -528,8 +542,11 @@ export function SceneViewport({
   const viewportRef = useRef<HTMLElement>(null);
   const [objectRotation, setObjectRotation] = useState(0);
   // MFW-57 camera rig (render-only, never persisted): lazily created, same lint-safe pattern as getMapper.
+  const [initialRigPose] = useState(() =>
+    startFramedOnPier ? pierFramingPose(site.tip, slots[0].offsetX, slots[0].offsetZ) : null,
+  );
   const rigRef = useRef<CameraRigState | null>(null);
-  const getRig = useCallback(() => (rigRef.current ??= createCameraRigState()), []);
+  const getRig = useCallback(() => (rigRef.current ??= createRigAt(initialRigPose)), [initialRigPose]);
   const rigHandleRef = useRef<CameraRigHandle | null>(null);
   const moveSampleRef = useRef<PointerSample | null>(null);
   const chipRef = useRef<HTMLDivElement | null>(null);
@@ -565,6 +582,9 @@ export function SceneViewport({
   const [gimmick, setGimmick] = useState<{ kind: SceneGimmickKind | null; count: number }>({ kind: null, count: 0 });
   const recordGimmick = useCallback((kind: SceneGimmickKind) => setGimmick((g) => ({ kind, count: g.count + 1 })), []);
   if (selectionMode !== mode) {
+    // MFW-154 camera hand-over: the landing flies to the customizer hero framing and a cancel flies back to the pier.
+    if (selectionMode === "WORLD_EXPLORE" && mode === "CUSTOMIZE") setCustomizeHandOver(true);
+    if (selectionMode === "CUSTOMIZE" && mode === "WORLD_EXPLORE") setFramedPier(true);
     setSelectionMode(mode);
     setSelectedTarget(null);
     setFlightTarget(null);
@@ -669,7 +689,14 @@ export function SceneViewport({
     ownShown,
   });
   const cameraTargetRef: TargetRef | null =
-    flightTargetRef ?? (framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE") ? pierFocusRef : null);
+    flightTargetRef ??
+    (mode === "CUSTOMIZE"
+      ? customizeHandOver
+        ? customizeFocusRef
+        : null
+      : framedPier && (mode === "RITUAL_RELEASE" || mode === "WORLD_EXPLORE")
+        ? pierFocusRef
+        : null);
   const findMyStretch = findMy?.stretchIndex ?? null;
   const stretches = useMemo<readonly StretchSlotView[]>(
     () =>
@@ -1002,6 +1029,7 @@ export function SceneViewport({
             onTouchedDown={onTouchedDown}
             onSettled={onSettled}
             pierFocusRef={pierFocusRef}
+            customizeFocusRef={customizeFocusRef}
             findMyAnchorRef={findMyAnchorRef}
             ownMarked={ownMarked}
             livingWorldIdleRedraw={mode === "WORLD_EXPLORE"}
@@ -1021,6 +1049,7 @@ export function SceneViewport({
             stretchFrame={ENDLESS}
             stretchIndex={currentStretch}
             onStretchChange={onStretchChange}
+            flightYawRad={mode === "CUSTOMIZE" ? DEFAULT_VIEW_YAW_RAD : null}
           />
         </KrathongAssetsProvider>
       </Canvas>

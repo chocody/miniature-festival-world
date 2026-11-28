@@ -3,7 +3,7 @@ import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneItem } from "./fixtures/zoneFixtures";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { seedSecondOwnEntry } from "./helpers/hud";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import {
   E2E_MIN_TOUCH_TARGET_PX,
@@ -80,7 +80,7 @@ async function setTier(page: Page, memory: number, cores: number) {
 
 async function walkToWorld(page: Page) {
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

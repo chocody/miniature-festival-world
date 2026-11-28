@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { E2E_CREATION_ID } from "../fixtures/ritualRoutes";
 import { INSPECT_DIALOG_TITLE } from "../fixtures/wishCopy";
-import { waitForActiveEvent } from "./activeEvent";
+import { openCustomizer } from "./activeEvent";
 import { locateKrathongById, waitForCameraRest } from "./sceneProbe";
 import { completeWishStep, type WishStepOptions } from "./wishStep";
 import { expectWorldAfterRelease } from "./release";
@@ -43,7 +43,7 @@ export async function lowTier(page: Page): Promise<void> {
 }
 
 export async function walkToWorld(page: Page, text?: string, options: WishStepOptions = {}): Promise<void> {
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page, text, options);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

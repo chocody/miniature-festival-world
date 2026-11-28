@@ -8,6 +8,7 @@ import { useBuilderStore } from "@/store/useBuilderStore";
 import { CustomizerPanel } from "./CustomizerPanel";
 import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { CHRISTMAS_COPY } from "@/config/events/christmas.copy";
+import { LOY_KRATHONG_COPY } from "@/config/events/loyKrathong.copy";
 import { EventCopyProvider } from "./EventCopyContext";
 
 afterEach(cleanup);
@@ -17,16 +18,18 @@ beforeEach(() => {
 
 function setup(props: { eventId?: "loy_krathong" | "christmas"; withView?: boolean } = {}) {
   const onDone = vi.fn();
+  const onCancel = vi.fn();
   const handle = { rotate: vi.fn(), zoom: vi.fn() };
   const ref = { current: handle as CustomizeViewControl | null };
   const utils = render(
     <CustomizerPanel
       eventId={props.eventId ?? "loy_krathong"}
       onDone={onDone}
+      onCancel={onCancel}
       viewControlRef={props.withView === false ? null : ref}
     />,
   );
-  return { ...utils, onDone, handle, ref };
+  return { ...utils, onDone, onCancel, handle, ref };
 }
 
 const btn = (name: string) => screen.getByRole("button", { name });
@@ -139,7 +142,7 @@ describe("CustomizerPanel", () => {
     const ref = { current: { rotate: vi.fn(), zoom: vi.fn() } as CustomizeViewControl | null };
     render(
       <EventCopyProvider eventId="christmas">
-        <CustomizerPanel eventId="christmas" onDone={vi.fn()} viewControlRef={ref} />
+        <CustomizerPanel eventId="christmas" onDone={vi.fn()} onCancel={vi.fn()} viewControlRef={ref} />
       </EventCopyProvider>,
     );
     const c = CHRISTMAS_COPY.customizer;
@@ -148,5 +151,15 @@ describe("CustomizerPanel", () => {
     expect(screen.getByRole("button", { name: c.rotateLeft })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: c.done })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: c.designGroupLabel })).toBeNull();
+  });
+
+  it.each([true, false])("CP1 (MFW-154) the DRAFT close control fires onCancel only (view mounted: %s)", (withView) => {
+    const { onCancel, onDone } = setup({ withView });
+    const close = btn(LOY_KRATHONG_COPY.create.cancel);
+    expect(close).toHaveAttribute("data-testid", "customizer-close");
+    expect(close).not.toHaveAttribute("data-ui-emphasis");
+    fireEvent.click(close);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
   });
 });

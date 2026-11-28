@@ -1,6 +1,9 @@
 import { FESTIVAL_EVENT_IDS, type FestivalEventId } from "@/config/events";
 
-/** App-level user flow (backlog 1.1): customize → wish → ritual → shared world; the event is resolved by the server (MFW-53). */
+/**
+ * App-level user flow (backlog 1.1): the flow starts in the shared world (MFW-154); START_CREATE opens
+ * customize → wish → ritual, which ends back in the shared world; the event is resolved by the server (MFW-53).
+ */
 export const FLOW_STATES = [
   "CUSTOMIZE_OBJECT",
   "WRITE_WISH",
@@ -14,7 +17,9 @@ export type FlowEvent =
   | { type: "FINISH_CUSTOMIZE" }
   | { type: "SUBMIT_WISH" }
   | { type: "FINISH_RITUAL" }
-  | { type: "REVISE_WISH" };
+  | { type: "REVISE_WISH" }
+  | { type: "START_CREATE" }
+  | { type: "CANCEL_CREATE" };
 
 export type FlowEventType = FlowEvent["type"];
 
@@ -23,6 +28,8 @@ export const FLOW_EVENT_TYPES: readonly FlowEventType[] = Object.freeze([
   "SUBMIT_WISH",
   "FINISH_RITUAL",
   "REVISE_WISH",
+  "START_CREATE",
+  "CANCEL_CREATE",
 ]);
 
 export interface FlowSnapshot {
@@ -31,17 +38,21 @@ export interface FlowSnapshot {
 }
 
 export const INITIAL_FLOW: FlowSnapshot = Object.freeze({
-  state: "CUSTOMIZE_OBJECT",
+  state: "SHARED_WORLD_EXPLORE",
   eventId: null,
 });
 
-/** Forward-only, except REVISE_WISH: a server-side moderation block sends the user back to the wish (MFW-23). SHARED_WORLD_EXPLORE is terminal. */
+/**
+ * Forward-only, except REVISE_WISH: a server-side moderation block sends the user back to the wish (MFW-23).
+ * No state is terminal: the shared world is the landing and START_CREATE starts a (new) creation from it;
+ * CANCEL_CREATE is a DRAFT way back from the customizer to the world without releasing (MFW-154).
+ */
 export const FLOW_TRANSITIONS: Readonly<Record<FlowState, Partial<Record<FlowEventType, FlowState>>>> =
   Object.freeze({
-    CUSTOMIZE_OBJECT: Object.freeze({ FINISH_CUSTOMIZE: "WRITE_WISH" }),
+    CUSTOMIZE_OBJECT: Object.freeze({ FINISH_CUSTOMIZE: "WRITE_WISH", CANCEL_CREATE: "SHARED_WORLD_EXPLORE" }),
     WRITE_WISH: Object.freeze({ SUBMIT_WISH: "RITUAL_RELEASE" }),
     RITUAL_RELEASE: Object.freeze({ FINISH_RITUAL: "SHARED_WORLD_EXPLORE", REVISE_WISH: "WRITE_WISH" }),
-    SHARED_WORLD_EXPLORE: Object.freeze({}),
+    SHARED_WORLD_EXPLORE: Object.freeze({ START_CREATE: "CUSTOMIZE_OBJECT" }),
   });
 
 const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);

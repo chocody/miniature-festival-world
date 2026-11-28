@@ -2,7 +2,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { E2E_DESIGN_GROUP_LABEL } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_UI } from "./fixtures/uiFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { E2E_START_CREATE_LABEL } from "./fixtures/landingFixtures";
+import { waitForLanding } from "./helpers/activeEvent";
 import { seedSecondOwnEntry } from "./helpers/hud";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { SCENE_SELECTOR, forceTier } from "./helpers/stage";
@@ -40,10 +41,18 @@ async function openLow(page: Page): Promise<string[]> {
   await mockCreateCreation(page);
   await forceTier(page, 2, 2);
   await page.goto(E2E_PINNED_TIER_URL); // keeps LOW: CI's SwiftShader FPS would otherwise step the tier down mid-test
-  await waitForActiveEvent(page);
+  await waitForLanding(page);
   await expect(root(page)).toHaveAttribute("data-quality-tier", "LOW");
   await expect(page.locator("canvas")).toHaveCount(1);
   return errors;
+}
+
+/** MFW-154: the landing's start button (the flow starts in the world). */
+const startButton = (page: Page) => page.getByRole("button", { name: E2E_START_CREATE_LABEL, exact: true });
+
+async function pressStart(page: Page): Promise<void> {
+  await startButton(page).click();
+  await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
 }
 
 async function visiblePrimaryCount(page: Page): Promise<number> {
@@ -117,6 +126,8 @@ for (const vp of [
       page,
     }) => {
       const errors = await openLow(page);
+      expect(await visiblePrimaryCount(page)).toBe(1); // MFW-154: the landing's start button
+      await pressStart(page);
       expect(await visiblePrimaryCount(page)).toBe(1);
       await expectSceneCentreVisible(page, SCENE_SELECTOR);
       await expectTranslucent(page.getByRole("region", { name: PANEL }));
@@ -133,7 +144,7 @@ for (const vp of [
 
       await page.getByRole("button", { name: RELEASE }).click();
       await expectWorldAfterRelease(page);
-      expect(await visiblePrimaryCount(page)).toBe(0);
+      expect(await visiblePrimaryCount(page)).toBe(1); // MFW-154: the start button (a second creation)
       await expectSceneCentreVisible(page, SCENE_SELECTOR);
       await expectTranslucent(page.locator(PANEL_SLOT));
       // The top card (zone arrows) is hidden here (one zone); its placement and translucency are covered in ui-details.spec.ts (3 zones).
@@ -148,6 +159,9 @@ test.describe("390×844 touch", () => {
   test("every visible control is at least MIN_TOUCH_TARGET_PX", async ({ page }) => {
     await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
     const errors = await openLow(page);
+    await expectTouchTargets(page); // MFW-154: the landing
+    await startButton(page).tap();
+    await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     // MFW-78: one row of five design tiles replaces the part tabs.
     await expect(page.getByRole("group", { name: E2E_DESIGN_GROUP_LABEL }).getByRole("button")).toHaveCount(5);
     await expectTouchTargets(page);
@@ -178,6 +192,8 @@ test.describe("390×844 keyboard", () => {
   test("keyboard alone walks the flow with a visible focus ring", async ({ page }) => {
     await seedSecondOwnEntry(page); // two entries: Find My opens the picker (MFW-74)
     const errors = await openLow(page);
+    // MFW-154: the landing's HUD toggle comes before the start button in tab order; Enter on the start button moves focus into
+    // the customizer panel, so every later step is reached by tabbing forward from there.
     const toggle = page.locator(TOGGLE);
     await tabTo(page, toggle);
     await expectFocusRing(toggle);
@@ -185,6 +201,13 @@ test.describe("390×844 keyboard", () => {
     await page.keyboard.press("Enter");
     await expect(toggle).not.toHaveAttribute("data-light-preset-choice", "AUTO");
     await expect(toggle).toBeFocused();
+
+    const start = startButton(page);
+    await tabTo(page, start);
+    await expectFocusRing(start);
+    await page.keyboard.press("Enter");
+    await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
+    await expect(page.getByTestId("customizer-panel")).toBeFocused();
 
     const next = page.getByRole("button", { name: NEXT });
     await tabTo(page, next);
@@ -222,6 +245,7 @@ test.describe("reduced motion", () => {
 
   test("reduced motion: UI transitions are off", async ({ page }) => {
     await openLow(page);
+    await pressStart(page); // MFW-154: "ถัดไป" lives in the customizer
     await expect(root(page)).toHaveAttribute("data-reduced-motion", "true");
     const duration = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).transitionDuration);
     expect(await duration(page.getByRole("button", { name: NEXT }))).toBe("0s");
@@ -242,7 +266,7 @@ test.describe("motion allowed", () => {
 
 test("one Thai web font from next/font is applied", async ({ page }) => {
   await page.goto("/");
-  await waitForActiveEvent(page);
+  await waitForLanding(page);
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;
     const loaded: string[] = [];
