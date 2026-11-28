@@ -1,11 +1,20 @@
-import type { SplinePathCoord } from "@/core/coordinates/SplinePathCoord";
+import type { NormalizedCylindricalCoord } from "@/core/coordinates/CylindricalCoord";
+import type { PersistableCoord } from "@/core/coordinates/types";
 import type { RiverSpot } from "@/core/world/riverCollision";
 
 export type RitualPhase = "IDLE" | "RELEASING" | "RELEASED";
+/** A lattice slot of the growing tree (snapped, parametric): the hang target. Never a world position (A). */
+export type TreeSlot = NormalizedCylindricalCoord;
+/** Where a creation lands: a river spot (Loy) or a tree slot (Christmas). */
+export type RitualSpot = RiverSpot | TreeSlot;
+export function isTreeSlot(spot: RitualSpot): spot is TreeSlot {
+  return "mode" in spot && spot.mode === "CYLINDRICAL_SURFACE";
+}
 /** How a release started. Parametric only: the drop's world point stays in the 3D layer (invariant A). */
 export type ReleaseOrigin =
-  | { readonly kind: "pier" }
-  | { readonly kind: "drop"; readonly candidate: RiverSpot };
+  | { readonly kind: "pier" } // the release button: the event's default candidate
+  | { readonly kind: "drop"; readonly candidate: RiverSpot }
+  | { readonly kind: "hang"; readonly candidate: TreeSlot }; // a tap on the tree (16.21)
 export const RITUAL_ERROR_KINDS = Object.freeze([
   "network",
   "timeout",
@@ -19,23 +28,23 @@ export type RitualErrorKind = (typeof RITUAL_ERROR_KINDS)[number];
 export interface RitualError {
   readonly kind: RitualErrorKind;
 }
-export type RitualHint = "DROP_ON_WATER";
+export type RitualHint = "DROP_ON_WATER" | "TAP_ON_TREE";
 
 /** What the client keeps of a saved creation: public, parametric, no wish text (invariant C). */
 export interface SavedRelease {
   readonly id: string;
   readonly zoneId: number;
-  readonly coord: SplinePathCoord; // the SERVER's final coord
+  readonly coord: PersistableCoord; // the SERVER's final coord
   readonly createdAtMs: number; // Date.parse(creation.createdAt), server time
   readonly serverClockOffsetMs: number; // estimateServerClockOffsetMs
-  readonly movedByServer: boolean; // didServerMoveSpot(sent, final)
+  readonly movedByServer: boolean; // adapter.didServerMove(...)
 }
 
 export interface RitualState {
   readonly phase: RitualPhase;
   readonly attempt: number; // 0 before the first release; RELEASE_STARTED uses attempt + 1; never reset
   readonly origin: ReleaseOrigin | null;
-  readonly landing: RiverSpot | null; // the spot sent to the server (client pre-check), null until LANDING_RESOLVED
+  readonly landing: RitualSpot | null; // the spot sent to the server (client pre-check), null until LANDING_RESOLVED
   readonly collided: boolean; // the client pre-check moved the candidate
   readonly touchedDown: boolean; // lowering finished: ripple + candle
   readonly instant: boolean; // no scene animates this ritual (no scene is mounted or the scene is gone)
@@ -46,13 +55,13 @@ export interface RitualState {
 
 export type RitualEvent =
   | { readonly type: "RELEASE_STARTED"; readonly attempt: number; readonly origin: ReleaseOrigin }
-  | { readonly type: "LANDING_RESOLVED"; readonly attempt: number; readonly landing: RiverSpot; readonly collided: boolean }
+  | { readonly type: "LANDING_RESOLVED"; readonly attempt: number; readonly landing: RitualSpot; readonly collided: boolean }
   | { readonly type: "TOUCHED_DOWN"; readonly attempt: number }
   | { readonly type: "SAVED"; readonly attempt: number; readonly saved: SavedRelease }
   | { readonly type: "SETTLED"; readonly attempt: number }
   | { readonly type: "SAVE_FAILED"; readonly attempt: number; readonly error: RitualError }
   | { readonly type: "SKIP_ANIMATION" }
-  | { readonly type: "DROP_REJECTED" }
+  | { readonly type: "DROP_REJECTED"; readonly hint?: RitualHint }
   | { readonly type: "RESET" };
 
 export const INITIAL_RITUAL_STATE: RitualState = Object.freeze({
@@ -109,8 +118,11 @@ export function transitionRitual(s: RitualState, e: RitualEvent): RitualState {
       return frozen({ ...s, instant: true });
     case "DROP_REJECTED":
       if (s.phase !== "IDLE") return s;
-      if (s.hint === "DROP_ON_WATER" && s.error === null) return s;
-      return frozen({ ...s, hint: "DROP_ON_WATER", error: null });
+      {
+        const hint = e.hint ?? "DROP_ON_WATER";
+        if (s.hint === hint && s.error === null) return s;
+        return frozen({ ...s, hint, error: null });
+      }
     case "RESET":
       return frozen({ ...INITIAL_RITUAL_STATE, attempt: s.attempt });
     default:
