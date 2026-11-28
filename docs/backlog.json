@@ -2355,6 +2355,34 @@
       ]
     },
     {
+      "id": "L18",
+      "summary": "Loop 18 — Owner Review 5: Land in the World, Create on Demand",
+      "description": "Owner request 2026-11-28: the default page should be the village and the river, as it looks after a release; the krathong picker appears only when the visitor presses the ลอยกระทง button. Today the app opens straight on the customize screen (flow state CUSTOMIZE_OBJECT). The same flow serves Christmas and New Year later (the button copy comes from the per-event copy table), so 16.27 (visit the tree without hanging) is covered by this card's landing for every event.",
+      "labels": [
+        "loop-18",
+        "loy-krathong",
+        "owner-review",
+        "phase1"
+      ],
+      "stories": [
+        {
+          "id": "18.1",
+          "summary": "Land in the world; the ลอยกระทง button opens the customizer",
+          "goal": "Owner (2026-11-28): \"กดปุ่มลอยกระทงถึงจะให้เลือกกระทง หน้า default ควรเป็นหมู่บ้านและแม่น้ำเหมือนตอนเราปล่อยแล้ว\".",
+          "ac": [
+            "The flow starts in the shared world: INITIAL_FLOW is SHARED_WORLD_EXPLORE, the world loads on entry (the newest zone, as after a release) and the village and river are the first thing a visitor sees; a new event START_CREATE (SHARED_WORLD_EXPLORE → CUSTOMIZE_OBJECT) is fired by a primary button whose label comes from the per-event copy table (Loy: ลอยกระทง; other events get their own label there); customize → wish → release behave exactly as today and the release ends back in the shared world; the krathong picker, the hero krathong and the design bar are not shown on the landing view; a DRAFT way back from the customizer to the world without releasing (CANCEL_CREATE, a close control) so a visitor who pressed the button is never stuck",
+            "The landing view keeps the HUD (Find My, day/night, rotate, sky launch switch, zone navigator) and the empty-ground tap; the camera on landing is the same framing as after a release (no customizer hero zoom) and the customizer's camera hand-over is smooth (instant under reduced motion); the button is at least 44 px, does not overlap the HUD or the river's tap area at 360×640, 390×844 and 1440×900; with no WebGL the stage shows the Thai notice and the button still opens the flow; a world with no creations (no Supabase env) still renders the village and river",
+            "Unit tests for the flow state machine (initial state, START_CREATE, CANCEL_CREATE, release back to the world), FlowRoot (the picker only after the button) and the e2e specs that assumed the customizer first (customizer, flow, ritual, find-my and others) are updated to press the button first — no assertion weakened beyond the starting step; screenshots of the landing and of the customizer after the button, DAY and NIGHT, phone and desktop"
+          ],
+          "labels": [
+            "loy-krathong",
+            "ui",
+            "flow"
+          ]
+        }
+      ]
+    },
+    {
       "id": "LS",
       "summary": "Festival Config Stubs (Roadmap 2026–2027)",
       "description": "Spec §1. Each festival after Loy Krathong starts as a config stub on the shared engine and opens per the roadmap. Not in Phase 1.",
