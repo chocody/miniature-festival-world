@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL, installSceneProbe, listRingAndHaloMeshes } from "./helpers/sceneProbe";
 
 /** Duplicated literal (do not import src/ into Playwright): LIGHT_PRESET_STORAGE_KEY in src/config/look.config.ts. */
@@ -28,7 +28,7 @@ async function openScene(page: Page): Promise<{ pageErrors: string[]; consoleErr
 
 /** The app opens straight into the active event (MFW-53): wait for hydration, then for the 3D canvas. */
 async function enterLoyKrathong(page: Page): Promise<void> {
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator("canvas")).toHaveCount(1);
 }
 

@@ -8,13 +8,15 @@ import { DEFAULT_KRATHONG_APPEARANCE, krathongDesignForAppearance, type Krathong
 import type { CustomizeViewControl } from "@/core/interaction";
 import { useBuilderStore } from "@/store/useBuilderStore";
 import { STAGE_LAYOUT_CLASSES } from "./StageLayout";
-import { PRIMARY_ACTION_PROPS, UI_CLASSES } from "./uiClasses";
+import { PRIMARY_ACTION_PROPS, UI_CLASSES, UI_GLYPHS } from "./uiClasses";
 import { useEventCopy } from "./EventCopyContext";
 
 export interface CustomizerPanelProps {
   eventId: FestivalEventId | null;
   /** Dispatches FINISH_CUSTOMIZE. */
   onDone: () => void;
+  /** Dispatches CANCEL_CREATE (DRAFT, MFW-154). */
+  onCancel: () => void;
   /** null = no 3D view mounted (not profiled): rotate/zoom buttons and the gesture hint are hidden. */
   viewControlRef: RefObject<CustomizeViewControl | null> | null;
 }
@@ -44,10 +46,11 @@ function ViewButton({ label, glyph, onPress }: { label: string; glyph: string; o
 
 /**
  * Floating bottom-bar customizer (backlog 4.2, MFW-83: centred, a gutter above the bottom edge, not a full-width sheet): one row of the five krathong design thumbnails (MFW-78, replaces the part tabs),
- * rotate/zoom buttons, "ถัดไป".
+ * rotate/zoom buttons, "ถัดไป"; a DRAFT close control (top right) goes back to the world without releasing (MFW-154).
  */
-export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerPanelProps) {
-  const COPY = useEventCopy().customizer;
+export function CustomizerPanel({ eventId, onDone, onCancel, viewControlRef }: CustomizerPanelProps) {
+  const eventCopy = useEventCopy();
+  const COPY = eventCopy.customizer;
   const stored = useBuilderStore((s) => s.appearance);
   const chooseKrathong = useBuilderStore((s) => s.chooseKrathong);
   const chosenDesign = krathongDesignForAppearance(stored ?? DEFAULT_KRATHONG_APPEARANCE);
@@ -61,9 +64,21 @@ export function CustomizerPanel({ eventId, onDone, viewControlRef }: CustomizerP
     <section
       aria-label={COPY.panelLabel}
       data-testid="customizer-panel"
+      tabIndex={-1} // MFW-154: FlowRoot moves focus here after START_CREATE
       className={`${STAGE_LAYOUT_CLASSES.floatBar} touch-manipulation`}
     >
-      {viewControlRef && <p className={UI_CLASSES.caption}>{COPY.gestureHint}</p>}
+      <div className="flex items-start gap-2">
+        {viewControlRef && <p className={`${UI_CLASSES.caption} min-w-0 flex-1`}>{COPY.gestureHint}</p>}
+        <button
+          type="button"
+          aria-label={eventCopy.create.cancel}
+          data-testid="customizer-close"
+          onClick={onCancel}
+          className={`${UI_CLASSES.iconButton} ml-auto`}
+        >
+          <span aria-hidden="true">{UI_GLYPHS.close}</span>
+        </button>
+      </div>
       {eventId === "loy_krathong" && (
         <div role="group" aria-label={COPY.designGroupLabel} className="flex justify-center gap-2">
           {KRATHONG_DESIGN_IDS.map((id) => {

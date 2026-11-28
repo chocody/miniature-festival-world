@@ -4,7 +4,7 @@ import { E2E_CREATION_ID, E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation } from
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
 import { seedSecondOwnEntry } from "./helpers/hud";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import {
   E2E_KRATHONG_MARK_NAME,
@@ -63,7 +63,7 @@ async function routeZones(
 }
 
 async function walkToWorld(page: Page) {
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_OWNER_TOKEN_STORAGE_KEY, mockCreateCreation, type MockCreateOptions } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
@@ -31,7 +31,7 @@ async function forceHighTier(page: Page) {
 
 async function toRitual(page: Page, startUrl = "/") {
   await page.goto(startUrl);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "RITUAL_RELEASE");

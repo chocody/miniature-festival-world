@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT, E2E_WATER_TAP_OFFSET_PX } from "./fixtures/stageFixtures";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
@@ -37,7 +37,7 @@ async function openWorld(page: Page, memory: number, cores: number, startUrl = "
     { m: memory, c: cores },
   );
   await page.goto(startUrl);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

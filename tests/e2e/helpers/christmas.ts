@@ -9,7 +9,7 @@ import {
   makeChristmasDirectoryBody,
 } from "../fixtures/christmasFixtures";
 
-/** Checks only the attribute: the Christmas flow is not built yet, so waitForActiveEvent (CUSTOMIZE_OBJECT) cannot be used. */
+/** Checks only the attribute (MFW-154: the flow lands in SHARED_WORLD_EXPLORE; CUSTOMIZE_OBJECT is no longer the first state). */
 export async function waitForChristmasEvent(page: Page): Promise<void> {
   await expect(page.locator("[data-flow-state]")).toHaveAttribute("data-active-event", CHRISTMAS_E2E_EVENT_ID);
 }

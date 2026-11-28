@@ -1,3 +1,4 @@
+import type { EventCreateCopy } from "@/config/events/eventCopy.config";
 import type { FlowState } from "@/core/flow";
 
 export interface FlowStepCopy {
@@ -15,6 +16,12 @@ export const FLOW_STEP_COPY: Readonly<Record<FlowState, FlowStepCopy>> = Object.
     hint: "ลากเพื่อเลื่อนหรือหมุนแม่น้ำ แตะสั้นที่น้ำ โคมไฟ หรือกระทงเพื่อเลือก",
   }),
 });
+
+/**
+ * Loy Krathong create entry (MFW-154): `start` is the landing button that opens the customizer (owner, 2026-11-28);
+ * `cancel` is the customizer close control's aria-label — DRAFT Thai copy (owner review).
+ */
+export const CREATE_ENTRY_COPY: EventCreateCopy = Object.freeze({ start: "ลอยกระทง", cancel: "กลับไปดูแม่น้ำ" });
 
 /** Document title and description (replaces "Create Next App"). DRAFT Thai copy (owner review). */
 export const APP_METADATA_COPY = Object.freeze({

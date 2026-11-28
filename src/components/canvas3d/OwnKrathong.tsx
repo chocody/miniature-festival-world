@@ -219,6 +219,7 @@ export function OwnKrathong({
         name={SCENE_OBJECT_NAMES.krathong}
         rotation={[0, objectRotation, 0]}
         onClick={(event) => {
+          if (hidden) return; // MFW-154: the invisible krathong never takes a tap (the ground / water under it gets it)
           event.stopPropagation();
           onSelected();
         }}

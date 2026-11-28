@@ -8,7 +8,7 @@ describe("ownKrathongPoseKind", () => {
   it.each([
     [{ mode: "CUSTOMIZE" }, "ORIGIN"],
     [{ mode: null }, "ORIGIN"],
-    [{ mode: "WORLD_EXPLORE" }, "ORIGIN"],
+    [{ mode: "WORLD_EXPLORE" }, "HIDDEN"], // OK1 (MFW-154): no hero krathong on the landing view
     [{ mode: "WORLD_EXPLORE", phase: "RELEASED", hasSaved: true }, "RIVER"],
     [{ mode: "WORLD_EXPLORE", phase: "RELEASED", hasSaved: true, ownZoneVisible: false }, "HIDDEN"],
     [{}, "PIER"],

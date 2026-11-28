@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_MAX_SHADER_PROGRAMS } from "./fixtures/perfAudit";
 import { E2E_PINNED_TIER_URL, installSceneProbe, readProgramCount, readWaterNormals } from "./helpers/sceneProbe";
@@ -44,7 +44,7 @@ for (const { tier, deviceMemory, hardwareConcurrency } of TIERS) {
     await page.goto(tier === "HIGH" ? E2E_PINNED_TIER_URL : "/");
     await expect(root(page)).toHaveAttribute("data-quality-tier", tier);
 
-    await waitForActiveEvent(page);
+    await openCustomizer(page);
     await expect(page.locator("canvas")).toHaveCount(1);
 
     await page.getByRole("button", { name: "ถัดไป" }).click();

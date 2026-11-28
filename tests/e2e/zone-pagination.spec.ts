@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
 import { completeWishStep } from "./helpers/wishStep";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_WORLD_ROTATE_BUTTON_NAME } from "./helpers/cameraProbe";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
@@ -34,7 +34,7 @@ async function routeZones(page: Page, zoneCount: number, sizes: Record<number, n
 }
 
 async function walkToWorld(page: Page) {
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
@@ -90,7 +90,7 @@ test("3D smoke: the visible zone's krathongs reach the scene", async ({ page }) 
   await expect(page.locator("canvas")).toHaveCount(1);
   // MFW-57 / MFW-74 / MFW-85: the HUD column holds the rotate button (open question 34), Find My, the day/night toggle and the
   // sky-launch switch; every other button stays absent.
-  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(3); // Find My + day/night toggle + sky-launch switch (MFW-85)
+  await expect(page.getByRole("button", { name: NOT_WORLD_ROTATE_BUTTON })).toHaveCount(4); // Find My + day/night toggle + sky-launch switch (MFW-85) + the start button, MFW-154
   await expect(page.getByTestId("sky-launch-switch")).toBeVisible();
   await expect(page.getByRole("button", { name: "ค้นหาของฉัน" })).toBeVisible();
 });

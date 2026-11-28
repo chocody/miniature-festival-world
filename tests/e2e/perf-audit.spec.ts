@@ -15,7 +15,7 @@ import {
 } from "./fixtures/perfAudit";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL, waitForKrathongModels } from "./helpers/sceneProbe";
 import { expectWorldAfterRelease } from "./helpers/release";
 
@@ -124,7 +124,7 @@ async function readFps(page: Page): Promise<number | null> {
 /** Walks CUSTOMIZE → wish → release; returns the CUSTOMIZE probe sample (MFW-48: the idle customizer with the flame flicker). */
 async function walkToWorld(page: Page, pinned = false): Promise<{ customize: ProbeSample; fpsCustomize: number | null }> {
   await page.goto("/" + E2E_PERF_PROBE_QUERY + (pinned ? `&${PIN_TIER_PARAM}` : ""));
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator(PROBE)).toBeVisible();
   await waitForKrathongModels(page); // MFW-65: the hero design file is in before the first counter sample
   const customize = await sample(page);

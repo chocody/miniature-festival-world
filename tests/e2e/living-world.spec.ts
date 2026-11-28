@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { E2E_PINNED_TIER_URL, installSceneProbe } from "./helpers/sceneProbe";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_LIVING_WORLD as L } from "./fixtures/livingWorld";
@@ -72,7 +72,7 @@ async function open(page: Page, memory: number, cores: number) {
     { m: memory, c: cores },
   );
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   await expect.poll(() => readInstances(page, L.headsName).then((r) => r?.count ?? -1)).toBeGreaterThan(0);
   return { pageErrors, consoleErrors };

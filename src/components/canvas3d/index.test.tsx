@@ -25,7 +25,8 @@ import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
 import { INITIAL_RITUAL_STATE, buildReleaseCoord, type RitualState, type SavedRelease } from "@/core/ritual";
 import { LOY_KRATHONG_PIER_RELEASE_SPOT } from "@/config/events/loyKrathong.river.config";
-import { createRitualDropMapper } from "./ritualSite";
+import { createRitualDropMapper, getLoyKrathongRitualSite } from "./ritualSite";
+import { createRigAt, pierFramingPose } from "./landingFraming";
 import { INITIAL_WORLD_STATE, useWorldStore } from "@/store/useWorldStore";
 import type { PublicCreation } from "@/services/api/creationTypes";
 import {
@@ -48,7 +49,7 @@ import {
   twistCameraRig,
   type CameraRigState,
 } from "@/core/camera";
-import { SCENE_CAMERA_ZOOM } from "@/config/camera.config";
+import { DEFAULT_VIEW_YAW_RAD, SCENE_CAMERA_ZOOM } from "@/config/camera.config";
 import { serializeKrathongAppearance } from "@/core/customization";
 import { RIVER_DRIFT_SPEED_FACTOR, RIVER_KRATHONG_SCALE } from "@/config/riverFlow.config";
 import { INSPECT_POPUP_COPY, WISH_BUBBLE_TIMING } from "@/config/inspect.config";
@@ -557,6 +558,7 @@ describe("scene pointer flow (stub R3F context)", () => {
 
   it("only WORLD_EXPLORE taps select a target; lamp and krathong fly the camera, water does not (MFW-69)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() }); // MFW-154: the own krathong is on the river
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     fireEvent.click(waterMesh(container));
     expect(viewport()).toHaveAttribute("data-selected-target", "water");
@@ -2195,6 +2197,7 @@ describe("natural look, no rings (MFW-67)", () => {
 
   it("no ring and no basic material on any selection (MFW-67)", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() }); // MFW-154: the own krathong is on the river
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     for (const [hit, target] of [
       [waterMesh, "water"],
@@ -2210,6 +2213,7 @@ describe("natural look, no rings (MFW-67)", () => {
 
   it("tapping the own krathong marks it", () => {
     useDeviceStore.getState().setQualityTier("HIGH");
+    setRitual({ phase: "RELEASED", attempt: 1, saved: savedRelease() }); // MFW-154: the own krathong is on the river
     const { container } = render(<SceneViewport mode="WORLD_EXPLORE" />);
     expect(ownRenders.last!.marked).toBe(false);
     fireEvent.click(krathongMesh(container));
@@ -2443,5 +2447,65 @@ describe("endless river (MFW-58)", () => {
     const glow = poolManagers.at(-1)!.glow;
     const lit = Array.from({ length: glow.capacity }, (_, i) => glow.entryAt(i)).find((e) => e.active)!;
     expect(lit.state).toEqual({ lampIndex: 3, stretchIndex: 1 });
+  });
+});
+
+describe("landing framing and the customizer hand-over (MFW-154)", () => {
+  const cameraFor = (rig: CameraRigState) => {
+    const camera = new OrthographicCamera();
+    applyCameraRigPose(rig, camera);
+    return camera;
+  };
+  const expectCameraAt = (rig: CameraRigState) => {
+    const want = cameraFor(rig).position;
+    const got = r3f.camera!.position;
+    expect(got.x).toBeCloseTo(want.x, 9);
+    expect(got.y).toBeCloseTo(want.y, 9);
+    expect(got.z).toBeCloseTo(want.z, 9);
+  };
+  beforeEach(() => {
+    useDeviceStore.getState().setQualityTier("HIGH");
+  });
+
+  it("SV1 the landing starts on the pier framing with no flight and no hero krathong", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" startFramedOnPier />);
+    expect(r3f.flightStarts).toHaveLength(0);
+    // Stretch 0 sits at offset 0.
+    expectCameraAt(createRigAt(pierFramingPose(getLoyKrathongRitualSite().tip, 0, 0)));
+    expect(viewport()).toHaveAttribute("data-own-krathong-pose", "HIDDEN");
+  });
+
+  it("SV2 without the prop the WORLD_EXPLORE camera keeps the origin rig", () => {
+    render(<SceneViewport mode="WORLD_EXPLORE" />);
+    expectCameraAt(createCameraRigState());
+  });
+
+  it.each([false, true])("SV3 the hand-over flies to the hero yaw and back (reduced motion: %s)", (reduced) => {
+    useDeviceStore.getState().setReducedMotion(reduced);
+    const { rerender } = render(<SceneViewport mode="WORLD_EXPLORE" startFramedOnPier />);
+    act(() => useUIStore.getState().requestViewRotate());
+    const afterRotate = r3f.flightStarts.length;
+    expect(afterRotate).toBe(1);
+    expect((r3f.flightStarts[0].to as { yawRad: number }).yawRad).not.toBe(DEFAULT_VIEW_YAW_RAD);
+    rerender(<SceneViewport mode="CUSTOMIZE" startFramedOnPier={false} />);
+    expect(r3f.flightStarts).toHaveLength(afterRotate + 1);
+    expect((r3f.flightStarts.at(-1)!.to as { yawRad: number }).yawRad).toBe(DEFAULT_VIEW_YAW_RAD);
+    expect(r3f.flightStarts.at(-1)!.immediate).toBe(reduced);
+    rerender(<SceneViewport mode="WORLD_EXPLORE" startFramedOnPier />);
+    expect(r3f.flightStarts).toHaveLength(afterRotate + 2);
+    expect((r3f.flightStarts.at(-1)!.to as { yawRad: number }).yawRad).toBe(0);
+    expect(r3f.flightStarts.at(-1)!.immediate).toBe(reduced);
+  });
+
+  it.each(["CUSTOMIZE", "WORLD_EXPLORE"] as const)("SV4 a fresh %s mount records no flight", (mode) => {
+    render(<SceneViewport mode={mode} />);
+    expect(r3f.flightStarts).toHaveLength(0);
+  });
+
+  it("SV5 the hidden own krathong takes no tap on the landing", () => {
+    const { container } = render(<SceneViewport mode="WORLD_EXPLORE" startFramedOnPier />);
+    fireEvent.click(krathongMesh(container));
+    expect(viewport()).not.toHaveAttribute("data-selected-target");
+    expect(r3f.flightStarts).toHaveLength(0);
   });
 });

@@ -4,7 +4,7 @@ import { E2E_DESIGN_FULL_URL, E2E_DESIGN_ROUTE } from "./fixtures/krathongModels
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import {
   E2E_DESIGN_BODY_NAME,
   E2E_DESIGN_BUCKET_MESH,
@@ -56,7 +56,7 @@ test("KE1 CUSTOMIZE: the hero loads the design file and draws the design body", 
   await installSceneProbe(page);
   const response = page.waitForResponse((r) => new URL(r.url()).pathname === E2E_DESIGN_FULL_URL);
   await page.goto("/");
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
   expect((await response).status()).toBe(200);
   await waitForKrathongModels(page);
@@ -81,7 +81,7 @@ test.describe("LOW", () => {
     await mockCreateCreation(page, { zoneId: 2 });
     await installSceneProbe(page);
     await page.goto("/");
-    await waitForActiveEvent(page);
+    await openCustomizer(page);
     await page.getByRole("button", { name: "ถัดไป" }).click();
     await completeWishStep(page);
     await page.getByRole("button", { name: "ปล่อยกระทง" }).click();
@@ -105,7 +105,7 @@ test("KE3: when the files cannot load, the procedural krathong stays", async ({ 
   await page.route(E2E_DESIGN_ROUTE, (route) => route.abort());
   await installSceneProbe(page);
   await page.goto("/");
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await waitForKrathongModels(page, "failed");
   await expect.poll(() => sceneHasObject(page, "candle")).toBe(true);
   expect(await sceneHasObject(page, E2E_DESIGN_BODY_NAME)).toBe(false);

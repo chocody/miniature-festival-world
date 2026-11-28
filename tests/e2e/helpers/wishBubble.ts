@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { mockCreateCreation } from "../fixtures/ritualRoutes";
 import { E2E_EVENT_ID, e2eItemId, makeZoneItem } from "../fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./activeEvent";
+import { openCustomizer } from "./activeEvent";
 import { E2E_PINNED_TIER_URL, E2E_RIVER_HIT_PREFIX, installSceneProbe, waitForCameraRest } from "./sceneProbe";
 import { completeWishStep } from "./wishStep";
 import { expectWorldAfterRelease } from "./release";
@@ -72,7 +72,7 @@ export async function walkToWorldLow(page: Page, preset?: "DAY" | "NIGHT"): Prom
   }
   await installSceneProbe(page);
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

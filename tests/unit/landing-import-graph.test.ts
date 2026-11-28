@@ -70,5 +70,6 @@ describe("landing import graph (MFW-44)", () => {
     expect(seen.has(path.join(ROOT, "src/core/ritual/index.ts"))).toBe(true);
     expect(seen.has(path.join(ROOT, "src/components/ui/MyCreationsDrawer.tsx"))).toBe(true);
     expect(seen.has(path.join(ROOT, "src/components/ui/StageLayout.tsx"))).toBe(true);
+    expect(seen.has(path.join(ROOT, "src/components/ui/StartCreateButton.tsx"))).toBe(true); // MFW-154 landing button
   });
 });

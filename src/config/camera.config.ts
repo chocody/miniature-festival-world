@@ -7,6 +7,9 @@
  */
 export const CAMERA_FLIGHT_OFFSET = [9, 11, 14] as const;
 
+/** Yaw of the landing view, the post-release view and the customizer hero view (MFW-154); a hand-over into the customizer flies back to it. */
+export const DEFAULT_VIEW_YAW_RAD = 0;
+
 /** Smooth, interruptible camera transition tuned for short scene navigation. */
 export const CAMERA_FLIGHT_SPRING_CONFIG = Object.freeze({ mass: 1, tension: 170, friction: 26 });
 

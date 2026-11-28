@@ -4,7 +4,7 @@ import { INSPECT_POPUP_COPY } from "@/config/inspect.config";
 import { MY_CREATIONS_COPY } from "@/config/myCreations.config";
 import { OWNER_SWITCH_COPY, OWNER_WISH_COPY } from "@/config/ownerWish.config";
 import { RITUAL_COPY } from "@/config/ritual.config";
-import { FLOW_STEP_COPY } from "@/config/ui.config";
+import { CREATE_ENTRY_COPY, FLOW_STEP_COPY } from "@/config/ui.config";
 import { WISH_COPY } from "@/config/wish.config";
 import { ZONE_NAV_COPY } from "@/config/zoneNav.config";
 import type { EventCopy } from "./eventCopy.config";
@@ -37,4 +37,5 @@ export const LOY_KRATHONG_COPY: EventCopy = Object.freeze({
   sceneTapHint: SCENE_TAP_HINT_COPY.scene3d,
   zoneNav: Object.freeze({ ...ZONE_NAV_COPY, vertical: null }),
   findMyIcon: "krathong",
+  create: CREATE_ENTRY_COPY,
 });

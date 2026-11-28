@@ -1,7 +1,6 @@
 "use client";
 
 import type { FestivalEventId } from "@/config/events";
-import type { FlowEvent, FlowState } from "@/core/flow";
 import { getInteractionMode, type CustomizeViewControl } from "@/core/interaction";
 import { useDeviceStore } from "@/store/useDeviceStore";
 import { useUIStore } from "@/store/useUIStore";
@@ -20,6 +19,7 @@ import { RitualReleasePanel } from "./RitualReleasePanel";
 import { OverlaySlot, STAGE_LAYOUT_CLASSES } from "./StageLayout";
 import { WishModal } from "./WishModal";
 import { SkyLaunchSwitch } from "./SkyLaunchSwitch";
+import { StartCreateButton } from "./StartCreateButton";
 import { WorldRotateButton } from "./WorldRotateButton";
 import { ZoneNavigator } from "./ZoneNavigator";
 
@@ -27,11 +27,6 @@ import { ZoneNavigator } from "./ZoneNavigator";
 const SceneViewport = lazy(() =>
   import("@/components/canvas3d").then((m) => ({ default: m.SceneViewport })),
 );
-
-/** Event that advances each placeholder step; the terminal step has none. */
-const NEXT_EVENT: Partial<Record<FlowState, FlowEvent>> = {
-  CUSTOMIZE_OBJECT: { type: "FINISH_CUSTOMIZE" },
-};
 
 /** Renders the current step of the user flow from useUIStore. */
 export interface FlowRootProps {
@@ -52,8 +47,8 @@ export function FlowRoot({ eventId }: FlowRootProps) {
   const viewControlRef = useRef<CustomizeViewControl | null>(null);
   const webglAvailable = useDeviceStore((s) => s.webglAvailable);
   const show3D = profiled && webglAvailable;
-  const noScene = profiled && !webglAvailable; // MFW-71: the stage shows a notice and the overlays stay away
-  const nextEvent = NEXT_EVENT[flowState];
+  // MFW-71: the stage shows a notice; MFW-154: the flow overlays (start button, customizer, wish, ritual) still work over it.
+  const noScene = profiled && !webglAvailable;
   const interactionMode = getInteractionMode(flowState);
 
   // Binds the server-resolved event to the session (MFW-53); declared first so later effects see it.
@@ -67,8 +62,10 @@ export function FlowRoot({ eventId }: FlowRootProps) {
     if (flowState === "RITUAL_RELEASE" && ritualPhase === "RELEASED") dispatch({ type: "FINISH_RITUAL" });
   }, [flowState, ritualPhase, dispatch]);
 
-  // The world loads once when the ritual starts and is not re-entered on FINISH_RITUAL.
-  const inWorld = flowState === "RITUAL_RELEASE" || flowState === "SHARED_WORLD_EXPLORE";
+  // MFW-154: the world loads on landing and stays loaded while customizing (the hero view keeps the stretch the visitor
+  // was on); it is left in WRITE_WISH (the scene is unmounted there) so the ritual enters a fresh world exactly as before,
+  // and it is not re-entered on FINISH_RITUAL.
+  const inWorld = flowState !== "WRITE_WISH";
   useEffect(() => {
     if (!inWorld) return;
     const pagination = getZonePagination();
@@ -76,7 +73,26 @@ export function FlowRoot({ eventId }: FlowRootProps) {
     return () => pagination.leaveWorld();
   }, [inWorld, eventId]);
 
-  const overlays = (
+  // MFW-154 focus management: the customizer panel takes focus after START_CREATE, the start button after CANCEL_CREATE.
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const pendingFocusRef = useRef<"customizer" | "start" | null>(null);
+  useEffect(() => {
+    const target = pendingFocusRef.current;
+    if (target === null) return;
+    pendingFocusRef.current = null;
+    const selector = target === "customizer" ? '[data-testid="customizer-panel"]' : '[data-testid="start-create"]';
+    overlayRef.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+  }, [flowState]);
+  const startCreate = () => {
+    pendingFocusRef.current = "customizer";
+    dispatch({ type: "START_CREATE" });
+  };
+  const cancelCreate = () => {
+    pendingFocusRef.current = "start";
+    dispatch({ type: "CANCEL_CREATE" });
+  };
+
+  const hud = (
     <>
       {/* HUD column top-left (MFW-74): Find My, day/night toggle, rotate, sky launch switch (3D world view only). */}
       {interactionMode !== null && (
@@ -92,27 +108,35 @@ export function FlowRoot({ eventId }: FlowRootProps) {
           <ZoneNavigator />
         </OverlaySlot>
       )}
-      {flowState === "CUSTOMIZE_OBJECT" ? (
-        <CustomizerPanel
-          eventId={eventId}
-          onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
-          viewControlRef={show3D ? viewControlRef : null}
-        />
-      ) : flowState === "WRITE_WISH" ? (
-        <OverlaySlot slot="dialog">
-          <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
-        </OverlaySlot>
-      ) : flowState === "RITUAL_RELEASE" ? (
-        <OverlaySlot slot="panel">
-          <RitualReleasePanel animateInScene={show3D} />
-        </OverlaySlot>
-      ) : (
-        <OverlaySlot slot="panel">
-          <FlowStepPlaceholder step={flowState} onNext={nextEvent ? () => dispatch(nextEvent) : undefined} />
-        </OverlaySlot>
-      )}
     </>
   );
+
+  const flowOverlays =
+    flowState === "CUSTOMIZE_OBJECT" ? (
+      <CustomizerPanel
+        eventId={eventId}
+        onDone={() => dispatch({ type: "FINISH_CUSTOMIZE" })}
+        onCancel={cancelCreate}
+        viewControlRef={show3D ? viewControlRef : null}
+      />
+    ) : flowState === "WRITE_WISH" ? (
+      <OverlaySlot slot="dialog">
+        <WishModal onSubmitted={() => dispatch({ type: "SUBMIT_WISH" })} />
+      </OverlaySlot>
+    ) : flowState === "RITUAL_RELEASE" ? (
+      <OverlaySlot slot="panel">
+        <RitualReleasePanel animateInScene={show3D} />
+      </OverlaySlot>
+    ) : (
+      <OverlaySlot slot="panel">
+        {/* MFW-154 landing: the world hint would be wrong without a scene, so no WebGL shows only the button. */}
+        {noScene ? (
+          <StartCreateButton onPress={startCreate} />
+        ) : (
+          <FlowStepPlaceholder step={flowState} action={<StartCreateButton onPress={startCreate} />} />
+        )}
+      </OverlaySlot>
+    );
 
   return (
     <EventCopyProvider eventId={eventId}>
@@ -134,6 +158,7 @@ export function FlowRoot({ eventId }: FlowRootProps) {
             <Suspense fallback={null}>
               <SceneViewport
                 mode={interactionMode}
+                startFramedOnPier={flowState === "SHARED_WORLD_EXPLORE"}
                 viewControlRef={viewControlRef}
                 onReleaseDrop={
                   interactionMode === "RITUAL_RELEASE"
@@ -145,8 +170,9 @@ export function FlowRoot({ eventId }: FlowRootProps) {
           )}
           {noScene && <NoWebglNotice />}
         </div>
-        <div data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
-          {profiled && !noScene && overlays}
+        <div ref={overlayRef} data-testid="overlay-layer" className={STAGE_LAYOUT_CLASSES.overlay}>
+          {/* Without WebGL the flow works over the notice; the HUD stays hidden (nothing to navigate). */}
+          {profiled && (noScene ? flowOverlays : <>{hud}{flowOverlays}</>)}
         </div>
       </div>
     </EventCopyProvider>

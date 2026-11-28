@@ -23,4 +23,14 @@ describe("FlowStepPlaceholder", () => {
     expect(screen.getByRole("heading", { name: c.title })).toBeInTheDocument();
     expect(screen.getByText(c.hint!)).toBeInTheDocument();
   });
+
+  it("FP1 the action shares the heading's header row (MFW-154)", () => {
+    render(<FlowStepPlaceholder step="SHARED_WORLD_EXPLORE" action={<button type="button">x</button>} />);
+    const heading = screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title });
+    expect(screen.getByRole("button", { name: "x" }).parentElement).toBe(heading.parentElement);
+    cleanup();
+    render(<FlowStepPlaceholder step="SHARED_WORLD_EXPLORE" />);
+    expect(screen.getByRole("heading", { name: FLOW_STEP_COPY.SHARED_WORLD_EXPLORE.title })).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 });

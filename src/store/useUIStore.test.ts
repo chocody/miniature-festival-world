@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { INITIAL_RITUAL_STATE, type RitualState } from "@/core/ritual";
 import { useUIStore } from "./useUIStore";
 
 beforeEach(() => {
@@ -6,17 +7,19 @@ beforeEach(() => {
 });
 
 describe("useUIStore", () => {
-  it("starts at CUSTOMIZE_OBJECT with no event", () => {
+  it("US1 starts in the shared world with no event (MFW-154)", () => {
     const s = useUIStore.getState();
-    expect(s.flowState).toBe("CUSTOMIZE_OBJECT");
+    expect(s.flowState).toBe("SHARED_WORLD_EXPLORE");
     expect(s.selectedEventId).toBeNull();
   });
 
   it("dispatch walks the whole chain", () => {
     const { dispatch, enterActiveEvent } = useUIStore.getState();
     enterActiveEvent("loy_krathong");
-    expect(useUIStore.getState().flowState).toBe("CUSTOMIZE_OBJECT");
+    expect(useUIStore.getState().flowState).toBe("SHARED_WORLD_EXPLORE");
     expect(useUIStore.getState().selectedEventId).toBe("loy_krathong");
+    dispatch({ type: "START_CREATE" });
+    expect(useUIStore.getState().flowState).toBe("CUSTOMIZE_OBJECT");
     dispatch({ type: "FINISH_CUSTOMIZE" });
     expect(useUIStore.getState().flowState).toBe("WRITE_WISH");
     dispatch({ type: "SUBMIT_WISH" });
@@ -59,6 +62,7 @@ describe("useUIStore ritual", () => {
   it("REVISE_WISH returns to WRITE_WISH and resets the ritual but keeps attempt", () => {
     const { dispatch, dispatchRitual, enterActiveEvent } = useUIStore.getState();
     enterActiveEvent("loy_krathong");
+    dispatch({ type: "START_CREATE" });
     dispatch({ type: "FINISH_CUSTOMIZE" });
     dispatch({ type: "SUBMIT_WISH" });
     dispatchRitual({ type: "RELEASE_STARTED", attempt: 1, origin: { kind: "pier" } });
@@ -73,6 +77,44 @@ describe("useUIStore ritual", () => {
     const before = useUIStore.getState();
     before.dispatch({ type: "REVISE_WISH" });
     expect(useUIStore.getState()).toBe(before);
+  });
+
+  it("US2 SUBMIT_WISH after a released ritual starts a fresh ritual and keeps attempt", () => {
+    const released: RitualState = {
+      ...INITIAL_RITUAL_STATE,
+      phase: "RELEASED",
+      attempt: 1,
+      touchedDown: true,
+      saved: {
+        id: "own-creation",
+        zoneId: 1,
+        coord: { mode: "SPLINE_PATH", laneId: 1, spawnProgress: 0.5, speedFactor: 1, lateralOffset: 0 },
+        createdAtMs: 1_700_000_000_000,
+        serverClockOffsetMs: 0,
+        movedByServer: false,
+      },
+    };
+    useUIStore.setState({ flowState: "WRITE_WISH", selectedEventId: "loy_krathong", ritual: released });
+    useUIStore.getState().dispatch({ type: "SUBMIT_WISH" });
+    const s = useUIStore.getState();
+    expect(s.flowState).toBe("RITUAL_RELEASE");
+    expect(s.ritual.phase).toBe("IDLE");
+    expect(s.ritual.attempt).toBe(1);
+    expect(s.ritual.saved).toBeNull();
+  });
+
+  it("US3 the first SUBMIT_WISH and CANCEL_CREATE keep the ritual reference", () => {
+    const { dispatch, enterActiveEvent } = useUIStore.getState();
+    enterActiveEvent("loy_krathong");
+    dispatch({ type: "START_CREATE" });
+    dispatch({ type: "CANCEL_CREATE" });
+    expect(useUIStore.getState().flowState).toBe("SHARED_WORLD_EXPLORE");
+    expect(useUIStore.getState().ritual).toBe(INITIAL_RITUAL_STATE);
+    dispatch({ type: "START_CREATE" });
+    dispatch({ type: "FINISH_CUSTOMIZE" });
+    dispatch({ type: "SUBMIT_WISH" });
+    expect(useUIStore.getState().flowState).toBe("RITUAL_RELEASE");
+    expect(useUIStore.getState().ritual).toBe(INITIAL_RITUAL_STATE);
   });
 
   it("U1 requestViewRotate bumps viewRotateRequestId 0 → 1 → 2", () => {

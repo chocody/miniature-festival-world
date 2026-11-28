@@ -6,7 +6,7 @@ import {
   mockMixedDesignZone,
 } from "./fixtures/krathongModels";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { readHeroDesigns } from "./helpers/designProbe";
 import { E2E_MIN_TOUCH_TARGET_PX, E2E_PINNED_TIER_URL, installSceneProbe, sceneObjectVisible, waitForKrathongModels } from "./helpers/sceneProbe";
 import { completeWishStep } from "./helpers/wishStep";
@@ -47,7 +47,7 @@ test.describe("360 px", () => {
   test("DP1 360 px: five thumbnails, no tabs, no long text", async ({ page }) => {
     await forceHigh(page);
     await page.goto(E2E_PINNED_TIER_URL);
-    await waitForActiveEvent(page);
+    await openCustomizer(page);
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
     const group = page.getByRole("group", { name: E2E_DESIGN_GROUP_LABEL });
     const tiles = group.getByRole("button");
@@ -79,7 +79,7 @@ test.describe("390 px", () => {
     const { requests } = await mockCreateCreation(page, { zoneId: 1 });
     await installSceneProbe(page);
     await page.goto(E2E_PINNED_TIER_URL);
-    await waitForActiveEvent(page);
+    await openCustomizer(page);
     await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
 
     // 1. Tap lotus: the tile is pressed, its full file loads and the hero shows it.

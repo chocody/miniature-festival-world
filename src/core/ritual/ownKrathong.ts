@@ -15,7 +15,7 @@ export interface OwnKrathongPoseInput {
 export function ownKrathongPoseKind(input: OwnKrathongPoseInput): OwnKrathongPoseKind {
   if (input.mode === null || input.mode === "CUSTOMIZE") return "ORIGIN";
   if (input.phase === "RELEASED" && input.hasSaved) return input.ownZoneVisible ? "RIVER" : "HIDDEN";
-  if (input.mode === "WORLD_EXPLORE") return "ORIGIN"; // legacy look-dev when no release happened, e.g. tests
+  if (input.mode === "WORLD_EXPLORE") return "HIDDEN"; // MFW-154: no hero krathong on the landing view
   if (input.phase === "RELEASING") return "RELEASING";
   if (input.dragging) return "DRAG";
   return "PIER";

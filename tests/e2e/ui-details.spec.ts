@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneBody } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { lowTier } from "./helpers/ownKrathongPopup";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
 import { WISH_SUBMIT_LABEL, WISH_SWITCH_LABEL, WISH_TEXT_LABEL } from "./helpers/wishStep";
@@ -20,7 +20,7 @@ async function open(page: Page) {
   await lowTier(page);
   await mockCreateCreation(page, { zoneId: 1 });
   await page.goto(E2E_PINNED_TIER_URL);
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(root(page)).toHaveAttribute("data-flow-state", "CUSTOMIZE_OBJECT");
 }
 

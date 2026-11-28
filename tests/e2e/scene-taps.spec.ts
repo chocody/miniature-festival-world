@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { E2E_EVENT_ID, makeZoneItem } from "./fixtures/zoneFixtures";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { completeWishStep } from "./helpers/wishStep";
 import { expectTapHintUnoccluded } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
@@ -86,7 +86,7 @@ async function setTier(page: Page, memory: number, cores: number) {
 
 async function walkToWorld(page: Page) {
   await page.goto(E2E_PINNED_TIER_URL); // per-tier taps must not race the runner's FPS fallback (SwiftShader on CI)
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await page.getByRole("button", { name: "ถัดไป" }).click();
   await completeWishStep(page);
   await page.getByRole("button", { name: "ปล่อยกระทง" }).click();

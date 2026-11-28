@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockCreateCreation } from "./fixtures/ritualRoutes";
 import { completeWishStep } from "./helpers/wishStep";
-import { waitForActiveEvent } from "./helpers/activeEvent";
+import { openCustomizer } from "./helpers/activeEvent";
 import { sceneZoomScale } from "./helpers/stage";
 import { E2E_SWIFTSHADER_3D_VIEWPORT } from "./fixtures/stageFixtures";
 import { E2E_PINNED_TIER_URL } from "./helpers/sceneProbe";
@@ -48,7 +48,7 @@ test("3D tier: canvas only in canvas modes; ritual taps never select", async ({ 
   });
   await page.goto(E2E_PINNED_TIER_URL); // keep the forced HIGH tier on slow SwiftShader runners (no runtime step-down)
   await expect(root(page)).toHaveAttribute("data-quality-tier", "HIGH");
-  await waitForActiveEvent(page);
+  await openCustomizer(page);
   await expect(page.locator("canvas")).toHaveCount(1);
   expect((await scriptBodies()).some((body) => body.includes(WEBGL_CHUNK_MARKER))).toBe(true);
 
