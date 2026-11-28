@@ -1838,6 +1838,23 @@
           "blockedBy": [
             "16.15"
           ]
+        },
+        {
+          "id": "16.39",
+          "summary": "Festival chooser on preview and staging deployments",
+          "goal": "Owner (2026-11-28): see the Christmas work before launch on preview links — \"ตอนนี้มี option ให้เลือกเทศกาลได้แต่ตอนเปิดใช้งานจริง ต้องเซ็ตเป็นแค่คริสมาส\"; chooser only outside production (owner choice: เฉพาะ preview/staging).",
+          "ac": [
+            "Outside production (VERCEL_ENV is not production, incl. local dev and e2e) the server resolves `?event=<id>` per request in page.tsx (precedence: query > MFW_ACTIVE_EVENT_OVERRIDE > date rules; unknown or disabled ids fail closed to the calm no-event screen) and the page shows a small DRAFT festival chooser listing the events that have a scene (Loy Krathong, Christmas; New Year joins when 17.2 enables it) which reloads with `?event=`; in production the query is ignored, no chooser is rendered or shipped in the production client bundle path, and production keeps the date rules (Christmas only 20–26 Dec 2026 after 16.30); never NEXT_PUBLIC",
+            "Unit and boundary tests in the active-event-boundary pattern: production ignores the query and renders no chooser; preview honours it; unknown ids fail closed; the chooser is keyboard-accessible with ≥ 44 px targets and does not overlap the HUD at 360×640 / 390×844 / 1440×900; e2e in the Loy project opens `?event=christmas` and sees data-active-event=\"christmas\"; docs/ci.md or docs/cloud.md says how the owner opens a preview link per festival"
+          ],
+          "labels": [
+            "christmas",
+            "infra",
+            "ui"
+          ],
+          "blockedBy": [
+            "16.2"
+          ]
         }
       ]
     },
