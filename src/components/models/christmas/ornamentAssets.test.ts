@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { ORNAMENT_DESIGN_IDS, type OrnamentDesignId } from "@/config/ornamentDesigns.config";
 import { ORNAMENT_MODEL_RADIUS } from "@/config/ornamentModels.config";
 import { parseOrnamentDesignGlb, type OrnamentDesignMeshData } from "@/core/customization/ornamentDesignGlb";
 import { writeGlb } from "../../../../scripts/krathong-models-lib.mjs";
 import { createOrnamentAssets } from "./ornamentAssets";
 import type { OrnamentDesignLoad } from "./ornamentDesignLoader";
+
+/** A design id with no glb source. */
+const NO_SOURCE = "nope_01" as OrnamentDesignId;
 
 function designData(): OrnamentDesignMeshData {
   const bytes = writeGlb(
@@ -66,7 +70,7 @@ describe("ornament assets (MFW-101)", () => {
     assets.requestDesign("star_01", "medium");
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith("star_01", "medium");
-    assets.requestDesign("bell_01", "medium");
+    assets.requestDesign(NO_SOURCE, "medium");
     expect(load).toHaveBeenCalledTimes(1);
     assets.dispose();
   });
@@ -79,7 +83,7 @@ describe("ornament assets (MFW-101)", () => {
     expect(Math.abs((sphere.boundingSphere?.radius ?? NaN) - ORNAMENT_MODEL_RADIUS)).toBeLessThanOrEqual(1e-6);
     const star = assets.fallbackMaterial("star_01");
     expect(star.color.getHexString()).toBe("d1b271");
-    expect(assets.fallbackMaterial("bell_01")).toBe(assets.fallbackMaterial("ball_01"));
+    expect(assets.fallbackMaterial(NO_SOURCE)).toBe(assets.fallbackMaterial("ball_01"));
     expect(star.vertexColors).toBe(false);
     expect(star.roughness).toBe(1);
     expect(star.metalness).toBe(0);
@@ -95,7 +99,7 @@ describe("ornament assets (MFW-101)", () => {
     expect(m.metalness).toBe(0);
     const materials = assets.listMaterials();
     expect(materials).toContain(m);
-    for (const id of ["ball_01", "star_01", "bow_01", "bell_01"] as const) expect(materials).toContain(assets.fallbackMaterial(id));
+    for (const id of ORNAMENT_DESIGN_IDS) expect(materials).toContain(assets.fallbackMaterial(id));
     assets.dispose();
   });
 

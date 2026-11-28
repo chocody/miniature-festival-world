@@ -3,13 +3,13 @@
 //   node <script> [--design <id>] [--check]
 //
 // Reads <sourceDir>/<id>.<lod>.glb and writes <publicDir>/<id>.<lod>.glb for every design (or only <id>) and every LOD.
-// --check writes nothing and reports every committed output that differs from a fresh build.
+// A design may carry its own `lods` (e.g. props without a full LOD). --check writes nothing and reports every committed output that differs from a fresh build.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 /**
- * @template {{ id: string }} D
+ * @template {{ id: string, lods?: readonly string[] }} D
  * @param {{ name: string, script: string, designs: readonly D[], lods: readonly string[], sourceDir: string,
  *   publicDir: string, build: (sourceBytes: Uint8Array, design: D, lod: any) => Uint8Array, argv?: string[] }} pack
  * @returns {number} exit code: 0 ok · 1 differs (--check) · 2 usage / missing source
@@ -30,7 +30,7 @@ export function runModelPackCli({ name, script, designs, lods, sourceDir, public
   }
   let differs = 0;
   for (const design of selected) {
-    for (const lod of lods) {
+    for (const lod of design.lods ?? lods) {
       const source = join(sourceDir, `${design.id}.${lod}.glb`);
       if (!existsSync(source)) {
         process.stderr.write(`missing decimated source: ${source}\n`);
