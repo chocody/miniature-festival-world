@@ -34,9 +34,10 @@ function statement(name: string): string {
 }
 
 describe("MFW-62 wish visibility migration (static checks)", () => {
-  it("M1 is the last migration", () => {
+  it("M1 is followed only by the MFW-118 data-scope migration", () => {
     const names = readdirSync(DIR).filter((n) => n.endsWith(".sql")).sort();
-    expect(names[names.length - 1]).toBe(FILE);
+    expect(names.indexOf(FILE)).toBeGreaterThanOrEqual(0);
+    expect(names.slice(names.indexOf(FILE) + 1)).toEqual(["20261127000000_mfw118_data_scope.sql"]);
   });
 
   it("M2 creates no table, drops nothing, no definer, no replaced function, no star", () => {
