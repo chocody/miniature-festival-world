@@ -127,7 +127,7 @@ export function OwnKrathong({
   );
   const own = useMemo(
     () =>
-      ritual.saved
+      ritual.saved !== null && ritual.saved.coord.mode === "SPLINE_PATH"
         ? (prepareRiverItems(
             [{ id: ritual.saved.id, coord: ritual.saved.coord, createdAtMs: ritual.saved.createdAtMs }],
             lanes,

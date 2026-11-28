@@ -1,9 +1,10 @@
 import type { FestivalEventId } from "@/config/events/types";
 import { CREATE_CREATION_TIMEOUT_MS } from "@/config/ritual.config";
 import { ZONE_ID_MIN } from "@/config/world.config";
-import { isSplinePathCoordShape } from "@/core/ritual/releaseCoord";
+import { parsePersistableCoord } from "@/core/coordinates/validateCoord";
 import { parseModerationBlockedBody } from "@/services/moderation";
 import { CREATIONS_API_PATH } from "./apiPaths";
+import { coordModeForEvent } from "./creationCoordMode";
 import type { CreateCreationRequestBody } from "./createCreationTypes";
 import type { PublicCreation } from "./creationTypes";
 import { isPlainObject } from "./json";
@@ -38,7 +39,7 @@ function containsPrivateKey(value: unknown): boolean {
 
 const isIsoLike = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 
-/** Allowlist copy of the 201 `creation`, or null (invariant C defence in depth). Coord must be a SPLINE_PATH shape. */
+/** Allowlist copy of the 201 `creation`, or null (invariant C defence in depth). Coord must be a valid persistable coord of the event's mode. */
 export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId): PublicCreation | null {
   if (!isPlainObject(raw)) return null;
   const id = raw.id;
@@ -54,7 +55,10 @@ export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId):
   if (itemEvent !== eventId) return null;
   if (typeof zoneId !== "number" || !Number.isSafeInteger(zoneId) || zoneId < ZONE_ID_MIN) return null;
   if (!isPlainObject(appearance)) return null;
-  if (!isSplinePathCoordShape(coord)) return null;
+  const mode = coordModeForEvent(eventId);
+  if (mode === null) return null;
+  const parsedCoord = parsePersistableCoord(coord);
+  if (!parsedCoord.ok || parsedCoord.coord.mode !== mode) return null;
   if (publicWishText !== null && typeof publicWishText !== "string") return null;
   if (!isIsoLike(createdAt) || !isIsoLike(expiresAt)) return null;
   if (containsPrivateKey(appearance) || containsPrivateKey(coord)) return null;
@@ -65,7 +69,7 @@ export function toCreatedPublicCreation(raw: unknown, eventId: FestivalEventId):
     eventId,
     zoneId,
     appearance: appearance as PublicCreation["appearance"],
-    coord: { ...coord },
+    coord: parsedCoord.coord, // the parser's fresh allowlist copy
     publicWishText,
     createdAt,
     expiresAt,
