@@ -45,11 +45,14 @@ export const ORNAMENT_WORLD_SCALE = ORNAMENT_WORLD_RADIUS / ORNAMENT_MODEL_RADIU
 /** Where a design's geometry comes from. L17 adds a "procedural" kind. fallbackColor = the design's main (last-rule) colour. */
 export type OrnamentDesignSource = Readonly<{ kind: "glb"; fallbackColor: string }>;
 
-/** Design-source registry: designs without an entry (until 16.38) never fetch and show the fallback sphere. */
+/** Design-source registry (MFW-101 / MFW-124): all six designs have a glb; a design without an entry never fetches and shows the fallback sphere. */
 export const ORNAMENT_DESIGN_SOURCES: Readonly<Partial<Record<OrnamentDesignId, OrnamentDesignSource>>> = Object.freeze({
   ball_01: Object.freeze({ kind: "glb", fallbackColor: "#E0D4C4" }),
   star_01: Object.freeze({ kind: "glb", fallbackColor: "#D1B271" }),
   bow_01: Object.freeze({ kind: "glb", fallbackColor: "#CE927E" }),
+  bell_01: Object.freeze({ kind: "glb", fallbackColor: "#E5CF9A" }),
+  stocking_01: Object.freeze({ kind: "glb", fallbackColor: "#D69580" }),
+  gift_01: Object.freeze({ kind: "glb", fallbackColor: "#99A48F" }),
 });
 
 export function ornamentDesignSource(design: OrnamentDesignId): OrnamentDesignSource | null {
@@ -74,7 +77,7 @@ export const ORNAMENT_DESIGN_BODY_MATERIAL = KRATHONG_DESIGN_BODY_MATERIAL;
 /** Fallback sphere segments (lead decision): 2·width·(height−1) = 80 triangles, within the low guard (OC4). */
 export const ORNAMENT_FALLBACK_SPHERE_SEGMENTS = Object.freeze({ width: 8, height: 6 });
 
-/** Design picker thumbnails: static PNGs cropped from the MFW-101 DAY hero renders by scripts/christmas-model-shots.mjs. */
+/** Design picker thumbnails: static PNGs cropped from the MFW-101 / MFW-124 DAY hero renders by scripts/christmas-model-shots.mjs. */
 export const ORNAMENT_DESIGN_THUMBNAIL_PUBLIC_PATH = "/ui/ornament-designs";
 
 export function ornamentDesignThumbnailUrl(design: OrnamentDesignId): string {

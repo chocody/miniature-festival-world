@@ -1,7 +1,7 @@
-# Owner-supplied models (krathong MFW-65 / MFW-76, house MFW-66, ornaments MFW-101)
+# Owner-supplied models (krathong MFW-65 / MFW-76, house MFW-66, ornaments MFW-101, MFW-124)
 
 Sections 1–9: the krathong designs (MFW-65 / MFW-76, backlog 13.1 / 13.7). Section 10: the riverside house (MFW-66, backlog 13.2). Section 11: the
-design picker (MFW-78). Section 12: the Christmas ornaments (MFW-101, backlog 16.15).
+design picker (MFW-78). Section 12: the Christmas ornaments (MFW-101, backlog 16.15). Section 13: ornaments part 2 and props (MFW-124, backlog 16.38).
 
 The krathong is drawn from owner-supplied 3D models instead of the procedural parts. Each model is decimated **once,
 offline** into three levels of detail and coloured by a committed, deterministic Node script with pastel vertex colours by
@@ -408,7 +408,7 @@ yet (`featureFlags.christmas` stays false); 16.18 (tree) and 16.20 (customizer) 
 
 Owner-made with Hunyuan3D, 2026-11-27: one-piece models (one mesh, POSITION only, about 20 000 triangles, bounds ≈ ±1) and
 colour reference screenshots. The originals and the reference images are **not committed**; `model-3.glb`…`model-7.glb`
-belong to 16.38 (bell, stocking, gift, snowman, gift pile).
+(bell, stocking, gift, snowman, gift pile) are processed in §13 (MFW-124).
 
 | Owner file | Design id | sha256 of the owner file | Colour reference | Colours (sRGB) |
 |---|---|---|---|---|
@@ -514,9 +514,9 @@ Parser: `parseOrnamentDesignGlb` (`src/core/customization/ornamentDesignGlb.ts`)
 
 ### 12g. Runtime
 
-- **Registry.** `ORNAMENT_DESIGN_SOURCES` (`src/config/ornamentModels.config.ts`) maps `ball_01`, `star_01`, `bow_01` to
+- **Registry.** `ORNAMENT_DESIGN_SOURCES` (`src/config/ornamentModels.config.ts`) maps all six designs (`ball_01`, `star_01`, `bow_01`, `bell_01`, `stocking_01`, `gift_01`) to
   `{ kind: "glb", fallbackColor }` (fallback = the design's main, last-rule colour). L17 adds a `procedural` kind. A design
-  without a source (bell, stocking, gift until 16.38) never fetches and shows the fallback sphere in the default design's
+  without a source never fetches and shows the fallback sphere in the default design's
   tint.
 - **Loader.** `src/components/models/christmas/ornamentDesignLoader.ts`: its own instance of the generic
   `createDesignGlbLoader` (`src/components/models/designGlbLoader.ts`, also behind the krathong loader). One fetch per URL
@@ -557,3 +557,89 @@ SwiftShader; no server and no new dependency: a fake origin served by `page.rout
 **Deviation:** the AC asks for customize-view screenshots, but Christmas cannot be opened in the app until 16.3 / 16.20
 and Christmas light presets arrive in 16.16. These are harness renders under the Loy presets; the real customize-view shots
 (DAY and NIGHT) are retaken in 16.20.
+
+## 13. Christmas ornaments part 2 and props (MFW-124, backlog 16.38)
+
+Bell, stocking and gift as three-LOD hangable ornaments, and the snowman and the gift pile as scene props with medium and low
+LODs only and no hook. Same pipeline as §12; nothing is mounted (16.19 places the props, 16.20 builds the customizer).
+
+### 13a. Sources
+
+Owner-made with Hunyuan3D, not committed (sha256 of the original, reference image used for colours):
+
+| File | Id | sha256 | Reference |
+|---|---|---|---|
+| `model-3.glb` | `bell_01` | `7e0120241beb4839718a22eabc611d587e6bd0dffb3574ad9323ac84465da0ac` | `ref-01.45.47.png` |
+| `model-4.glb` | `stocking_01` | `688aa182416007da322400c282b312befe5a6a3c7631f619e2cf1cbb226c0c5e` | `ref-01.42.09.png` |
+| `model-5.glb` | `gift_01` | `7eaa6c55131ba8b4248ed0d31faea52b18d4a352afa9d0161ce874739bee0638` | `ref-01.42.14.png` |
+| `model-6.glb` | `snowman_01` | `04c46cbdc95113b881784e0909c27468e0fabdc3156c14b3297815d11ddcd580` | `ref-01.42.25.png` |
+| `model-7.glb` | `gift_pile_01` | `1b3e578dca90cc0f9b302a5b520cef3852bb22a474ad4852fb5061c92572e2e2` | `ref-01.42.39.png` |
+
+### 13b. Decimation
+
+Per file: `gltf-transform weld model-<n>.glb <id>.weld.glb`, then `gltf-transform simplify <id>.weld.glb
+assets/christmas/decimated/<id>.<lod>.glb --ratio R --error E` (glTF-Transform 4.5.1, not a dependency). Values used (no step-down was needed):
+
+| Id | full R / E | medium R / E | low R / E |
+|---|---|---|---|
+| `bell_01` | 0.2 / 0.02 | 0.02 / 0.02 | 0.005 / **0.08** |
+| `stocking_01` | 0.2 / 0.02 | 0.02 / 0.02 | 0.005 / 0.05 |
+| `gift_01` | 0.2 / 0.02 | 0.02 / 0.02 | 0.005 / 0.05 |
+| `snowman_01` | — | 0.075 / 0.02 | 0.03 / 0.02 |
+| `gift_pile_01` | — | 0.075 / 0.02 | 0.03 / **0.03** |
+
+- Bell low: at error 0.05 the simplifier stops at 114 triangles because the clapper is a second mesh island; 0.08 gives 98.
+- Pile low: at error 0.02 it stops at 688 triangles; 0.03 gives 588.
+
+Measured (triangles · decimated source bytes · public bytes):
+
+| File | Triangles | Source bytes | Public bytes |
+|---|---|---|---|
+| `bell_01.full` / `.medium` / `.low` | 4000 / 400 / 98 | 48928 / 5724 / 2108 | 97412 / 16332 / 6704 |
+| `stocking_01.full` / `.medium` / `.low` | 4000 / 400 / 100 | 48924 / 5720 / 2116 | 95060 / 11488 / 6016 |
+| `gift_01.full` / `.medium` / `.low` | 4000 / 400 / 100 | 48880 / 5676 / 2072 | 125020 / 17116 / 6040 |
+| `snowman_01.medium` / `.low` | 1500 / 600 | 18924 / 8124 | 41180 / 21664 |
+| `gift_pile_01.medium` / `.low` | 1494 / 588 | 18456 / 7688 | 57444 / 29016 |
+
+Totals of all 22 files against `CHRISTMAS_MODEL_ASSET_BUDGET`: public 874 760 of 1 572 864 bytes, decimated sources
+393 184 of 655 360 bytes; the largest file is 125 020 of 262 144 bytes.
+
+### 13c. Pipeline additions
+
+- **`frame`** (optional per design, `{ up, out }` as source-space directions): `orientToFrame` rotates the source so that
+  +Y = up and +Z = out (`frameBasis`: z = out, y = up without its z part, x = y × z) before the region rules, the
+  normalisation and the hook. Region rules are therefore in **oriented source coordinates**. A design without `frame` takes
+  the same input arrays as before, so the ball, star, bow and krathong outputs are byte-identical.
+- **`lods`** (optional per design): `runModelPackCli` builds `design.lods ?? lods`, so the props never need a `full` source
+  and one `--check` still covers the pack.
+
+### 13d. Region rules
+
+First match wins; colours are sRGB hex. Large regions use the §12e method (median of the lit half of a reference pixel box,
+"ref box"); the snowman's eyes, buttons and nose are too small for it (brown = median of the darkest quartile of box 98,98–110,108;
+orange = median of the most saturated quartile of box 115,108–126,122).
+
+- **`bell_01`** (no frame): body `#E5CF9A` column r 0.34, y ≤ 0.53 (keeps the dome under the bow); bow `#CE8F7A` box
+  [−0.75, 0.42, −0.3]…[0.75, 0.8, 0.3] (ref box 120,25–160,60); body `#E5CF9A` any (ref box 130,100–230,170). Ring and clapper stay mustard.
+- **`stocking_01`**: frame `up [0, 0.48, −0.877]`, `out [0.273, −0.844, −0.462]` (out = thinnest principal axis; cuff on
+  top, toe at +X, profile +Z). Body `#D69580` column (cx −0.15, cz 0.05, r 0.6, y ≤ 0.19); cuff `#E6DCCC` band y ≥ 0.05 (ref box 165,30–260,80); body any (ref box 190,110–290,190).
+- **`gift_01`**: frame `up [0, 1, 0]`, `out [1, 0, 0]` (bow loops face +Z). Ribbon `#D5C6B6`: band y ≥ 0.62, box z −0.18…0.15, box x −0.14…0.18 (ref box 197,110–211,170); body `#99A48F` any (ref box 220,110–233,170).
+- **`snowman_01`** (no frame, face at +Z): nose `#E09261` box; eyes and buttons `#5B3C2E` spheres; hat `#D79E8C` band y ≥ 0.47 and
+  band y ≥ 0.36, r ≥ 0.4 (the tilted brim; ref box 70,10–160,60); scarf `#D79E8C` band y −0.15…0.12 and the tail box; body `#E2D1C1` any (ref box 60,150–110,200). The numbers are in `scripts/christmas-models.designs.mjs`.
+- **`gift_pile_01`** (no frame): one fused island (18 198 of 20 000 triangles), so it cannot be coloured by island. One
+  box rule per object from the nine footprints on the ground (y −2…2), colours from the reference: sage `#ABB59E` (box 200,45–225,90),
+  cream `#D8BFAA` (75,95–110,150), terracotta `#E1A28B` (320,90–350,130), mustard `#D3B276` (175,240–205,280); neighbours never share a colour. Ribbons on the pile are not coloured separately (DRAFT; owner art review). No box edge was moved from the spec values.
+
+### 13e. Props
+
+`snowman_01` and `gift_pile_01` (`src/config/christmasPropModels.config.ts`, three-free): medium and low LODs only, DRAFT
+guards ≤ 1 500 / ≤ 600 triangles (CA10), `hook: false` so the GLB mesh carries no `extras` (CA11), same public directory, model-local
+frame (bbox centre at the origin, bounding radius `ORNAMENT_MODEL_RADIUS`) and asset budget as the ornaments. World scale and anchor are 16.19's.
+
+### 13f. Screenshots
+
+`node scripts/christmas-model-shots.mjs` (as §12i) now renders six designs: `mfw-101/` keeps ball, star, bow; `mfw-124/` holds
+`bell_01`, `stocking_01`, `gift_01` hero shots (DAY and NIGHT) and `props-sheet-{day,night}.png` (800 × 800, fov 30° at (0, 6, 17):
+snowman medium and low on the top row, gift pile medium and low below). Thumbnails for all six designs are written to `public/ui/ornament-designs/`.
+
+**Deviation (same as §12i):** the customize-view screenshots wait for the customizer (16.20); these are harness renders under the Loy presets.

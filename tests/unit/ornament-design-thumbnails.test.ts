@@ -11,7 +11,11 @@ import {
   ORNAMENT_GLB_DESIGN_IDS,
   ornamentDesignThumbnailUrl,
 } from "@/config/ornamentModels.config";
+import { CHRISTMAS_PROP_IDS, CHRISTMAS_PROP_LODS } from "@/config/christmasPropModels.config";
 import {
+  PROP_SHEET,
+  propSheetPath,
+  SHOT_CAMERA,
   SHOT_DESIGN_IDS,
   SHOT_LIGHTS,
   SHOT_MATERIAL,
@@ -26,8 +30,8 @@ const IHDR_WIDTH_OFFSET = 16;
 const IHDR_HEIGHT_OFFSET = 20;
 const PRESETS = ["DAY", "NIGHT"] as const;
 
-/** MFW-101: the committed ornament picker thumbnails and hero renders (scripts/christmas-model-shots.mjs). */
-describe("ornament design thumbnails and hero renders (MFW-101)", () => {
+/** MFW-101 / MFW-124: the committed ornament picker thumbnails and hero renders (scripts/christmas-model-shots.mjs). */
+describe("ornament design thumbnails and hero renders (MFW-101 / MFW-124)", () => {
   it("OT1: the script's literals match the app config", () => {
     expect([...SHOT_DESIGN_IDS]).toEqual([...ORNAMENT_GLB_DESIGN_IDS]);
     expect(THUMBNAIL_OUT_PX).toBe(ORNAMENT_DESIGN_THUMBNAIL_PX);
@@ -44,7 +48,7 @@ describe("ornament design thumbnails and hero renders (MFW-101)", () => {
     expect(statSync(path).size).toBeLessThanOrEqual(ORNAMENT_DESIGN_THUMBNAIL_MAX_BYTES);
   });
 
-  it("OT3: the thumbnail directory holds exactly the three design PNGs", () => {
+  it("OT3: the thumbnail directory holds exactly the six design PNGs", () => {
     expect(readdirSync(join("public", ORNAMENT_DESIGN_THUMBNAIL_PUBLIC_PATH)).sort()).toEqual(
       ORNAMENT_GLB_DESIGN_IDS.map((id) => `${id}.png`).sort(),
     );
@@ -66,5 +70,19 @@ describe("ornament design thumbnails and hero renders (MFW-101)", () => {
 
   it.each(ORNAMENT_GLB_DESIGN_IDS)("OT5: %s has DAY and NIGHT hero renders", (id) => {
     for (const preset of PRESETS) expect(existsSync(shotPath(id, preset)), shotPath(id, preset)).toBe(true);
+  });
+
+  it("OT6: hero renders live in mfw-101 (ball, star, bow) or mfw-124 (bell, stocking, gift)", () => {
+    expect(shotPath("ball_01", "NIGHT")).toBe("docs/design/screenshots/mfw-101/ball_01-hero-night.png");
+    expect(shotPath("gift_01", "DAY")).toBe("docs/design/screenshots/mfw-124/gift_01-hero-day.png");
+    expect(() => shotPath("nope", "DAY")).toThrow(/unknown shot design nope/);
+  });
+
+  it("OT7: the prop sheet covers every prop × LOD once, DAY and NIGHT exist", () => {
+    const keys = PROP_SHEET.items.map((item) => `${item.id}.${item.lod}`).sort();
+    expect(keys).toEqual(CHRISTMAS_PROP_IDS.flatMap((id) => CHRISTMAS_PROP_LODS.map((lod) => `${id}.${lod}`)).sort());
+    for (const preset of PRESETS) expect(existsSync(propSheetPath(preset)), propSheetPath(preset)).toBe(true);
+    expect(propSheetPath("DAY")).toBe("docs/design/screenshots/mfw-124/props-sheet-day.png");
+    expect(PROP_SHEET.camera.fovDeg).toBe(SHOT_CAMERA.fovDeg);
   });
 });

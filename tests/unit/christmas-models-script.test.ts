@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseOrnamentDesignGlb } from "@/core/customization/ornamentDesignGlb";
-import { boundsCentreTransform, buildOrnamentLod, normaliseToBoundingRadius } from "../../scripts/christmas-models-lib.mjs";
+import { boundsCentreTransform, buildOrnamentLod, frameBasis, normaliseToBoundingRadius, orientToFrame } from "../../scripts/christmas-models-lib.mjs";
 import type { OrnamentDesignSpec } from "../../scripts/christmas-models.designs.mjs";
+import { runModelPackCli } from "../../scripts/model-pack-cli.mjs";
 import { colourAndWeld, readGlbMesh, srgbHexToLinearBytes, writeGlb } from "../../scripts/krathong-models-lib.mjs";
 
 const ROOT = process.cwd();
@@ -47,7 +50,7 @@ const octaSpec = (hook: boolean): OrnamentDesignSpec => ({
   ],
 });
 
-describe("christmas models script (MFW-101)", () => {
+describe("christmas models script (MFW-101 / MFW-124)", () => {
   it("CS1: boundsCentreTransform / normaliseToBoundingRadius", () => {
     const corners: number[] = [];
     for (const x of [0, 2]) for (const y of [0, 4]) for (const z of [0, 2]) corners.push(x, y, z);
@@ -128,5 +131,62 @@ describe("christmas models script (MFW-101)", () => {
     const check = run("scripts/krathong-models.mjs", "--check");
     expect(check.status).toBe(0);
     expect(check.stdout).toContain("krathong models: up to date");
+  });
+
+  it("CS7: orientToFrame / frameBasis", () => {
+    const pts = Float32Array.from([1, 0, 0, 0, 0, 1, 0, 1, 0]);
+    expect([...orientToFrame(pts, { up: [0, 1, 0], out: [0, 0, 1] })]).toEqual([...pts]);
+    const turned = orientToFrame(pts, { up: [0, 1, 0], out: [1, 0, 0] });
+    [0, 0, 1, -1, 0, 0, 0, 1, 0].forEach((v, i) => expect(turned[i]).toBeCloseTo(v, 6));
+    const basis = frameBasis({ up: [0, 1, 1], out: [0, 0, 1] });
+    [0, 1, 0].forEach((v, i) => expect(basis.y[i]).toBeCloseTo(v, 9));
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    for (const v of [basis.x, basis.y, basis.z]) expect(dot(v, v)).toBeCloseTo(1, 9);
+    expect(dot(basis.x, basis.y)).toBeCloseTo(0, 9);
+    expect(dot(basis.y, basis.z)).toBeCloseTo(0, 9);
+    expect(dot(basis.x, basis.z)).toBeCloseTo(0, 9);
+    cross(basis.x, basis.y).forEach((v, i) => expect(v).toBeCloseTo(basis.z[i], 9));
+    expect(() => frameBasis({ up: [0, 0, 2], out: [0, 0, 1] })).toThrow(/parallel/);
+    expect(() => frameBasis({ up: [0, 1, 0], out: [0, 0, 0] })).toThrow(/no length/);
+  });
+
+  it("CS8: buildOrnamentLod applies the frame before the rules", () => {
+    const source = octahedronSource();
+    const framed = { ...octaSpec(true), frame: { up: [1, 0, 0], out: [0, 0, 1] } as OrnamentDesignSpec["frame"] };
+    const a = buildOrnamentLod(source, framed, "full");
+    expect(Buffer.compare(Buffer.from(a), Buffer.from(buildOrnamentLod(source, framed, "full")))).toBe(0);
+    const data = parseOrnamentDesignGlb(bufferOf(a));
+    let maxY = -Infinity;
+    for (let i = 1; i < data.positions.length; i += 3) maxY = Math.max(maxY, data.positions[i]);
+    expect(Math.abs((data.hook?.y ?? NaN) - maxY)).toBeLessThanOrEqual(1e-4);
+    const seen = new Set<string>();
+    for (let i = 0; i < data.colors.length; i += 4) seen.add([...data.colors.subarray(i, i + 3)].join(","));
+    expect([...seen].sort()).toEqual([CAP, BODY].map((hex) => srgbHexToLinearBytes(hex).join(",")).sort());
+    expect(Buffer.compare(Buffer.from(a), Buffer.from(buildOrnamentLod(source, octaSpec(true), "full")))).not.toBe(0);
+  });
+
+  it("CS9: runModelPackCli builds only the LODs a design lists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mfw-pack-"));
+    try {
+      const sourceDir = join(dir, "src");
+      const publicDir = join(dir, "out");
+      mkdirSync(sourceDir);
+      for (const name of ["a.full", "a.medium", "a.low", "b.medium", "b.low"]) writeFileSync(join(sourceDir, `${name}.glb`), name);
+      const pack = {
+        name: "t",
+        script: "t.mjs",
+        designs: [{ id: "a" }, { id: "b", lods: ["medium", "low"] }],
+        lods: ["full", "medium", "low"],
+        sourceDir,
+        publicDir,
+        build: (bytes: Uint8Array) => bytes,
+      };
+      expect(runModelPackCli({ ...pack, argv: [] })).toBe(0);
+      expect(readdirSync(publicDir).sort()).toEqual(["a.full.glb", "a.low.glb", "a.medium.glb", "b.low.glb", "b.medium.glb"]);
+      expect(runModelPackCli({ ...pack, argv: ["--check"] })).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

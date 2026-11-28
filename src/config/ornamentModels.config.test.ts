@@ -12,8 +12,9 @@ import {
   ornamentDesignUrl,
   ornamentFallbackColor,
 } from "./ornamentModels.config";
+import { ORNAMENT_DESIGN_IDS, type OrnamentDesignId } from "./ornamentDesigns.config";
 
-describe("ornament model config (MFW-101)", () => {
+describe("ornament model config (MFW-101 / MFW-124)", () => {
   it("OC1: URLs", () => {
     expect(ornamentDesignUrl("ball_01", "medium")).toBe("/models/christmas/ball_01.medium.glb");
     expect(ornamentDesignThumbnailUrl("star_01")).toBe("/ui/ornament-designs/star_01.png");
@@ -24,12 +25,16 @@ describe("ornament model config (MFW-101)", () => {
     expect(CHRISTMAS_MODEL_ASSET_BUDGET).toEqual({ maxFileBytes: 262144, maxPublicTotalBytes: 1572864, maxSourceTotalBytes: 655360 });
   });
 
-  it("OC3: the registry holds exactly the three glb designs; others fall back to the default tint", () => {
-    expect(Object.keys(ORNAMENT_DESIGN_SOURCES).sort()).toEqual(["ball_01", "bow_01", "star_01"]);
+  it("OC3: the registry holds exactly the six glb designs; unknown ids fall back to the default tint", () => {
+    const NO_SOURCE = "nope_01" as OrnamentDesignId;
+    expect(Object.keys(ORNAMENT_DESIGN_SOURCES).sort()).toEqual(["ball_01", "bell_01", "bow_01", "gift_01", "star_01", "stocking_01"]);
     for (const source of Object.values(ORNAMENT_DESIGN_SOURCES)) expect(source?.kind).toBe("glb");
-    expect([...ORNAMENT_GLB_DESIGN_IDS]).toEqual(["ball_01", "star_01", "bow_01"]);
-    expect(ornamentDesignSource("bell_01")).toBeNull();
-    expect(ornamentFallbackColor("bell_01")).toBe(ornamentFallbackColor("ball_01"));
+    expect(ORNAMENT_DESIGN_SOURCES.bell_01?.fallbackColor).toBe("#E5CF9A");
+    expect(ORNAMENT_DESIGN_SOURCES.stocking_01?.fallbackColor).toBe("#D69580");
+    expect(ORNAMENT_DESIGN_SOURCES.gift_01?.fallbackColor).toBe("#99A48F");
+    expect([...ORNAMENT_GLB_DESIGN_IDS]).toEqual([...ORNAMENT_DESIGN_IDS]);
+    expect(ornamentDesignSource(NO_SOURCE)).toBeNull();
+    expect(ornamentFallbackColor(NO_SOURCE)).toBe(ornamentFallbackColor("ball_01"));
   });
 
   it("OC4: world radius = hit radius; the fallback sphere fits the low guard", () => {

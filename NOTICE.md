@@ -60,13 +60,13 @@ keep their own licenses. They are installed from the registry and are not redist
 
 | | |
 |---|---|
-| What | The Christmas ornaments `ball_01`, `star_01`, `bow_01`; more designs follow in 16.38 |
-| Files | `assets/christmas/decimated/*.glb` (decimated sources), `public/models/christmas/*.glb` (coloured outputs served by the app), `public/ui/ornament-designs/*.png` (thumbnails rendered from them) and `docs/design/screenshots/mfw-101/` |
-| Source | Made by the owner with Hunyuan3D on 2026-11-27 (`model-0.glb`–`model-2.glb`). Which Hunyuan3D offering (web service or open weights) and its terms are **not recorded** (**unverified**). The original full-resolution uploads are not in this repository. |
+| What | The six Christmas ornaments `ball_01`, `star_01`, `bow_01`, `bell_01`, `stocking_01`, `gift_01` and the two scene props `snowman_01`, `gift_pile_01` |
+| Files | `assets/christmas/decimated/*.glb` (decimated sources), `public/models/christmas/*.glb` (coloured outputs served by the app), `public/ui/ornament-designs/*.png` (thumbnails rendered from them), `docs/design/screenshots/mfw-101/` and `docs/design/screenshots/mfw-124/` |
+| Source | Made by the owner with Hunyuan3D on 2026-11-27 (`model-0.glb`–`model-7.glb`). Which Hunyuan3D offering (web service or open weights) and its terms are **not recorded** (**unverified**). The original full-resolution uploads are not in this repository. |
 | Terms | Owner-made for this project. The Hunyuan3D terms may restrict public or commercial use (the open-weights community licences are known to carry territory and user-count limits) — **unverified**. |
 | You may not | Download, copy, extract, re-export or reuse these models, their decimated or coloured versions, or their thumbnails in any other project, game, product or dataset; or use them commercially in any way. |
 
-Processing notes (decimation, colouring script, budgets) are in [docs/design/models.md](docs/design/models.md) §12.
+Processing notes (decimation, colouring script, budgets) are in [docs/design/models.md](docs/design/models.md) §12–§13.
 
 ## Owner checklist before a public or commercial launch
 
